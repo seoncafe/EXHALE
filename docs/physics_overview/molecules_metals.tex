@@ -44,8 +44,8 @@ published coefficients of \citet{CohenWestberg1983}, carried in the code as
 an H$_2$-equivalent third-body density so that R12 keeps following R15 by
 \eqref{eq:mol:r12}.  Applying the $M={\rm H_2}$ coefficient to the total
 density, which is what the code did before, over-counts the association: at
-the base of the LHS 1140 b hot-Uranus column it made the R15 rate 22 per cent
-too large and the molecular chemical heat 21.6 per cent too large.  No
+the base of the LHS 1140 b hot-Uranus column it made the R15 rate 22 percent
+too large and the molecular chemical heat 21.6 percent too large.  No
 measurement of He as a third body for this reaction exists, so He is given
 argon's coefficient, and that entry remains an upper bound: a monatomic third
 body has no internal modes to take up the released energy. Two
@@ -119,12 +119,12 @@ Measured on LHS~1140~b at ${\rm He/H}=2.13$ with the H$_2$ row written out
 reaction by reaction, the repair rewires the base layer's HeH$^+$ and H$^+$
 budgets -- at the first cell $n({\rm HeH^+})$ falls by a factor $487$ at
 1023~K and $8\times10^4$ at 629~K, and $n({\rm He^+})$ rises by $1.11$ and
-$4.4$ -- and leaves the net H$_2$ destruction there within a per cent,
+$4.4$ -- and leaves the net H$_2$ destruction there within a percent,
 because the helium ions of that layer are sink-limited. The same measurement
 shows what sets the H$_2$ of a helium-rich base: the helium-ion and proton
 channels, with the thermal dissociation R12 nine decades below the first
 cell's total H$_2$ loss at 1023~K and twenty-two decades below it at 629~K,
-and nowhere in that layer reaching 0.4 per cent of the loss. The helium-ion channels, not the temperature and not the photons, set
+and nowhere in that layer reaching 0.4 percent of the loss. The helium-ion channels, not the temperature and not the photons, set
 the H$_2$ content of a helium-rich base in this network.
 
 The eight balance rows the network makes are
@@ -160,11 +160,11 @@ $\sigma({\rm H^+})/[\sigma({\rm H^+})+\sigma({\rm H_2^+})]$ and tabulated at
 threshold and held flat above 124\,eV. The thresholds are 15.4\,eV (M,
 leaves H$_2^+$), 18.076\,eV (S, leaves H\,$+$\,H$^+$), 51.4\,eV (D, two
 protons), and none of its own for N. The D channel is resolved by default
-(\texttt{H2 double ionization: chung80}, the 20 per cent of the H$^+$
+(\texttt{H2 double ionization: chung80}, the 20 percent of the H$^+$
 events at and above 80\,eV that \citet{Chung1993} state, ramped linearly from
 the 51.4\,eV threshold, the ramp not being in the source);
 \texttt{yan\_rho} builds it from the double-to-single ratio of
-\citet{Yan1998} instead (at 110\,eV \texttt{chung80} gives 15 per cent more
+\citet{Yan1998} instead (at 110\,eV \texttt{chung80} gives 15 percent more
 double ionization than \texttt{yan\_rho}), and
 \texttt{off} folds it back into S, which reproduces the code before the
 channel existed. The N window is resolved by default as well
@@ -538,7 +538,28 @@ $p_{\rm match}$ with the state of that face continued from the two top cell
 centers (\texttt{level\_at\_top\_face}), and above the match the wind alone
 gives $T(p)$, $r(p)$ and the hydrogen partition. The chemistry runs on the
 climate column with the rise of the column energy balance up to the face, as
-a persistent $T(p)$ of Photochem. The helium flux is imposed on He. The
+a persistent $T(p)$ of Photochem. The climate column (Photochem's clima, a
+multispecies pseudoadiabat from the deep boundary $p_{\rm deep}$ under an
+isothermal stratosphere, \texttt{radiative\_convective\_column.py}) takes
+its deep composition from the Gibbs equilibrium of H, He, C, N and O at
+$(p_{\rm deep}, T_{\rm deep})$ (Photochem's \texttt{ChemEquiAnalysis},
+condensates included), solved together with the deep temperature as the
+fixed point $T_{\rm deep}=T_{\rm clima}\bigl(T_{\rm deep};
+x_{\rm eq}(p_{\rm deep},T_{\rm deep})\bigr)$ by a bracketed root, and mapped
+onto the eight carriers clima has opacities for (H$_2$, He, H$_2$O, CH$_4$,
+CO$_2$, CO, N$_2$, NH$_3$) by the least relative change that keeps the El/H
+ratios of the elemental vector (to $10^{-6}$); more than $10^{-6}$ of the
+mixture outside those carriers (at 1100--1500\,K mostly atomic H, then HCN)
+is refused. At fixed $(p,T)$ the CO/CH$_4$ and N$_2$/NH$_3$ balances depend
+on the elemental vector, and deep equilibrium at these temperatures puts
+nitrogen mainly in NH$_3$ \citep[Sect.~3.1]{Moses2011}. The approximation is
+equilibrium \emph{at} the deep boundary, without quenching from deeper,
+hotter levels: valid where the N$_2$/NH$_3$ conversion is faster than the
+mixing at $p_{\rm deep}$. The deep partition does not propagate: the
+chemistry computes its own composition from the same vector (update log
+stage~3 section~162; before 2026-10-29 the column took a prescribed
+H$_2$O/CH$_4$/N$_2$ partition and refused deep temperatures above
+1000\,K). The helium flux is imposed on He. The
 hydrogen flux is split as the wind splits it: H$_2$ carries the hydrogen the
 wind passes through its base face on H$_2$ ($\Phi_{\rm H_2}$, the closure
 variable below) and atomic H the rest, $\Phi_{\rm H}-\Phi_{\rm H_2}$,
@@ -546,7 +567,7 @@ negative (an inflow of atoms) where the wind's eddies mix the atomic
 hydrogen it makes aloft down through the surface. Without a statement of the
 wind's split (the first iteration of a closure seeded from a wind that did
 not write it) the hydrogen flux is imposed on H$_2$ alone where atomic H
-carries at most 1 per cent of the hydrogen nuclei at the model top
+carries at most 1 percent of the hydrogen nuclei at the model top
 (\texttt{CARRIER\_SHARE\_TOL}), and split by the top's own share otherwise,
 made self-consistent in at most \texttt{CARRIER\_ROUNDS}$=8$ rounds. The driver
 \texttt{src/utils/element\_flux\_closure.py} seeks the fixed point
@@ -704,7 +725,7 @@ cooling), \texttt{rotational} (a lower bound) and \texttt{nlte\_partial}
 bracket it. The transfer of the band photons is selected by
 \texttt{--column-band-transfer}: \texttt{thin} (default) lets all of the
 emission escape, and is valid while the column above absorbs at most 10 per
-cent of the upward emission excess of any bin carrying more than 1 per cent
+cent of the upward emission excess of any bin carrying more than 1 percent
 of it; past that the solution is kept and flagged
 (\texttt{thin\_layer\_limit\_exceeded}), not refused.
 \texttt{cooling\_to\_space} follows the absorption by the overlying column in
@@ -838,7 +859,7 @@ which equals $g$ in a hydrostatic column, exceeds it where the wind
 accelerates outward ($g + v\,{\rm d}v/{\rm d}r$ in a steady wind; $v\,{\rm
 d}v/{\rm d}r$ reaches $g$ near a sonic point), and is formed
 (\texttt{mixture\_pressure\_acceleration}) from the state's own total pressure,
-with the particle count of the equation of state, by the same centred
+with the particle count of the equation of state, by the same centered
 difference of a logarithm over the two neighbours as the ambipolar field
 \eqref{eq:mol:ambipolar}, so that an isothermal barometric column returns $g$
 exactly. In a column of uniform composition the electron pressure is a fixed
@@ -1067,7 +1088,7 @@ accepted carrier step, from the fluxes of the composition that step returned
 (its own fluxes to first order in $\Delta t$, exactly at a fixed point).
 MEASURED on the certified well-mixed He/H\,$=0.19$ state of
 LHS~1140\,b before the term existed: $|\nabla\!\cdot q_{\rm car}|$ is a median
-1.8 per cent of the heating over $1.001 < r/R_p < 1.03$, up to 10 per cent,
+1.8 percent of the heating over $1.001 < r/R_p < 1.03$, up to 10 percent,
 comparable to the net heating where heating and cooling cancel, and that
 state is no longer stationary with the term (the carrier row stands at
 $7\times10^{-3}$ on the first pass).  The key
@@ -1090,10 +1111,10 @@ state token \texttt{interdiff\_enth} carries the value of $s$ wherever
 $s\ne1$, so a state of a continuation step is never read as one of the
 model.
 MEASURED on the LHS~1140\,b \texttt{He\_diffusion} states: the divergence
-reaches 13 to 26 per cent of the local energy budget at 1.1--5\,$R_p$, and on
+reaches 13 to 26 percent of the local energy budget at 1.1--5\,$R_p$, and on
 the molecular He/H\,$=1.8$ state (24 outer passes with the term, not yet
 certified) it lowers $T$ by a median 166\,K over 1.3--2\,$R_p$ and He/H by
-3.1 per cent, and moves $\log_{10}\dot M$ by $+0.002$.
+3.1 percent, and moves $\log_{10}\dot M$ by $+0.002$.
 
 \paragraph{The carried ionization stages.}  With \texttt{Ionization
 transport} the stage $k$ of an element crosses a face with

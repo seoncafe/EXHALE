@@ -6,20 +6,15 @@
 !  from the conserved state through the reconstruction, the Riemann flux and
 !  the geometric and gravitational sources, written once in the kind fv and
 !  instantiated at kind(1.0d0) and at the quadruple kind by the two modules
-!  that include this file.  The double instantiation reproduces
-!  Reconstruction_step/Numerical_Fluxes/source_func/RK_integration bit for bit
-!  (asserted by the suite rows generic_double_flux_difference_is_the_operator_
-!  bitwise, generic_double_source_is_the_operator_bitwise,
-!  generic_double_face_states_are_the_operator_bitwise and
-!  generic_double_is_the_operator_bitwise_with_the_key);
-!  the quadruple instantiation is the control experiment of the residual's
-!  non-smoothness floor.
+!  that include this file. The two implementations evaluate the same
+!  equations. Compilers may reassociate sums and contract products into FMAs
+!  differently in each routine, so bitwise equality is a tested property of
+!  a particular build and state, not a general precision guarantee.
 !
-!  Every routine here mirrors a routine of those modules statement by
-!  statement.  The physics, the references and the reasons for each formula
-!  are stated at the original; this file states only what the two texts must
-!  keep in common.  Two texts of one formula can drift apart, which is why the
-!  bitwise assertion above is a test row and not a remark.
+!  Every routine here mirrors the corresponding native formula. Tests must
+!  compare the full flux/source operator and state their rounding allowance;
+!  a precision comparison requiring bitwise identity needs a paired build
+!  with a verified floating-point contract.
 !
 !  The composition is NOT of this kind: the mixture ratios and the H2
 !  rovibrational level table are properties of the gas that the ionization
@@ -1008,13 +1003,13 @@
       integer, intent(inout) :: n_hlle, n_llf
       real(fv), intent(in),  optional :: dev_L, dev_R, dp_eq
       real(fv), intent(out), optional :: q_up, q_dn
-      logical  :: wb, hllc_left
+      logical  :: wb, hllc_left, hlle_face
       real(fv) :: dp_wb
       real(fv) :: gam_L, gam_R, gam_face
       real(fv) :: uL(3), uR(3), FL(3), FR(3)
       real(fv) :: rhoL,vL,pL,aL,EL,HL,SL,phiL
       real(fv) :: rhoR,vR,pR,aR,ER,HR,SR,phiR
-      real(fv) :: S_star, usL(3), usR(3)
+      real(fv) :: S_star, dp_face, usL(3), usR(3)
       real(fv) :: s, rho_avg, v_avg, H_avg, a_avg
       real(fv) :: l1, l2, l3, l1L, l1R, l3L, l3R
       real(fv) :: v_star, aL_star, aR_star
@@ -1024,6 +1019,7 @@
 
       wb = present(dev_L) .and. present(dev_R) .and. present(dp_eq)
       hllc_left = .true.
+      hlle_face = .false.
       dp_wb = 0.0_fv
       if (wb) dp_wb = dp_eq + dev_R - dev_L
 
@@ -1103,16 +1099,37 @@
             hllc_left = .false.
          endif
 
-         ! p_out is one side's own face pressure here, so the departure it
-         ! carries is that side's.  hllc_left says which side the branch
-         ! above took.
+         ! Effective numerical pressure for the spherical momentum split:
+         ! P = p_K + S_K rho*_K (S* - v_K), H - P = mass_flux * v_K,
+         ! where H is the complete Cartesian HLLC momentum flux. P is not
+         ! the usual HLLC contact pressure. The paired subtraction preserves
+         ! H, makes the split continuous at S*=0 and the sonic clamps, and
+         ! retains the upstream pressure at a supersonic face. See
+         ! EXHALE_v1.10/md/hllc_spherical_pressure_split_fix_20261105.md.
+         if (SL .ge. 0.0_fv .or. SR .le. 0.0_fv) then
+            dp_face = 0.0_fv
+         else if (hllc_left) then
+            dp_face = SL*usL(1)*(S_star - vL)
+         else
+            dp_face = SR*usR(1)*(S_star - vR)
+         endif
+         if (hllc_left) then
+            p_out = pL + dp_face
+         else
+            p_out = pR + dp_face
+         endif
+         ! Ordinary PLM already carries the complete pressure in NF(2).
+         if (.not. (plm .and. .not. well_balanced)) &
+            NF(2) = NF(2) - dp_face
+         ! Apply the same pressure increment to the equilibrium departures;
+         ! never recover a small departure by subtracting two O(1) pressures.
          if (wb) then
             if (hllc_left) then
-               q_up = dev_L
-               q_dn = dev_L - dp_eq
+               q_up = dev_L + dp_face
+               q_dn = q_up - dp_eq
             else
-               q_dn = dev_R
-               q_up = dev_R + dp_eq
+               q_dn = dev_R + dp_face
+               q_up = q_dn + dp_eq
             endif
          endif
 
@@ -1147,6 +1164,7 @@
             call physical_flux_fv(plm,WL,FL,jL)
             call physical_flux_fv(plm,WR,FR,jR)
             call hlle_flux_fv(WL,WR,FL,FR,SL,SR,jL,jR,NF)
+            hlle_face = .true.
 
             n_hlle = n_hlle + 1
 
@@ -1197,13 +1215,27 @@
 
          endif
 
-         p_out = 0.5_fv*(pR + pL)
-
-         ! p_out is the average of the two face pressures, on the Roe branch
-         ! and on the HLLE fallback alike
-         if (wb) then
-            q_up = 0.5_fv*(dev_L + dev_R + dp_eq)
-            q_dn = q_up - dp_eq
+         ! The HLLE substitute has a wave-weighted pressure contribution.
+         ! Returning the Roe arithmetic mean would not restore its complete
+         ! momentum flux, even in Cartesian geometry for asymmetric bounds.
+         if (hlle_face) then
+            if (SL .ge. 0.0_fv) then
+               p_out = pL
+               if (wb) q_up = dev_L
+            else if (SR .le. 0.0_fv) then
+               p_out = pR
+               if (wb) q_up = dev_R + dp_eq
+            else
+               p_out = (SR*pL - SL*pR)/(SR - SL)
+               if (wb) q_up = (SR*dev_L - SL*(dev_R + dp_eq))/(SR - SL)
+            endif
+            if (wb) q_dn = q_up - dp_eq
+         else
+            p_out = 0.5_fv*(pR + pL)
+            if (wb) then
+               q_up = 0.5_fv*(dev_L + dev_R + dp_eq)
+               q_dn = q_up - dp_eq
+            endif
          endif
 
       case default

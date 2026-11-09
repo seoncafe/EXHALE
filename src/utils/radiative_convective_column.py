@@ -35,19 +35,44 @@ mixing ratio that can pass the level, whatever the deep abundance is.  This
 module reports it; the chemistry solver that follows applies it, through the
 mechanism's H2O condensate particle.
 
-Deep composition -- the one approximation here, with its validity range.
+Deep composition -- the approximation here, with its validity range.
 The climate solve needs a composition at the deep boundary before any
-chemistry has been run, so the elemental vector is partitioned into the
-molecular carriers a cool hydrogen/helium atmosphere holds in chemical
-equilibrium: oxygen in H2O, carbon in CH4, nitrogen in N2, the rest of the
-hydrogen in H2, helium atomic.  That partition is the equilibrium one only
-below the CO/CH4 and N2/NH3 transitions, roughly `T <~ 1000 K` at the
-pressures of a deep boundary of order 1-100 bar (Lodders & Fegley 2002;
-Moses et al. 2011).  The solved deep temperature is therefore checked
-against `t_partition_max` and the solve is refused above it, rather than
-returning a column whose opacity carriers are the wrong molecules.  Nothing
-downstream inherits the partition: the photochemistry that consumes T(p)
-computes its own composition from the same elemental vector.
+chemistry has been run.  It is the Gibbs equilibrium of the elemental vector
+(H, He, C, N, O) at the deep pressure and the deep temperature, solved
+together with that temperature (`DeepEquilibriumComposition`,
+`deep_temperature_in_chemical_equilibrium`): the deep temperature of the
+column depends on the opacity of its carriers, and the carriers on the
+temperature.  No temperature alone fixes the partition: at fixed (p, T) the
+CO/CH4 and N2/NH3 balances depend on the elemental vector, and deep
+equilibrium puts nitrogen mainly in NH3, not in N2, in the deepest regions
+of hydrogen atmospheres (Moses et al. 2011, ApJ 737, 15, section 3.1); at
+20 bar on the solar vector NH3 holds 0.9993 of the nitrogen at 600 K and
+0.66 at 900 K, and the CO share of the carbon at 1500 K is 0.45 on the
+solar vector and 0.98 at He/H 5 (Photochem's equilibrium, MEASURED
+2026-10-29).  The prescribed
+partition used before 2026-10-29 (O in H2O, C in CH4, N in N2) and its
+1000 K refusal were therefore not an equilibrium statement and are gone
+(md/climate_deep_temperature_codex_20261029.md;
+md/climate_equilibrium_deep_composition_20261029.md; update log stage 3
+section 162).
+
+THE APPROXIMATION: chemical equilibrium AT the deep boundary, i.e. no
+quenching from deeper, hotter levels.  It is valid where the conversion time
+of the slowest transition, N2 <-> NH3, is shorter than the mixing time at
+p_deep; where it is not, the deep composition is the one quenched below the
+boundary, which this column does not describe (Moses et al. 2011 for the
+comparison of equilibrium and quenched profiles).  Elements other than H,
+He, C, N and O (sulfur in the adapters' default vector, S/H = 1.3e-5) have
+no carrier with climate opacity and are left out of the column.  The
+equilibrium is mapped onto `CLIMATE_SPECIES`, the carriers clima has
+opacities for, by the least relative change that keeps the El/H ratios of
+the vector (`DeepEquilibriumComposition`), and the solve is refused when the
+equilibrium puts more than
+`DEEP_OMITTED_TOL` of the mixture outside them (other gases or condensates),
+or when the mapped mixture departs from the elemental vector by more than
+`DEEP_ELEMENT_RATIO_TOL`.  Nothing downstream inherits the deep partition:
+the photochemistry that consumes T(p) computes its own composition from the
+same elemental vector.
 """
 import os
 
@@ -58,32 +83,58 @@ BAR = 1.0e6                      # dyn/cm^2
 # The species `clima` has gas opacities for in `photochem_clima_data`
 # (k-distributions H2O/CH4/CO2/CO/NH3, CIA H2-H2/H2-He/H2-CH4/CO2-H2, and
 # Rayleigh for the rest).  A carrier outside this list would be invisible to
-# the radiative transfer, so the partition below stays inside it.
+# the radiative transfer, so the deep composition is mapped onto it and an
+# equilibrium with a significant fraction elsewhere is refused.
 CLIMATE_SPECIES = ('H2', 'He', 'H2O', 'CH4', 'CO2', 'CO', 'N2', 'NH3')
 CLIMATE_CONDENSATES = ('H2O',)
 
 
-def deep_molecular_partition(abundances):
-    """Volume mixing ratios of `CLIMATE_SPECIES` from an El/H nuclei vector.
+# Element counts of the climate species: the element balance of the deep
+# equilibrium mapped onto them, and their mean particle mass
+# (lower_profile_schema.mean_molecular_weight).
+CLIMATE_ELEMENT_COUNTS = {
+    'H2': {'H': 2}, 'He': {'He': 1}, 'H2O': {'H': 2, 'O': 1},
+    'CH4': {'C': 1, 'H': 4}, 'CO2': {'C': 1, 'O': 2}, 'CO': {'C': 1, 'O': 1},
+    'N2': {'N': 2}, 'NH3': {'N': 1, 'H': 3}}
 
-    `abundances` maps an element name to its number ratio to hydrogen (the
-    vector the adapters carry, `H` included as 1).  Oxygen goes to H2O,
-    carbon to CH4, nitrogen to N2, helium stays atomic and the hydrogen that
-    is not bound in those carriers is H2 -- the cool-atmosphere equilibrium
-    partition whose validity range the module docstring states.
-    """
-    xhe = abundances.get('He', 0.0)/abundances.get('H', 1.0)
-    xo = abundances.get('O', 0.0)/abundances.get('H', 1.0)
-    xc = abundances.get('C', 0.0)/abundances.get('H', 1.0)
-    xn = abundances.get('N', 0.0)/abundances.get('H', 1.0)
-    # per hydrogen nucleus; H2O takes 2 H, CH4 takes 4 H
-    h2 = 0.5*max(0.0, 1.0 - 2.0*xo - 4.0*xc)
-    per = {'H2': h2, 'He': xhe, 'H2O': xo, 'CH4': xc, 'N2': 0.5*xn,
-           'CO': 0.0, 'CO2': 0.0, 'NH3': 0.0}
-    tot = sum(per.values())
-    if tot <= 0.0:
-        raise SystemExit('the elemental vector carries no climate carrier')
-    return {sp: v/tot for sp, v in per.items()}
+# The deep equilibrium (module docstring, "Deep composition").
+DEEP_EQUILIBRIUM_ATOMS = ('H', 'He', 'C', 'N', 'O')
+DEEP_EQUILIBRIUM_THERMO_FILE = 'deep_equilibrium_thermo.yaml'
+# Largest mole fraction of the equilibrium mixture (gas and condensates)
+# outside CLIMATE_SPECIES; above it the solve is refused.  What the column
+# leaves out at 20 bar on the LHS 1140 b vectors (deep He/H 0.65, 1.2, 5;
+# MEASURED 2026-10-29, md/climate_equilibrium_deep_composition_20261029.md)
+# is below 3e-11 of the mixture at 900 K, and at 1100-1500 K 86-100 per
+# cent atomic H, which carries no infrared opacity, then HCN (at most 12 per
+# cent of it, at most 4e-2 of NH3) and CH3.  At 1e-6 of the mixture the
+# omitted species move the mean particle mass and heat capacity by 1e-6,
+# and their nuclei are returned to the carriers by the mapping.  The total
+# reaches 1e-6 near 1450 K at deep He/H 0.65 and 1.2 and near 1500 K at 5;
+# a condensate or a molecular carrier at that level is refused.  (The
+# prototype's 1e-8 refuses deep He/H 0.65 on LHS 1140 b near its root,
+# about 1200 K, for 3e-8 of atomic H.)
+DEEP_OMITTED_TOL = 1.0e-6
+# Largest relative departure of an El/H ratio of the mapped mixture from the
+# elemental vector; above it the solve is refused.
+DEEP_ELEMENT_RATIO_TOL = 1.0e-6
+# The fixed point T_deep = clima(T_deep; composition(p_deep, T_deep)):
+# tolerance of the bracketed root, the largest |clima(T) - T| accepted at
+# the re-evaluation, and the bracket search.  The root tolerance is above
+# the scatter of clima's own deep-temperature solve with its starting value
+# (2e-5 K, MEASURED on LHS 1140 b at deep He/H 5, starts 500-750 K at fixed
+# composition, 2026-10-29).
+DEEP_ROOT_XTOL_K = 1.0e-4
+DEEP_FIXED_POINT_TOL_K = 1.0e-3
+DEEP_BRACKET_MAX_STEPS = 12
+DEEP_BRACKET_FIRST_STEP_K = 20.0
+DEEP_BRACKET_MIN_STEP_K = 1.0
+# Starting values of clima's deep-temperature solve, as factors of the
+# trial temperature, tried in turn after the trial temperature itself and
+# the last root clima returned: clima's solve does not converge from a
+# start far below its root (at deep He/H 5 on LHS 1140 b it fails from
+# 400 K for a root of 918 K and converges from 500 K, MEASURED 2026-10-29).
+# The start selects nothing: the root is clima's to its own tolerance.
+CLIMA_START_FACTORS = (1.25, 1.5, 2.0, 0.8, 0.6)
 
 
 def background_gas(mixing):
@@ -109,12 +160,257 @@ def write_climate_files(workdir, mp_g, rp_cm, surface_albedo, nlayers):
     return sp_file, st_file
 
 
+class DeepCompositionRefused(SystemExit):
+    """The deep equilibrium at a stated (p, T) cannot be represented by the
+    climate carriers (or did not converge)."""
+
+
+class DeepEquilibriumComposition:
+    """Gibbs equilibrium of H/He/C/N/O at the deep boundary, mapped onto
+    `CLIMATE_SPECIES`.
+
+    Photochem's `ChemEquiAnalysis` on the thermodynamic set of
+    `generate_zahnle_earth_thermo` restricted to DEEP_EQUILIBRIUM_ATOMS,
+    condensates included (so that a condensing carrier is seen and refused,
+    not dropped).  The file is written once, in `workdir`.  `abundances`
+    maps an element name to its number ratio to hydrogen (`H` included as
+    1); elements outside DEEP_EQUILIBRIUM_ATOMS are left out (module
+    docstring).  THE APPROXIMATION -- equilibrium at the deep boundary, no
+    quenching from below -- and its validity range are the module
+    docstring's.
+
+    THE MAPPING.  The equilibrium fractions x_k of the carriers are moved
+    to the nearest mixture (least squares in the relative change x/x_k - 1)
+    whose El/H ratios are those of the elemental vector:
+
+        x = x_eq + W A^T (A W A^T)^+ (b - A x_eq),   W = diag(x_eq^2),
+
+    A the element counts of the carriers (CLIMATE_ELEMENT_COUNTS), b the
+    vector scaled to the hydrogen of x_eq.  It returns to the carriers the
+    nuclei of the species the column cannot hold (at most DEEP_OMITTED_TOL
+    of the mixture: atomic H, HCN, CH3, C2H6 near 1000 K) and the element
+    imbalance of the Gibbs solve itself (its mass tolerance, 1e-6; MEASURED
+    1e-7 to 4e-7 on the LHS 1140 b vectors at 900-1000 K).  Dropping those
+    species instead moves a trace ratio by omitted/element total: 2.4e-11
+    of HCN is 1.6e-6 of the nitrogen at deep He/H 5, 1000 K (MEASURED
+    2026-10-29), above DEEP_ELEMENT_RATIO_TOL for no change of the climate.
+    The largest relative change of a carrier is kept as
+    `last['carrier_change']`."""
+
+    def __init__(self, workdir, abundances):
+        from photochem.equilibrate import (ChemEquiAnalysis,
+                                           generate_zahnle_earth_thermo)
+        self.thermo_file = os.path.join(workdir, DEEP_EQUILIBRIUM_THERMO_FILE)
+        generate_zahnle_earth_thermo(self.thermo_file,
+                                     atoms_names=list(DEEP_EQUILIBRIUM_ATOMS))
+        self.solver = ChemEquiAnalysis(self.thermo_file)
+        self.solver.use_prev_guess = False      # a function of (p, T) only
+        h = float(abundances.get('H', 1.0))
+        if h <= 0.0:
+            raise SystemExit('the elemental vector carries no hydrogen')
+        self.ratios = {el: float(abundances.get(el, 0.0))/h
+                       for el in DEEP_EQUILIBRIUM_ATOMS}
+        atoms = np.array([self.ratios[el] for el in self.solver.atoms_names])
+        self.molfracs_atoms = atoms/atoms.sum()
+        self.elements = [el for el in DEEP_EQUILIBRIUM_ATOMS
+                         if self.ratios[el] > 0.0]
+        self.counts = np.array([[CLIMATE_ELEMENT_COUNTS[sp].get(el, 0)
+                                 for sp in CLIMATE_SPECIES]
+                                for el in self.elements], dtype=float)
+        self.last = None
+
+    def composition(self, p_dyn, T):
+        """Mole fractions of `CLIMATE_SPECIES` in equilibrium at (p_dyn
+        [dyn/cm^2], T [K]), mapped as the class docstring states.  Raises
+        DeepCompositionRefused (with the numbers) when the equilibrium does
+        not converge, when more than DEEP_OMITTED_TOL of the mixture is
+        outside CLIMATE_SPECIES, or when an El/H ratio of the mapped mixture
+        departs from the vector by more than DEEP_ELEMENT_RATIO_TOL.
+        `self.last` keeps the full equilibrium (`species`, every species
+        with its mole fraction), the omitted fraction, the element-ratio
+        departures before and after the mapping and the largest relative
+        change of a carrier of the last call."""
+        e = self.solver
+        if not e.solve(float(p_dyn), float(T),
+                       molfracs_atoms=self.molfracs_atoms):
+            raise DeepCompositionRefused(
+                'the deep chemical equilibrium did not converge at %.6g bar,'
+                ' %.6g K' % (p_dyn/BAR, T))
+        full = dict(zip(e.species_names,
+                        np.asarray(e.molfracs_species, dtype=float)))
+        omitted = float(sum(v for k, v in full.items()
+                            if k not in CLIMATE_SPECIES))
+        if omitted > DEEP_OMITTED_TOL:
+            worst = max((k for k in full if k not in CLIMATE_SPECIES),
+                        key=lambda k: full[k])
+            raise DeepCompositionRefused(
+                'the deep chemical equilibrium at %.6g bar, %.6g K puts '
+                '%.3e of the mixture outside the climate carriers (largest '
+                '%s %.3e), above the %.1e the column can leave out'
+                % (p_dyn/BAR, T, omitted, worst, full[worst],
+                   DEEP_OMITTED_TOL))
+        x_eq = np.array([float(full.get(sp, 0.0)) for sp in CLIMATE_SPECIES])
+        A = self.counts
+        dropped = self.ratio_departure(x_eq)
+        b = np.array([self.ratios[el] for el in self.elements]) \
+            * (A[self.elements.index('H')] @ x_eq)
+        W = x_eq**2
+        lam = np.linalg.pinv((A*W) @ A.T) @ (b - A @ x_eq)
+        x = x_eq + W*(A.T @ lam)
+        if np.any(x < 0.0):
+            raise DeepCompositionRefused(
+                'the element-conserving mapping of the deep equilibrium at '
+                '%.6g bar, %.6g K gives a negative carrier' % (p_dyn/BAR, T))
+        change = float(np.max(np.abs(x[x_eq > 0.0]/x_eq[x_eq > 0.0] - 1.0)))
+        x = x/x.sum()
+        departure, el, r, r0 = self.ratio_departure(x, worst=True)
+        if departure > DEEP_ELEMENT_RATIO_TOL:
+            raise DeepCompositionRefused(
+                'the climate carriers of the deep equilibrium at %.6g '
+                'bar, %.6g K hold %s/H = %.9e against %.9e of the '
+                'elemental vector (departure %.3e, tolerance %.1e)'
+                % (p_dyn/BAR, T, el, r, r0, departure,
+                   DEEP_ELEMENT_RATIO_TOL))
+        self.last = dict(species=full, omitted=omitted,
+                         departure_without_mapping=dropped,
+                         element_ratio_departure=departure,
+                         carrier_change=change,
+                         p_dyn=float(p_dyn), T=float(T))
+        return dict(zip(CLIMATE_SPECIES, (float(v) for v in x)))
+
+    def ratio_departure(self, x, worst=False):
+        """Largest relative departure of the El/H ratios of the carrier
+        fractions `x` (CLIMATE_SPECIES order) from the vector."""
+        nuclei = self.counts @ x
+        h = nuclei[self.elements.index('H')]
+        out = (0.0, 'H', 1.0, 1.0)
+        for i, el in enumerate(self.elements):
+            if el == 'H':
+                continue
+            r, r0 = nuclei[i]/h, self.ratios[el]
+            d = abs(r/r0 - 1.0)
+            if d > out[0]:
+                out = (d, el, r, r0)
+        return out if worst else out[0]
+
+
+def deep_temperature_in_chemical_equilibrium(c, equilibrium, p_deep_dyn,
+                                             t_deep_guess, t_trop_guess):
+    """The deep temperature of the column `c` (AdiabatClimate, its settings
+    already given) with the deep composition in chemical equilibrium at that
+    temperature: the fixed point
+
+        T_deep = clima(T_deep; equilibrium.composition(p_deep, T_deep)),
+
+    clima(T; x) being the deep temperature `surface_temperature_bg_gas`
+    solves (absorbed stellar = outgoing longwave flux) for the deep
+    composition x held.  Root of R(T) = clima(T) - T by brentq on a bracket
+    built outward from `t_deep_guess`: a first step of |R| (at least
+    DEEP_BRACKET_FIRST_STEP_K) in the direction R points, doubled each time
+    the sign holds, halved back toward the last accepted point when a trial
+    temperature's equilibrium cannot be represented by the carriers
+    (DeepCompositionRefused; the refusal stands if the step falls below
+    DEEP_BRACKET_MIN_STEP_K), and no lower than the temperature floor of
+    the opacity tables (STRATOSPHERE_T_MIN).  Each evaluation starts clima
+    from the trial temperature and `t_trop_guess` (then, where clima's
+    solve fails from there, from its last root and from CLIMA_START_FACTORS
+    times the trial temperature), so R is a function of T alone to clima's
+    tolerance.  clima is then re-evaluated at the converged composition, so
+    `c` holds the solution of that composition, and |R| there must be below
+    DEEP_FIXED_POINT_TOL_K.
+
+    Returns (T_deep from the re-evaluation, mixing, evaluations of R,
+    the re-evaluation's R, background gas)."""
+    from scipy.optimize import brentq
+
+    names = list(c.species_names)
+    missing = [sp for sp in CLIMATE_SPECIES if sp not in names]
+    if missing:
+        raise SystemExit('the climate species file does not carry %s'
+                         % ', '.join(missing))
+    count = [0]
+    held = {}
+
+    def clima_deep_temperature(T):
+        mixing = equilibrium.composition(p_deep_dyn, T)
+        bg = background_gas(mixing)
+        P_i = np.array([mixing.get(sp, 0.0)*p_deep_dyn for sp in names])
+        count[0] += 1
+        starts = [float(T)] + ([held['root']] if 'root' in held else []) \
+            + [float(T)*f for f in CLIMA_START_FACTORS]
+        failures = []
+        for start in starts:
+            c.T_trop = float(t_trop_guess)
+            try:
+                T_c = float(c.surface_temperature_bg_gas(
+                    P_i, p_deep_dyn, bg, T_guess=start))
+            except Exception as exc:              # noqa: BLE001
+                failures.append('from %.1f K: %s' % (start, exc))
+                continue
+            held.update(mixing=mixing, bg=bg, root=T_c)
+            return T_c
+        raise SystemExit('clima found no deep temperature for the '
+                         'equilibrium composition at %.6g K (%s)'
+                         % (T, '; '.join(failures)))
+
+    def residual(T):
+        return clima_deep_temperature(T) - T
+
+    a = float(t_deep_guess)
+    ra = residual(a)
+    b, rb = a, ra
+    if ra != 0.0:
+        direction = 1.0 if ra > 0.0 else -1.0
+        step = max(DEEP_BRACKET_FIRST_STEP_K, abs(ra))
+        expansions = 0
+        while True:
+            b = max(a + direction*step, STRATOSPHERE_T_MIN)
+            try:
+                rb = residual(b)
+            except DeepCompositionRefused as exc:
+                step *= 0.5
+                if step < DEEP_BRACKET_MIN_STEP_K:
+                    raise DeepCompositionRefused(
+                        'the deep temperature lies beyond %.2f K (clima(T) '
+                        '- T = %.4g K there), where the deep equilibrium '
+                        'cannot be held by the climate carriers: %s'
+                        % (a, ra, exc))
+                continue
+            if rb == 0.0 or (rb > 0.0) != (ra > 0.0):
+                break
+            if b == STRATOSPHERE_T_MIN:
+                raise SystemExit(
+                    'the deep temperature of the column is below the %.0f K '
+                    'floor of the opacity tables (clima(T) - T = %.4g K '
+                    'there)' % (STRATOSPHERE_T_MIN, rb))
+            a, ra = b, rb
+            step *= 2.0
+            expansions += 1
+            if expansions >= DEEP_BRACKET_MAX_STEPS:
+                raise SystemExit(
+                    'no bracket of the deep temperature in %d steps from '
+                    '%.1f K (last trial %.1f K, clima(T) - T = %.4g K)'
+                    % (DEEP_BRACKET_MAX_STEPS, float(t_deep_guess), b, rb))
+    if ra == 0.0 or rb == 0.0:
+        root = a if ra == 0.0 else b
+    else:
+        root = brentq(residual, min(a, b), max(a, b), xtol=DEEP_ROOT_XTOL_K)
+    T_deep = clima_deep_temperature(root)
+    fixed = T_deep - root
+    if abs(fixed) > DEEP_FIXED_POINT_TOL_K:
+        raise SystemExit(
+            'the deep temperature is not a fixed point of the climate and '
+            'the equilibrium composition: clima %.6f K at the composition '
+            'of %.6f K (tolerance %.1e K)'
+            % (T_deep, root, DEEP_FIXED_POINT_TOL_K))
+    return T_deep, held['mixing'], count[0], fixed, held['bg']
+
+
 def solve_radiative_convective_column(workdir, flux_file, mp_g, rp_cm,
                                       abundances, p_deep_bar,
                                       p_top_dyn=1.0e-2, surface_albedo=0.0,
                                       nlayers=60, t_deep_guess=400.0,
-                                      t_trop_guess=120.0,
-                                      t_partition_max=1000.0, verbose=True,
+                                      t_trop_guess=120.0, verbose=True,
                                       zenith_u=None, photon_scale_factor=None,
                                       eddy_kzz=None, radius_cm=None,
                                       p_anchor_dyn=None):
@@ -154,15 +450,26 @@ def solve_radiative_convective_column(workdir, flux_file, mp_g, rp_cm,
     downward, and both the deep temperature and the tropopause pressure
     depend on it.  It is reported with the solution rather than hidden in it.
 
+    The deep composition is the chemical equilibrium of `abundances` at
+    (p_deep, T_deep), solved together with T_deep
+    (`deep_temperature_in_chemical_equilibrium`; the approximation and its
+    validity range are the module docstring's).  The equilibrium's
+    thermodynamic file is written in `workdir`.
+
     Returns a dict: `P_dyn`, `T` (deep to shallow), `T_deep`, `P_trop_bar`,
-    `T_trop`, `mixing` (the deep partition), `bg_gas`, and `f_H2O_trop`, the
-    water mixing ratio the climate solution itself carries above the
-    tropopause.
+    `T_trop`, `mixing` (the deep composition on the climate carriers),
+    `deep_mixing` (the full deep equilibrium, every species of the Gibbs
+    solve with its mole fraction), `deep_evaluations` (the evaluations of
+    clima(T) - T), `deep_fixed_point_K` (clima(T) - T at the solution),
+    `deep_omitted` (the equilibrium fraction outside the carriers),
+    `deep_element_departure` (after the mapping), `deep_carrier_change`
+    (the mapping's largest relative change of a carrier), `bg_gas`, and
+    `f_H2O_trop`, the water mixing
+    ratio the climate solution itself carries above the tropopause.
     """
     from photochem.clima import AdiabatClimate
 
-    mixing = deep_molecular_partition(abundances)
-    bg = background_gas(mixing)
+    equilibrium = DeepEquilibriumComposition(workdir, abundances)
     sp_file, st_file = write_climate_files(workdir, mp_g, rp_cm,
                                            surface_albedo, nlayers)
     c = AdiabatClimate(sp_file, st_file, flux_file)
@@ -181,22 +488,11 @@ def solve_radiative_convective_column(workdir, flux_file, mp_g, rp_cm,
     c.verbose = bool(verbose)
 
     names = list(c.species_names)
-    missing = [sp for sp in mixing if sp not in names]
-    if missing:
-        raise SystemExit('the climate species file does not carry %s'
-                         % ', '.join(missing))
     p_deep_dyn = p_deep_bar*BAR
-    P_i = np.array([mixing.get(sp, 0.0)*p_deep_dyn for sp in names])
-
-    T_deep = c.surface_temperature_bg_gas(P_i, p_deep_dyn, bg,
-                                          T_guess=float(t_deep_guess))
-    if T_deep > t_partition_max:
-        raise SystemExit(
-            'the radiative-convective solution puts the deep boundary at '
-            '%.0f K, above the %.0f K below which the CH4/H2O/N2 partition '
-            'this solve was given is the equilibrium one: state a shallower '
-            '--climate-p-deep, or give the climate step a composition from '
-            'an equilibrium calculation' % (T_deep, t_partition_max))
+    T_deep, mixing, evaluations, fixed, bg = \
+        deep_temperature_in_chemical_equilibrium(c, equilibrium, p_deep_dyn,
+                                                 t_deep_guess, t_trop_guess)
+    equil = equilibrium.last
 
     P = np.asarray(c.P, dtype=float)
     T = np.asarray(c.T, dtype=float)
@@ -230,7 +526,13 @@ def solve_radiative_convective_column(workdir, flux_file, mp_g, rp_cm,
                 P_deep_bar=float(p_deep_bar),
                 P_trop_bar=float(c.P_trop/BAR), T_trop=float(c.T_trop),
                 f_H2O_deep=float(f_h2o[0]), f_H2O_trop=f_h2o_trop,
-                mixing=mixing, bg_gas=bg, nlayers=int(nlayers),
+                mixing=mixing, deep_mixing=equil['species'],
+                deep_evaluations=int(evaluations),
+                deep_fixed_point_K=float(fixed),
+                deep_omitted=equil['omitted'],
+                deep_element_departure=equil['element_ratio_departure'],
+                deep_carrier_change=equil['carrier_change'],
+                bg_gas=bg, nlayers=int(nlayers),
                 surface_albedo=float(surface_albedo), stratosphere=strat)
 
 
@@ -242,6 +544,15 @@ def summary(sol):
             % (sol['P_deep_bar'], sol['T_deep'], sol['bg_gas'],
                sol['P_trop_bar'], sol['T_trop'], sol['f_H2O_trop'],
                sol['f_H2O_deep']))
+    if 'deep_evaluations' in sol:
+        m = sol['mixing']
+        line += ('; deep composition in chemical equilibrium at the deep '
+                 'boundary (%d evaluations of clima(T) - T, %.1e K at the '
+                 'solution; outside the carriers %.1e): %s'
+                 % (sol['deep_evaluations'], sol['deep_fixed_point_K'],
+                    sol['deep_omitted'],
+                    ', '.join('f_%s %.4e' % (sp, m[sp])
+                              for sp in CLIMATE_SPECIES)))
     st = sol.get('stratosphere')
     if st is not None:
         line += ('; stratosphere in radiative + molecular + eddy energy '
@@ -257,17 +568,18 @@ def summary(sol):
 # --------------------------------------------------------------------------
 # The stratosphere in energy balance with eddy (and molecular) conduction
 # --------------------------------------------------------------------------
-# Element counts of the climate species, for their mean particle mass
-# (lower_profile_schema.mean_molecular_weight).
-CLIMATE_ELEMENT_COUNTS = {
-    'H2': {'H': 2}, 'He': {'He': 1}, 'H2O': {'H': 2, 'O': 1},
-    'CH4': {'C': 1, 'H': 4}, 'CO2': {'C': 1, 'O': 2}, 'CO': {'C': 1, 'O': 1},
-    'N2': {'N': 2}, 'NH3': {'N': 1, 'H': 3}}
 # Spacing in ln p of the nodes of the stratosphere solve; the column energy
 # balance (conducted_heat_column_balance.ColumnResponse, dlnp) uses the same
 # lattice anchored at the same level, so its nodes ARE nodes of this solve.
 STRATOSPHERE_DLNP = 0.01
-STRATOSPHERE_TOL = 1.0e-9           # max|R| over the largest term
+# max|R| over the largest term.  The residual left at the anchor is the
+# reference imbalance a column built on the solution answers at zero input,
+# where the gas is thinnest: on LHS 1140 b (deep He/H 2.09, equilibrium deep
+# composition, K_zz 1e5) a stop at 1.8e-10 left -1.8e-3 K at 1e-6 bar
+# (MEASURED 2026-10-29, update log stage 3 section 162), so the solve is
+# taken one Newton step further (it fell to 7.2e-12 and the response to
+# 1.7e-6 K there; the Newton residual falls 25-200 times per step).
+STRATOSPHERE_TOL = 1.0e-11
 STRATOSPHERE_MAX_ITER = 60
 STRATOSPHERE_FD_STEP_K = 0.05       # radiative Jacobian, forward difference
 # The temperature range of the climate model's k-distribution tables and of

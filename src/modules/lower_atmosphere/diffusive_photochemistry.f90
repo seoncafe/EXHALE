@@ -287,7 +287,7 @@
                                n_mion, mion_fsp, melem_i0, melem_top,    &
                                n_melem, iel_O, iel_C,                    &
                                bsp_charge, bsp_nH, bsp_nO, bsp_nC,       &
-                               mion_elem, mion_stage
+                               mion_elem, mion_stage, bsp_name, mion_name
       use binary_element_diffusion, only: hard_sphere_pair_diffusion,     &
                           advected_carrier_reset,                        &
                           advected_carrier_register,                     &
@@ -296,6 +296,7 @@
                           advected_carrier_state_ready,                  &
                           advected_carrier_state_consumed,               &
                           carrier_mass_fractions, mixture_mass_sum,      &
+                          face_mass_flux_cgs,                            &
                           element_nucleus_counts,                        &
                           mixture_pressure_acceleration
       use ion_cell_state, only: ieq_cell, ion_rates
@@ -373,9 +374,28 @@
       use element_inventory, only: carrier_element_totals,                &
                                    carrier_hydrogen_budget,              &
                                    element_box_side,                     &
-                                   ien_H, ien_He, ien_O,                 &
+                                   ien_H, ien_He, ien_O, ien_C,          &
+                                   inv_element_name,                     &
+                                   element_completion,                   &
+                                   element_closure_completion,           &
+                                   element_completion_text,              &
+                                   signed_element_total,                 &
+                                   signed_element_total_text,            &
+                                   element_total_ok,                     &
+                                   species_density_negative,             &
+                                   species_density_not_finite,           &
+                                   background_density_negative,          &
+                                   background_density_not_finite,        &
+                                   helium_singlet_negative,              &
+                                   inventory_feasible_slack,             &
+                                   completion_ok, closure_by_proportion, &
+                                   closure_unique_species,               &
+                                   closure_left_empty,                   &
+                                   completion_unrepresentable,           &
                                    element_inventory_report,             &
                                    element_inventory_report_on
+
+      use chemical_row_layout, only: helium_closure_allowance
 
       implicit none
       private
@@ -520,9 +540,10 @@
       ! ratio), and a refused attempt does not roll it back.
       public :: carrier_co_domain_perturb_for_test
       ! Whether an element constraint moved a given cell in the last
-      ! limiter call: the CO thermal ceiling marks the cell it acts in,
+      ! limiter call: the carbon inventory bound marks the cell it acts in,
       ! which is the cell whose OH and H2O rows it moves.
       public :: carrier_cell_is_constrained, limit_to_element_budget
+      public :: carrier_cell_constraint_excess
       ! ACCEPTANCE OF THE STATE THE CARRIER SOLVE RETURNS, and the
       ! classification of a stalling iteration it keeps separate from it.
       ! Both are decisions taken on their arguments alone, so the retry
@@ -563,6 +584,7 @@
       ! left of the failure and the certification's carrier entry reads
       ! the mark.
       public :: carrier_exhausted_record, carrier_history_certifiable
+      public :: carrier_rounding_record
       public :: carrier_attempt_record
       public :: carrier_last_interval_halvings
       public :: carrier_roundoff_limited_record
@@ -624,6 +646,12 @@
       integer, parameter, public :: carrier_accept_ok           = 0
       integer, parameter, public :: carrier_reject_row_residual  = 1
       integer, parameter, public :: carrier_reject_nonfinite     = 2
+      ! THE WRITE-BACK FOUND NO ELEMENT COMPLETION for the accepted
+      ! carriers (element_closure_completion): they hold more nuclei of an
+      ! element than the cell has, or released nuclei no closure species
+      ! can take.  The interval is then not covered, whatever its rows say,
+      ! because the composition it would hand on does not exist.
+      integer, parameter, public :: carrier_reject_write_back    = 3
       ! NO INTERVAL WAS INTEGRATED IN THIS STEP, so there is no state to
       ! pass a verdict on.  It is the value carrier_step_verdict carries in
       ! a step the operator had nothing to do in (a run with no carriers,
@@ -631,6 +659,10 @@
       ! acceptance nor a refusal: accepted stays .false., because nothing
       ! was accepted.
       integer, parameter, public :: carrier_no_interval = 4
+      ! THE ENTRY COMPOSITION HOLDS A NEGATIVE OR NONFINITE ELEMENT TOTAL
+      ! (carrier_element_totals): the budgets the interval would freeze do
+      ! not describe nuclei, so no interval is integrated on them.
+      integer, parameter, public :: carrier_reject_signed_inventory = 5
       ! A ROW AT THE ROUND-OFF OF ITS OWN TERMS IS NOT A REFUSAL REASON.
       ! Such a row carries the residual an exact solve of it leaves, so it
       ! is no evidence of a defect in the returned state: it is the limit
@@ -646,17 +678,16 @@
       type, public :: carrier_verdict
          logical  :: accepted   = .false.
          integer  :: reason     = carrier_reject_row_residual
-         ! The unconstrained row that decided it, and its floored relative
+         ! The solved row that decided it, and its floored relative
          ! imbalance |R| / (sum of the row's own term magnitudes + floor).
          integer  :: jworst     = 0
          integer  :: icworst    = 1
          real(dp) :: rworst     = 0.0d0
-         ! What the element constraints held, so that a rejection can never
-         ! be read as a constraint failure and a constrained acceptance
-         ! always says how much of the state it did not certify.
+         ! Cells and solved rows touched by the element constraints.
+         ! These counts never exempt a row from the balance test.
          integer  :: n_cells_constrained = 0
          integer  :: n_rows_constrained  = 0
-         ! How many unconstrained rows stand above the floor AND carry more
+         ! How many solved rows stand above the floor AND carry more
          ! imbalance than the arithmetic that formed them explains, and how
          ! many of those sit in a cell NEXT TO a constrained one.  A clamp
          ! moves the carrier densities of its own cell, and those enter the
@@ -766,7 +797,13 @@
       ! the quadratic basin is reached: measured 141 iterations to 3.9e-12
       ! on the oxygen_chemistry case where 30 stopped the run, against 2 to
       ! 5 iterations on every ordinary step. The budget therefore has to
-      ! cover the globalization, not only the quadratic tail.
+      ! cover the globalization, not only the quadratic tail.  That crawl
+      ! was the line search judging trials on the net-source scale dsc; it
+      ! now judges them on the physical row scale and ends on a failed
+      ! search (solve_carriers): on the LHS 1140 b He/H 1.2 pass-1
+      ! relaxation 4259 iterations in 46 solves fell to 179 in 25, and to
+      ! 149 in 21 with the feasible source differences
+      ! (md/carrier_newton_fix_20261028.md).
       ! A carrier that holds the WHOLE of its element sits exactly on the
       ! face of the simplex -- all the carbon is CO in a molecular base --
       ! so a limiter that counted every round-off would report half the grid
@@ -895,6 +932,11 @@
       ! ghost's base handoff partition or the ghost composition fixed point
       ! was left open (ieq_state_may_be_refused, ionization_equilibrium.f90).
       integer,  parameter, public :: chem_closure_boundary_open  = 5
+      ! The sweep refused its mass projection (ioniz_eq_ledger
+      ! n_projection_refused): the composition it handed back does not
+      ! weigh the density of the fixed conserved state.
+      integer,  parameter, public :: chem_closure_projection_refused = 6
+      integer,  parameter, public :: chem_closure_invalid_imposed = 7
       integer, public :: chem_cycles_cap_for_test = -1
       integer, public :: n_chem_closure_cycles   = 0
       integer, public :: n_chem_closures_reached = 0
@@ -1015,6 +1057,11 @@
       ! moved by more than a factor two in one trial, or its selection set
       ! was empty.  Only reachable with EXHALE_CARRIER_INTERVAL_MASK set.
       integer, parameter, public :: carrier_relax_mask_safety_stop = 6
+      ! An element total of the composition the relaxation was entered with,
+      ! or of a trial after its chemistry closed, is negative beyond its
+      ! rounding or not finite (carrier_element_totals).  Nothing is kept:
+      ! the entry state is handed back.
+      integer, parameter, public :: carrier_relax_inventory_refused = 7
 
       ! The background this step holds frozen: the ion stages, the molecular
       ! ions and the free electrons (sec. 4).  Filled once per step by
@@ -1171,6 +1218,7 @@
       ! domain; and a clamp on CO alone leaves OH and H2O unflagged although
       ! it moves their rows through n_o0.
       logical, save, allocatable :: pct_cell_constrained(:)
+      real(dp), save, allocatable :: pct_cell_excess(:)
       ! The verdict on the state the last carrier solve returned.  Kept so
       ! the caller and the retry controller read one decision rather than
       ! each forming their own from the raw status.
@@ -1256,14 +1304,31 @@
       integer,  save :: pct_drift_ic    = 1
       real(dp), save :: pct_worst_limit  = 0.0d0
       ! THE LARGEST NEGATIVE GROUND-SINGLET HELIUM the write-back met in the
-      ! state it was handed, relative to the helium nuclei of that cell.
+      ! carriers it was handed, relative to the helium nuclei of that cell.
       ! On the admissible set of the two ionized stages it is zero: the
       ! helium the stages did not take, less the frozen metastable, is
       ! nonnegative by construction (carrier_helium_available_to_stages).
-      ! MEASURED rather than repaired, in the shape stage_fraction_under_zero
-      ! has; a nonzero value says the state the step wrote holds more helium
-      ! than its cells have.
+      ! MEASURED, in the shape stage_fraction_under_zero has.  With the
+      ! level carried, a value beyond the representability allowance is
+      ! also a refused write-back (element_closure_completion), so no
+      ! written state holds He I below He 2^3S; with the level left to the
+      ! sweep it measures how far the stages reached into the helium the
+      ! projection reserved for the frozen level, which the write-back then
+      ! rescales with He I.
       real(dp), save :: carrier_helium_singlet_under_zero = 0.0d0
+      ! The completion the last refused write-back returned: element,
+      ! cell, reason and the remainder [cm^-3], for the refusal message.
+      type(element_completion), save :: carrier_write_back_refusal
+      ! The last refusal of carrier_state (a signed element total, or a
+      ! solved carrier density, with its cell, signed value and magnitude
+      ! [cm^-3]), for the refusal message.
+      type(signed_element_total), save, public :: carrier_inventory_refusal
+      ! THE SOLVED CARRIER VALUES carrier_state WROTE AS THE ZERO THEY ROUND
+      ! TO, over the run (the rounding rule of carrier_state): how many, and
+      ! the largest |value| relative to the stored content it was compared
+      ! with.  Counts what was done, so no checkpoint restores it.
+      integer,  save :: carrier_rounding_zeroed  = 0
+      real(dp), save :: carrier_rounding_largest = 0.0d0
       ! Molecular diffusion coefficient of each carrier on the grid [cm^2/s]
       ! at the state the run last held (carrier_diffusion_coefficient says
       ! which), so the run can print the transport time scale beside the
@@ -1555,6 +1620,7 @@
          type(carrier_module_state) :: bg
          real(dp), allocatable :: pct_Dco(:,:)
          logical,  allocatable :: pct_cell_constrained(:)
+         real(dp), allocatable :: pct_cell_excess(:)
          integer  :: pct_newton_steps = 0
          real(dp) :: pct_newton_resid = 0.0d0
          real(dp) :: pct_newton_resid_before_limit = 0.0d0
@@ -1759,6 +1825,17 @@
       bound = pct_cell_constrained(j)
       end function carrier_cell_is_constrained
 
+      real(dp) function carrier_cell_constraint_excess(j) result(excess)
+      ! Largest dimensionless excess in the limiter's normalization, from
+      ! the last completed interval or the last direct limiter call.
+      ! Rejected substeps restore the previous record with the checkpoint.
+      integer, intent(in) :: j
+      excess = 0.0d0
+      if (.not. allocated(pct_cell_excess)) return
+      if (j.lt.1 .or. j.gt.size(pct_cell_excess)) return
+      excess = pct_cell_excess(j)
+      end function carrier_cell_constraint_excess
+
 
       ! HOW A STALLING NEWTON ITERATION STOPPED, as a statement about the
       ! residual it is stopping at rather than about the caller.
@@ -1804,18 +1881,13 @@
       ! So the raw status is carried in the verdict for diagnosis and takes
       ! no part in the decision.
       !
-      ! EVERY UNCONSTRAINED ROW HAS TO PASS, not the worst one.  Taking the
-      ! largest returned residual and asking only whether ITS cell was
-      ! constrained lets a constraint acting anywhere excuse a failed row
-      ! everywhere else in the column (the 3.3 defect of the review): a
-      ! constrained cell says something about that cell and nothing about
-      ! any other.
-      !
-      ! WHAT A CONSTRAINT DOES EXCUSE is the cell it moved, and the whole of
-      ! it: the clamps rescale carriers cell by cell, and through the free
-      ! atomic closures of carrier_source that moves every coupled row of
-      ! that cell, so the attribution is per cell.  Those rows are counted
-      ! and reported as the constraint's, never certified.
+      ! EVERY SOLVED ROW HAS TO PASS, including a cell moved by a
+      ! constraint. Inventory feasibility does not establish the evolution
+      ! equations. Judge the residual assembled AFTER the final limiter;
+      ! keep the constrained-cell counts only to explain its action.
+      ! A rounding-size projection cannot hide a material row imbalance.
+      ! The existing full-term arithmetic allowance still classifies rows
+      ! whose residual is genuinely at floating-point resolution.
       !
       ! A NON-FINITE ROW IS REFUSED WHEREVER IT IS, constrained or not: a
       ! constraint cannot make a NaN a solution, and the maximum the solve
@@ -1850,7 +1922,7 @@
       logical, dimension(:,:), optional, intent(out) :: row_roundoff_limited
 
       integer  :: j, ic, ncell, ncar
-      logical  :: has_full, at_roundoff
+      logical  :: has_full, at_roundoff, beside_constrained
       real(dp) :: rel
 
       verdict%accepted            = .true.
@@ -1894,7 +1966,6 @@
             endif
             if (constrained(j)) then
                verdict%n_rows_constrained = verdict%n_rows_constrained + 1
-               cycle
             endif
             rel = abs(res(j,ic))/max(terms(j,ic), 1.0d-300)
             ! A ROW AT THE ROUND-OFF OF ITS OWN FULL TERMS CARRIES NO
@@ -1922,8 +1993,14 @@
             endif
             if (rel .gt. carrier_accept_tol) then
                verdict%n_rows_above = verdict%n_rows_above + 1
-               if (constrained(max(j-1,1)) .or.                           &
-                   constrained(min(j+1,ncell)))                           &
+               beside_constrained=.false.
+               if (j.gt.1) then
+                  beside_constrained=constrained(j-1)
+               endif
+               if (j.lt.ncell) then
+                  beside_constrained=beside_constrained.or.constrained(j+1)
+               endif
+               if (beside_constrained)                                  &
                   verdict%n_rows_above_beside_constrained =               &
                   verdict%n_rows_above_beside_constrained + 1
             endif
@@ -1961,13 +2038,18 @@
       character(len=72) :: txt
       select case (v%reason)
       case (carrier_accept_ok)
-         txt = 'every unconstrained row within the returned-state floor'
+         txt = 'every solved row within the returned-state floor'
       case (carrier_reject_nonfinite)
          txt = 'a carrier row of the returned state is not a finite number'
       case (carrier_no_interval)
          txt = 'no carrier interval was integrated in this step'
+      case (carrier_reject_write_back)
+         txt = 'the write-back found no element completion of a cell'
+      case (carrier_reject_signed_inventory)
+         txt = 'an element total of the entry composition is negative'//  &
+               ' or not finite'
       case default
-         txt = 'an unconstrained carrier row of the returned state is'//   &
+         txt = 'a carrier row of the returned state is'//   &
                ' above the floor'
       end select
       end function carrier_verdict_reason_text
@@ -2176,6 +2258,16 @@
       terms_full  = carrier_exhausted_worst_full
       end subroutine carrier_exhausted_record
 
+      ! The rounding record of carrier_state: how many solved carrier values
+      ! it wrote as zero over the run, and the largest of them relative to
+      ! the stored content it was compared with.
+      subroutine carrier_rounding_record(n, largest)
+      integer,  intent(out) :: n
+      real(dp), intent(out) :: largest
+      n       = carrier_rounding_zeroed
+      largest = carrier_rounding_largest
+      end subroutine carrier_rounding_record
+
       ! WHETHER THE CARRIER HISTORY OF THIS RUN CAN BE CERTIFIED.  False
       ! once an interval was left uncovered and the march went on from the
       ! entry carriers: no step of that history solved the carrier system
@@ -2230,16 +2322,14 @@
       ! restore erases the assembly they came from.  A row that the verdict
       ! classified round-off limited is not one of them: it was accepted.
       subroutine carrier_record_refused_rows(res, terms_phys, terms_full, &
-                                             roundoff, constrained)
+                                             roundoff)
       real(dp), dimension(:,:), intent(in) :: res, terms_phys, terms_full
       logical,  dimension(:,:), intent(in) :: roundoff
-      logical,  dimension(:),   intent(in) :: constrained
       integer :: j, ic, ncell, ncar
       n_refused_reported = 0
-      ncell = min(size(res,1), size(constrained))
+      ncell = size(res,1)
       ncar  = min(n_carrier, size(res,2))
       do j = 1, ncell
-         if (constrained(j)) cycle
          do ic = 1, ncar
             if (.not. carrier_solved(ic)) cycle
             if (roundoff(j,ic)) cycle
@@ -2386,8 +2476,11 @@
       call carrier_transport_interval(rho, v, f_sp, dt_code, completed,   &
                                       frac_done, nsub, verdict)
       ! nsub is the number of substeps attempted, so nsub = 0 is the step
-      ! that integrated nothing and whose verdict stays "no interval".
-      if (nsub .gt. 0) carrier_step_verdict_val = verdict
+      ! that integrated nothing and whose verdict stays "no interval",
+      ! unless its entry was refused (a refusal, not an absence).
+      if (nsub .gt. 0 .or.                                                &
+          verdict%reason .eq. carrier_reject_signed_inventory)            &
+         carrier_step_verdict_val = verdict
       ! THE ELEMENTAL CONSTRAINT OF THE STATE THIS STEP WROTE, reported and
       ! not enforced here (EXHALE_INVENTORY_REPORT=1, default off).  The
       ! budgets the step spent were formed at the state it entered while
@@ -2429,6 +2522,20 @@
          ! on from the entry carriers.  The mark is what a certification
          ! of this run's carrier history reads.
          carrier_history_certifiable_flag = .false.
+         if (verdict%reason .eq. carrier_reject_write_back .or.          &
+             verdict%reason .eq. carrier_reject_signed_inventory) then
+            write(*,'(a,i0,a)') ' (photochemical_transport_step) step ',  &
+               marching_step, ': the carrier interval was NOT covered;'//&
+               ' the carriers of this step are frozen at their entry'//   &
+               ' values (initialization mode)'
+            if (verdict%reason .eq. carrier_reject_write_back) then
+               call write_carrier_write_back_refusal
+            else
+               call write_carrier_inventory_refusal(                     &
+                    'photochemical_transport_step')
+            endif
+            return
+         endif
          write(*,'(a,i0,a,a,a,i0,a,es12.4,a,es12.4,a,es12.4,a)')          &
             ' (photochemical_transport_step) step ', marching_step,               &
             ': the carrier interval was NOT covered; worst row ',         &
@@ -2439,8 +2546,8 @@
          return
       endif
 
-      ! A STATE THAT SATISFIES NEITHER ITS EQUATIONS NOR A CONSTRAINT IS
-      ! NOT A STATE THIS CODE MAY CONTINUE FROM.
+      ! A STATE THAT FAILS ITS EVOLUTION EQUATIONS IS NOT AN INTEGRATED
+      ! CARRIER INTERVAL, EVEN WHEN IT SATISFIES ITS INVENTORY CONSTRAINTS.
       !
       ! The transported partition enters the free atomic hydrogen the next
       ! ionization sweep closes on, the chemical heat of the molecular
@@ -2456,8 +2563,12 @@
          ' transport-chemistry state was refused'
       write(*,'(a)') '   why: '//trim(carrier_verdict_reason_text(        &
          verdict))
+      if (verdict%reason .eq. carrier_reject_write_back)                  &
+         call write_carrier_write_back_refusal
+      if (verdict%reason .eq. carrier_reject_signed_inventory)            &
+         call write_carrier_inventory_refusal('photochemical_transport_step')
       write(*,'(a,es12.4,a,a,a,i0)')                                      &
-         '   worst unconstrained row of the returned state ',             &
+         '   worst solved row of the returned state ',             &
          verdict%rworst, ' in carrier ',                                  &
          trim(carrier_name(verdict%icworst)), ' at cell j = ',            &
          verdict%jworst
@@ -2465,9 +2576,8 @@
          carrier_accept_tol
       write(*,'(a,i0,a,i0,a)') '   element constraints moved ',           &
          verdict%n_cells_constrained, ' cells (',                         &
-         verdict%n_rows_constrained, ' rows), whose rows are the'//       &
-         ' constraint'//''''//'s and are not certified here'
-      write(*,'(a,i0,a,i0,a)') '   unconstrained rows above the'//        &
+         verdict%n_rows_constrained, ' rows); every solved row was checked'
+      write(*,'(a,i0,a,i0,a)') '   solved rows above the'//        &
          ' floor: ', verdict%n_rows_above, ', of which ',                 &
          verdict%n_rows_above_beside_constrained, ' next to a'//          &
          ' constrained cell'
@@ -2518,6 +2628,100 @@
       if (carrier_transport_stop_on_failure) error stop 1
 
       end subroutine photochemical_transport_step
+
+
+      ! THE REFUSED WRITE-BACK, in the units it was decided in [cm^-3]:
+      ! element, cell, reason, the remainder, the magnitude of the sums it
+      ! was formed from and the closure nuclei the cell held.
+      subroutine write_carrier_write_back_refusal
+      character(len=2) :: ename
+      ename = '? '
+      if (carrier_write_back_refusal%element .ge. 1 .and.                 &
+          carrier_write_back_refusal%element .le. 4)                      &
+         ename = inv_element_name(carrier_write_back_refusal%element)
+      write(*,'(a,a,a,i0,a,a)') '   the write-back of ', trim(ename),     &
+         ' at cell j = ', carrier_write_back_refusal%cell, ': ',           &
+         trim(element_completion_text(carrier_write_back_refusal%status))
+      write(*,'(a,es12.4,a,es12.4,a,es12.4,a)') '   remainder ',          &
+         carrier_write_back_refusal%remainder,                            &
+         ' cm^-3 of nuclei, sums of magnitude ',                          &
+         carrier_write_back_refusal%magnitude, ' cm^-3, closure nuclei ', &
+         carrier_write_back_refusal%closure, ' cm^-3'
+      end subroutine write_carrier_write_back_refusal
+
+
+      ! THE LINES OF A REFUSAL OF carrier_state: which element or solved
+      ! carrier, which cell, the signed value, and the magnitude it was
+      ! judged against (the contributions of a total, the stored content of
+      ! a carrier).
+      subroutine write_carrier_inventory_refusal(where)
+      character(len=*), intent(in) :: where
+      character(len=2) :: ename
+      character(len=6) :: cname
+      integer :: ic
+      if (carrier_inventory_refusal%status .eq. helium_singlet_negative) then
+         write(*,'(a,a,a,i0,a,a)') ' (', trim(where),                     &
+            ') REFUSED: the He I ground singlet at cell j = ',            &
+            carrier_inventory_refusal%cell, ': ',                         &
+            trim(signed_element_total_text(carrier_inventory_refusal%status))
+         write(*,'(a,es12.4,a,es12.4,a)') '   n(He I) - n(He 2^3S) ',      &
+            carrier_inventory_refusal%total, ' cm^-3, n(He I) ',          &
+            carrier_inventory_refusal%magnitude, ' cm^-3'
+         return
+      endif
+      if (carrier_inventory_refusal%species .gt. 0 .and.                  &
+          (carrier_inventory_refusal%status .eq.                          &
+           background_density_negative .or.                               &
+           carrier_inventory_refusal%status .eq.                          &
+           background_density_not_finite)) then
+         cname = '?'
+         do ic = 1, n_bsp
+            if (bsp_fsp(ic) .eq. carrier_inventory_refusal%species)       &
+               cname = bsp_name(ic)
+         enddo
+         do ic = 1, n_mion
+            if (mion_fsp(ic) .eq. carrier_inventory_refusal%species)      &
+               cname = mion_name(ic)
+         enddo
+         write(*,'(a,a,a,a,a,i0,a,a)') ' (', trim(where),                 &
+            ') REFUSED: the unsolved column ', trim(cname),               &
+            ' at cell j = ', carrier_inventory_refusal%cell, ': ',        &
+            trim(signed_element_total_text(carrier_inventory_refusal%status))
+         write(*,'(a,es12.4,a,es12.4,a)') '   value ',                     &
+            carrier_inventory_refusal%total,                              &
+            ' cm^-3, magnitude ', carrier_inventory_refusal%magnitude,    &
+            ' cm^-3'
+         return
+      endif
+      if (carrier_inventory_refusal%species .gt. 0) then
+         cname = '?'
+         do ic = 1, n_carrier_max
+            if (carrier_species_index(ic) .eq.                           &
+                carrier_inventory_refusal%species) cname = carrier_name(ic)
+         enddo
+         write(*,'(a,a,a,a,a,i0,a,a)') ' (', trim(where),                 &
+            ') REFUSED: the ', trim(cname), ' carrier at cell j = ',      &
+            carrier_inventory_refusal%cell, ': ',                         &
+            trim(signed_element_total_text(carrier_inventory_refusal%status))
+         write(*,'(a,es12.4,a,es12.4,a)') '   value ',                     &
+            carrier_inventory_refusal%total,                              &
+            ' cm^-3, stored content of the cell ',                        &
+            carrier_inventory_refusal%magnitude, ' cm^-3'
+         return
+      endif
+      ename = '? '
+      if (carrier_inventory_refusal%element .ge. 1 .and.                  &
+          carrier_inventory_refusal%element .le. 4)                       &
+         ename = inv_element_name(carrier_inventory_refusal%element)
+      write(*,'(a,a,a,a,a,i0,a,a)') ' (', trim(where), ') REFUSED: the ', &
+         trim(ename), ' total at cell j = ',                              &
+         carrier_inventory_refusal%cell, ': ',                            &
+         trim(signed_element_total_text(carrier_inventory_refusal%status))
+      write(*,'(a,es12.4,a,es12.4,a)') '   signed total ',                 &
+         carrier_inventory_refusal%total,                                 &
+         ' cm^-3, magnitude of its contributions ',                       &
+         carrier_inventory_refusal%magnitude, ' cm^-3'
+      end subroutine write_carrier_inventory_refusal
 
 
       ! THE WORST ROW A REFUSAL RESTED ON, with both scales it was measured
@@ -2627,6 +2831,8 @@
       real(dp), dimension(0:N,n_carrier_max)       :: Agrd, Bdrf
       integer,  dimension(0:N,n_carrier_max)       :: updrf
       type(carrier_checkpoint) :: chk_entry, chk_attempt
+      type(element_completion) :: wb_completion
+      type(signed_element_total) :: inv_entry
       real(dp) :: sub, step, frac_left
       integer  :: nhalve, naccepted
       ! THE CONSTRAINT DIAGNOSTICS OF THE WHOLE INTERVAL, over its ACCEPTED
@@ -2639,6 +2845,7 @@
       integer  :: acc_limited
       real(dp) :: acc_worst_limit
       logical, allocatable :: acc_constrained(:)
+      real(dp), allocatable :: acc_cell_excess(:)
       ! A1 element-budget assertions.  The transport step holds rho fixed and
       ! its write-back restores the ENTRY element totals cell by cell (that is
       ! what nH_free / nO_free / nC_free are), so the absolute nucleus density
@@ -2665,7 +2872,21 @@
       call element_census_take('photochemical_transport_step',            &
                                rho, f_sp, cen_step)
       call carrier_state(rho, f_sp, fc, ntot, nrho, wfac, TK,            &
-                         mbar, nH_free, nO_free, nC_free)
+                         mbar, nH_free, nO_free, nC_free, inv_entry)
+      ! AN ENTRY WITH A NEGATIVE OR NONFINITE ELEMENT TOTAL IS NOT
+      ! INTEGRATED: the budgets frozen from it are not nuclei.  f_sp has
+      ! not been written; the entry checkpoint goes back and the caller's
+      ! contract for an uncovered interval applies, as for a write-back
+      ! refusal.
+      if (inv_entry%status .ne. element_total_ok) then
+         verdict%accepted = .false.
+         verdict%reason   = carrier_reject_signed_inventory
+         verdict%jworst   = inv_entry%cell
+         completed = .false.
+         frac_done = 0.0d0
+         call carrier_checkpoint_restore(chk_entry)
+         return
+      endif
       fc_old = fc
 
       call carrier_geometry(dt_code, rp, rep, dt_phys)
@@ -2678,7 +2899,7 @@
       call carrier_face_coefficients(ntot, TK, mbar, geff, Dco, rp,      &
                                      Agrd, Bdrf, updrf)
       call carrier_stage_face_state(rho, TK, f_sp, carrier_rows_advect,  &
-                                    msum, Frho)
+                                    Frho)
       call carrier_photolysis(rho, TK, f_sp)
       call carrier_signal_rate(v, TK, mbar, sigrate)
 
@@ -2719,6 +2940,13 @@
             carrier_substeps_accepted = carrier_substeps_accepted + 1
             acc_limited     = acc_limited    + pct_limited
             acc_worst_limit = max(acc_worst_limit, pct_worst_limit)
+            if (allocated(pct_cell_excess)) then
+               if (.not.allocated(acc_cell_excess)) then
+                  acc_cell_excess = pct_cell_excess
+               else
+                  acc_cell_excess = max(acc_cell_excess,pct_cell_excess)
+               endif
+            endif
             ! Rows this accepted substep could not be solved any further
             ! at, because their residual is the round-off of their own
             ! terms.  Counted, never a refusal.
@@ -2768,13 +2996,28 @@
       if (naccepted .gt. 1) then
          pct_limited     = acc_limited
          pct_worst_limit = acc_worst_limit
+         if (allocated(acc_cell_excess)) pct_cell_excess=acc_cell_excess
          if (allocated(acc_constrained))                                  &
               pct_cell_constrained = acc_constrained
       endif
 
       call element_census_take('carrier_write_back', rho, f_sp, cen_wb)
       call carrier_write_back(rho, f_sp, fc, nrho, nH_free, nO_free,     &
-                              nC_free)
+                              nC_free, wb_completion)
+      ! A WRITE-BACK WITH NO COMPLETION LEAVES THE INTERVAL UNCOVERED.  It
+      ! has not written f_sp; the entry checkpoint goes back exactly as for
+      ! a refusal of the rows, and the caller's contract for an uncovered
+      ! interval applies (photochemical_transport_step).
+      if (wb_completion%status .ne. completion_ok) then
+         carrier_write_back_refusal = wb_completion
+         verdict%accepted = .false.
+         verdict%reason   = carrier_reject_write_back
+         verdict%jworst   = wb_completion%cell
+         completed = .false.
+         frac_done = 1.0d0
+         call carrier_checkpoint_restore(chk_entry)
+         return
+      endif
       call element_census_verify(cen_wb,   rho, f_sp, rho_is_fixed=.true.)
       call element_census_verify(cen_step, rho, f_sp, rho_is_fixed=.true.)
 
@@ -2797,11 +3040,11 @@
             ', of the state returned ', pct_newton_resid,                &
             '; limited cells ', pct_limited
          ! The accepted state, said in the terms it was accepted on: the
-         ! worst UNCONSTRAINED row, which is the one the verdict measures,
+         ! worst solved row, which is the one the verdict measures,
          ! beside the way the iteration itself ended.  A step that ended by
          ! stagnating at the relative drop is visible here and nowhere else.
          write(*,'(a,es12.4,a,a,a,i0,a,i0,a)')                           &
-            ' (carrier_transport) worst unconstrained row ',             &
+            ' (carrier_transport) worst solved row ',             &
             verdict%rworst, ' in ',                                      &
             trim(carrier_name(verdict%icworst)), ' at j = ',             &
             verdict%jworst, '; ends: '//                                 &
@@ -2956,7 +3199,9 @@
       ! one gas. A caller cannot hand this routine a temperature the sweep has
       ! not seen.
       subroutine carrier_state(rho, f_sp, fc, ntot, nrho, wfac,          &
-                               TK, mbar, nH_free, nO_free, nC_free)
+                               TK, mbar, nH_free, nO_free, nC_free,      &
+                               inventory)
+      use, intrinsic :: ieee_arithmetic, only: ieee_value, ieee_quiet_nan
       real(dp), dimension(1-Ng:N+Ng),           intent(in)  :: rho
       real(dp), dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
       real(dp), dimension(1-Ng:N+Ng,n_carrier_max), intent(out) :: fc
@@ -2970,7 +3215,21 @@
       real(dp), dimension(1-Ng:N+Ng),           intent(out) :: nH_free
       real(dp), dimension(1-Ng:N+Ng),           intent(out) :: nO_free
       real(dp), dimension(1-Ng:N+Ng),           intent(out) :: nC_free
+      ! The validity of the state: the signed element totals
+      ! (carrier_element_totals), the nucleus counts of the stages
+      ! (element_nucleus_counts), the frozen background the rates read
+      ! (frozen_background_validity) and the solved carrier values.  A
+      ! refusal names the element, the background species or the carrier
+      ! and the cell, and every caller acts on it before reading any other
+      ! output.
+      type(signed_element_total),               intent(out) :: inventory
       real(dp), dimension(1-Ng:N+Ng) :: nd, nucH, nucHe
+      type(signed_element_total) :: count_validity
+      ! The carrier columns of the stored composition, in the unknowns'
+      ! units, before an advected column replaces them.
+      real(dp), dimension(1-Ng:N+Ng,n_carrier_max) :: fc_stored
+      real(dp) :: v_carrier, s_carrier, content, nref_carrier
+      real(dp) :: not_a_number
       real(dp), dimension(1-Ng:N+Ng,4) :: nmol_l
       real(dp), dimension(1-Ng:N+Ng,n_mion) :: nm_l
       ! The advected carriers, in the order they were declared, which is the
@@ -3004,6 +3263,85 @@
 
       nd = rho*n0                      ! cm^-3 per unit of f_sp
 
+
+      ! ---- element headroom -------------------------------------------
+      ! What the transported carriers of each element may hold.  It is the
+      ! ELEMENT TOTAL, not the neutral stage: transport moves nuclei, and
+      ! which stage a nucleus sits in is re-solved from scratch by the very
+      ! next ionization sweep.  Limiting the carriers to the neutral stage
+      ! instead would cap them wherever the element happens to be ionized --
+      ! measured on the HD 209458 b molecular gate, that clamped 150-240 of
+      ! 503 cells by up to 2% every step, which is a boundary of the
+      ! bookkeeping and not of the physics.
+      !
+      ! THAT ARGUMENT DOES NOT REACH AS FAR AS IT WAS TAKEN TO, and hydrogen
+      ! is where it breaks.  "The next sweep re-solves the stages" is true of
+      ! the sweep; it is not true of the step in between.  This step's
+      ! write-back does not re-solve H I, H II, H2+ and H3+ -- it rescales
+      ! them in proportion to what they already held -- so nuclei the
+      ! carriers take are nuclei those stages simply lose, and a carrier
+      ! holding the whole element leaves the sweep a cell with no electrons.
+      ! So the ELEMENT total is the right headroom for the LIMITER's outer
+      ! question (which element, and how much of it exists), and
+      ! hydrogen_available_to_carriers is the right one for what the
+      ! carriers may actually take.  nH_free below is the first; the limiter
+      ! and the chemistry rows both go through the second.
+      !
+      ! The one nucleus this step genuinely cannot move is the H in HeH+,
+      ! because that molecule also carries a helium nucleus and rescaling it
+      ! would move helium.  It is therefore taken out of the hydrogen
+      ! headroom rather than shared.
+      !
+      ! The three densities are the element_free of the one stoichiometric
+      ! map (element_inventory), which reads the nucleus counts of the
+      ! species table, so no call site of this operator carries a
+      ! stoichiometric coefficient of its own.
+      !
+      ! THEY ARE JUDGED BEFORE ANYTHING IS FORMED FROM THEM: the hydrogen
+      ! and helium nucleus counts below divide the stage columns and the
+      ! totals are the budgets of the step.  On a refused total no
+      ! background is built (the module background keeps the state it
+      ! held), every other output is not a number, and an advected state
+      ! waiting for this step is taken up as it would have been.
+      call carrier_element_totals(nd, f_sp, nH_free, nO_free, nC_free, &
+                                  inventory)
+      ! The hydrogen and helium nucleus counts the stage columns are
+      ! fractions of (cbg_nHnuc, cbg_nHenuc below), from the element
+      ! operator's own count and judged by its rule: a count inside the
+      ! summation allowance below zero is the zero it rounds to, beyond it
+      ! or not finite it is refused here, in the unit of the totals above.
+      if (inventory%status .eq. element_total_ok) then
+         call element_nucleus_counts(f_sp, nucH, nucHe, count_validity)
+         if (count_validity%status .ne. element_total_ok) then
+            inventory           = count_validity
+            inventory%total     = count_validity%total                    &
+                                  *nd(count_validity%cell)
+            inventory%magnitude = count_validity%magnitude                &
+                                  *nd(count_validity%cell)
+         endif
+      endif
+      ! The species this operator does not solve but reads into its rates
+      ! as frozen background, judged and not clipped (the routine states
+      ! which columns and why).
+      if (inventory%status .eq. element_total_ok)                         &
+         call frozen_background_validity(nd, f_sp, inventory)
+      ! The stored helium partition: the ground singlet is not negative,
+      ! whichever helium states this run solves (the routine states why).
+      if (inventory%status .eq. element_total_ok)                         &
+         call stored_helium_partition_validity(nd, f_sp, nucHe, inventory)
+      if (inventory%status .ne. element_total_ok) then
+         carrier_inventory_refusal = inventory
+         not_a_number = ieee_value(not_a_number, ieee_quiet_nan)
+         fc   = not_a_number
+         ntot = not_a_number
+         nrho = not_a_number
+         wfac = not_a_number
+         TK   = not_a_number
+         mbar = not_a_number
+         if (advected_carrier_state_ready() .and.                        &
+             .not. carrier_rows_advect) call advected_carrier_state_consumed()
+         return
+      endif
       ! The frozen background of this step.
       cbg_nhii   = f_sp(:,isp_HII)  *nd
       cbg_nh2p   = f_sp(:,isp_H2p)  *nd
@@ -3086,8 +3424,8 @@
       ! divides by.  They are part of the frozen background of the step:
       ! transport moves a nucleus from cell to cell, and which stage it
       ! sits in is what the stage row solves, so the element total of a
-      ! cell does not move while the rows are being solved.
-      call element_nucleus_counts(f_sp, nucH, nucHe)
+      ! cell does not move while the rows are being solved.  The counts
+      ! were formed and judged with the totals above.
       cbg_nHnuc  = nucH *nd
       cbg_nHenuc = nucHe*nd
       ! THE HELIUM THE ATOMIC STAGES DO NOT PARTITION, from the same table:
@@ -3119,6 +3457,7 @@
       fc(:,ic_HeTR) = 0.0d0
       if (thereis_HeITR)                                                 &
          fc(:,ic_HeTR) = f_sp(:,isp_HeTR)*nd/max(cbg_nHenuc, 1.0d-300)
+      fc_stored = fc
 
       ! THE ADVECTED CARRIERS ARE THE STATE THIS STEP STARTS FROM.  The
       ! material advection of every solved carrier was taken with the mass
@@ -3181,43 +3520,302 @@
          if (.not. carrier_base_composition_imposed(ic)) cycle
          fc(1-Ng:0,ic) = f_sp(1-Ng:0,carrier_species_index(ic))
       enddo
-      where (fc .lt. 0.0d0) fc = 0.0d0
 
-      ! ---- element headroom -------------------------------------------
-      ! What the transported carriers of each element may hold.  It is the
-      ! ELEMENT TOTAL, not the neutral stage: transport moves nuclei, and
-      ! which stage a nucleus sits in is re-solved from scratch by the very
-      ! next ionization sweep.  Limiting the carriers to the neutral stage
-      ! instead would cap them wherever the element happens to be ionized --
-      ! measured on the HD 209458 b molecular gate, that clamped 150-240 of
-      ! 503 cells by up to 2% every step, which is a boundary of the
-      ! bookkeeping and not of the physics.
+      ! ---- the validity of the carrier values -------------------------
+      ! A SOLVED CARRIER IS AN UNKNOWN OF THIS STEP AND A DENSITY, so it is
+      ! judged and not clipped, in every cell and ghost.  Two values are
+      ! judged: the stored one s (the composition the step was handed; the
+      ! advection of the stages reads it as it stands, so it is judged here
+      ! whether or not an advected column replaces it), and the value v the
+      ! step starts from (the advected column where there is one, the
+      ! imposed inner ghosts, else s itself).  s is the content an
+      ! advective update of the cell cancels against.  Finiteness is
+      ! decided first, for both values, before any sign test (+Inf passes
+      ! every test of the form x >= 0):
+      !   s or v not a finite number:               REFUSED;
+      !   s < 0, or v < -inventory_feasible_slack*|s|:   REFUSED (a stored
+      !        density has no cancellation to round; an advected one is
+      !        refused when the update emptied the cell by more than the
+      !        rounding of its content);
+      !   -inventory_feasible_slack*|s| <= v < 0:   the zero it rounds to,
+      !        counted in the run's record (carrier_rounding_record) and
+      !        printed the first time.
+      ! The first refused value (carriers in index order, then cells) is
+      ! returned in `inventory` with the carrier's f_sp column, the cell,
+      ! and v (s where s is the refused value) and |s| as densities
+      ! [cm^-3]; every caller acts on it (the interval is not covered, the
+      ! steady residual is not a number, the relaxation ends, the chemical
+      ! root is not formed).
       !
-      ! THAT ARGUMENT DOES NOT REACH AS FAR AS IT WAS TAKEN TO, and hydrogen
-      ! is where it breaks.  "The next sweep re-solves the stages" is true of
-      ! the sweep; it is not true of the step in between.  This step's
-      ! write-back does not re-solve H I, H II, H2+ and H3+ -- it rescales
-      ! them in proportion to what they already held -- so nuclei the
-      ! carriers take are nuclei those stages simply lose, and a carrier
-      ! holding the whole element leaves the sweep a cell with no electrons.
-      ! So the ELEMENT total is the right headroom for the LIMITER's outer
-      ! question (which element, and how much of it exists), and
-      ! hydrogen_available_to_carriers is the right one for what the
-      ! carriers may actually take.  nH_free below is the first; the limiter
-      ! and the chemistry rows both go through the second.
-      !
-      ! The one nucleus this step genuinely cannot move is the H in HeH+,
-      ! because that molecule also carries a helium nucleus and rescaling it
-      ! would move helium.  It is therefore taken out of the hydrogen
-      ! headroom rather than shared.
-      !
-      ! The three densities are the element_free of the one stoichiometric
-      ! map (element_inventory), which reads the nucleus counts of the
-      ! species table, so no call site of this operator carries a
-      ! stoichiometric coefficient of its own.
-      call carrier_element_totals(nd, f_sp, nH_free, nO_free, nC_free)
+      ! A COLUMN THIS RUN DOES NOT SOLVE is not an unknown of the step.
+      ! Every such column the rates read was judged above
+      ! (frozen_background_validity), so for those the line below changes
+      ! nothing; what it still sets to zero is a column the selected
+      ! physics does not read (frozen_background_validity names them).
+      do ic = 1, n_carrier_max
+         if (ic .le. n_carrier) then
+            if (carrier_solved(ic)) cycle
+         endif
+         where (fc(:,ic) .lt. 0.0d0) fc(:,ic) = 0.0d0
+      enddo
+      do ic = 1, n_carrier
+         if (.not. carrier_solved(ic)) cycle
+         do j = 1-Ng, N+Ng
+            s_carrier = fc_stored(j,ic)
+            v_carrier = fc(j,ic)
+            content   = abs(s_carrier)
+            if (.not. (abs(s_carrier) .le. huge(1.0d0))) then
+               inventory%status = species_density_not_finite
+               v_carrier = s_carrier
+            else if (.not. (abs(v_carrier) .le. huge(1.0d0))) then
+               inventory%status = species_density_not_finite
+            else if (s_carrier .lt. 0.0d0) then
+               inventory%status = species_density_negative
+               v_carrier = s_carrier
+            else if (v_carrier .ge. 0.0d0) then
+               cycle
+            else if (v_carrier .lt. -inventory_feasible_slack*content) then
+               inventory%status = species_density_negative
+            else
+               fc(j,ic) = 0.0d0
+               carrier_rounding_zeroed = carrier_rounding_zeroed + 1
+               if (content .gt. 0.0d0) carrier_rounding_largest =        &
+                  max(carrier_rounding_largest, abs(v_carrier)/content)
+               if (carrier_rounding_zeroed .eq. 1)                       &
+                  write(*,'(a,i0,a,a,a,i0,a,es12.4,a,es12.4,a)')         &
+                     ' (carrier_state) step ', marching_step,            &
+                     ': the advected ', trim(carrier_name(ic)),          &
+                     ' value at cell j = ', j, ', ', v_carrier,          &
+                     ', inside the rounding of its stored content ',     &
+                     content, ', is written as zero; later ones are'//   &
+                     ' counted (carrier_rounding_record)'
+               cycle
+            endif
+            nref_carrier = carrier_nucleus_reference(ic, j, nd(j))
+            inventory%species   = carrier_species_index(ic)
+            inventory%cell      = j
+            inventory%total     = v_carrier*nref_carrier
+            inventory%magnitude = content*nref_carrier
+            carrier_inventory_refusal = inventory
+            return
+         enddo
+      enddo
 
       end subroutine carrier_state
+
+
+      ! THE FROZEN BACKGROUND THE CARRIER RATES READ, judged and not
+      ! clipped.  A species this operator does not solve is not an unknown
+      ! of the step, but carrier_source reads it into the reaction rates of
+      ! the solved rows (mol_heh_rows, heh_tr_rows, he_h_cx_fvec, the metal
+      ! charge exchange), into the electron density those rates are taken
+      ! at (calc_ne) and into the element closures (the atomic hydrogen
+      ! and free oxygen it leaves).  A negative or nonfinite population has
+      ! no reaction rate, and replacing it by its nonnegative part would
+      ! evaluate the chemistry on a different composition, so such a
+      ! background is REFUSED with the carrier-state contract (status
+      ! background_density_negative or _not_finite, the f_sp column and the
+      ! cell, the signed density in cm^-3).  The values are stored
+      ! densities, not sums, so no rounding allowance applies to them.
+      !
+      ! WHICH COLUMNS, and only where the rates read them (cells 1..N,
+      ! where carrier_source is evaluated):
+      !   H II, H2+, H3+, HeH+       rates, electrons, hydrogen budget;
+      !   H2, OH, H2O                the atomic hydrogen closure;
+      !   CO                         the free oxygen closure, read by the
+      !                              oxygen chemistry alone;
+      !   He I, He II, He III        rates and electrons, with helium;
+      !   He 2^3S                    the triplet terms, where tracked;
+      !   every metal column         electrons and charge exchange, with
+      !                              metals;
+      ! less every column a solved carrier holds (judged as a carrier).
+      ! Exempt, because the selected physics reads them nowhere: CO without
+      ! the oxygen chemistry, the helium columns without helium, the
+      ! He 2^3S column where the level is not tracked, the metal columns
+      ! without metals.  The ground singlet, a difference of two columns,
+      ! is judged by stored_helium_partition_validity.
+      subroutine frozen_background_validity(nd, f_sp, inventory)
+      real(dp), dimension(1-Ng:N+Ng),           intent(in)    :: nd
+      real(dp), dimension(1-Ng:N+Ng,n_species), intent(in)    :: f_sp
+      type(signed_element_total),               intent(inout) :: inventory
+      integer  :: cols(n_species), ncol, j, k, im
+      real(dp) :: v
+      ncol = 0
+      call read_by_the_rates(isp_HII)
+      call read_by_the_rates(isp_H2p)
+      call read_by_the_rates(isp_H3p)
+      call read_by_the_rates(isp_HeHp)
+      call read_by_the_rates(isp_H2)
+      call read_by_the_rates(isp_OH)
+      call read_by_the_rates(isp_H2O)
+      if (thereis_oxychem) call read_by_the_rates(isp_CO)
+      if (thereis_He) then
+         call read_by_the_rates(isp_HeI)
+         call read_by_the_rates(isp_HeII)
+         call read_by_the_rates(isp_HeIII)
+      endif
+      if (thereis_HeITR) call read_by_the_rates(isp_HeTR)
+      if (thereis_metals) then
+         do im = 1, n_mion
+            call read_by_the_rates(mion_fsp(im))
+         enddo
+      endif
+      do j = 1, N
+         do k = 1, ncol
+            v = f_sp(j,cols(k))
+            if (.not. (abs(v) .le. huge(1.0d0))) then
+               inventory%status = background_density_not_finite
+            else if (v .lt. 0.0d0) then
+               inventory%status = background_density_negative
+            else
+               cycle
+            endif
+            inventory%species   = cols(k)
+            inventory%cell      = j
+            inventory%total     = v*nd(j)
+            inventory%magnitude = abs(v)*nd(j)
+            return
+         enddo
+      enddo
+
+      contains
+
+      subroutine read_by_the_rates(isp)
+      ! Adds the column to the judged set unless a solved carrier holds it.
+      integer, intent(in) :: isp
+      integer :: icar
+      do icar = 1, n_carrier
+         if (carrier_solved(icar) .and.                                    &
+             carrier_species_index(icar) .eq. isp) return
+      enddo
+      ncol = ncol + 1
+      cols(ncol) = isp
+      end subroutine read_by_the_rates
+
+      end subroutine frozen_background_validity
+
+
+      ! THE STORED HELIUM PARTITION OF A COMPOSITION THAT TRACKS He 2^3S.
+      ! The level is a subset of He I (the He I column holds it), so the
+      ! ground singlet n(He I) - n(He 2^3S) is a population and cannot be
+      ! negative.  It is a difference of two stored columns that are each
+      ! judged on their own (as frozen background, or as the solved stage
+      ! and level carriers), and both can be finite and positive while the
+      ! level holds more than He I: the composition then has a negative
+      ! ground singlet, and every rate the step evaluates from it is the
+      ! rate of a different gas.  That holds whichever helium states the
+      ! run solves -- frozen, the ionized stages carried (the closure
+      ! carrier_helium_neutral_of_partition then subtracts the stages and
+      ! the level from the stored helium budget), the level carried too --
+      ! so this is an entry invariant of every configuration with helium
+      ! and the level, judged before the first residual is assembled.  It
+      ! is a statement about the stored state, not a constraint the solve
+      ! of the step must keep (trial partitions have their own simplex
+      ! projection).
+      ! FIRST THE TWO COLUMNS, then their difference, in every cell judged:
+      ! the column judgments elsewhere do not reach every cell of this
+      ! scope (the frozen-background check reads cells 1..N, the solved
+      ! carriers only their own columns, and no element total or count
+      ! sees He 2^3S, a subset of He I), so a ghost He 2^3S that is
+      ! negative or not finite would otherwise pass into cbg_nheiTR.
+      !   He I or He 2^3S not finite or below zero: REFUSED, status
+      !        species_density_* where a solved carrier holds the column
+      !        (the carried level), background_density_* otherwise, the
+      !        column, the cell and the signed density in cm^-3;
+      !   n(He I) - n(He 2^3S) below -allowance*scale:
+      !        REFUSED (helium_singlet_negative, the He I column, element
+      !        He, the cell, the signed difference and scale);
+      !        scale is n_He when helium stages are solved (He I is
+      !        their budget remainder), otherwise n(He I). In the solved
+      !        case allowance counts the He II, He III, He 2^3S, and
+      !        optional HeH+ fractions as in ionization_fractions_physical.
+      !        The frozen neutral subtraction keeps its eight-epsilon
+      !        allowance at the independent He I scale.
+      !   inside that allowance: admitted (the composition is not
+      !        changed here; the rates take max(., 0) of the difference,
+      !        the section 169 rule of ground_singlet_of_cell).
+      ! WHERE: the physical cells, where the rates read the partition; and
+      ! the ghosts as well where a helium state is solved, because the
+      ! carried stages' face values read the stored ghost partition.
+      subroutine stored_helium_partition_validity(nd, f_sp, nucHe, inventory)
+      real(dp), dimension(1-Ng:N+Ng),           intent(in)    :: nd, nucHe
+      real(dp), dimension(1-Ng:N+Ng,n_species), intent(in)    :: f_sp
+      type(signed_element_total),               intent(inout) :: inventory
+      real(dp) :: singlet, v, helium_scale, singlet_allowance
+      integer  :: j, jlo, jhi, k, isp
+      if (.not. (thereis_He .and. thereis_HeITR)) return
+      jlo = 1;  jhi = N
+      if (carrier_solved(ic_HeII) .or. carrier_solved(ic_HeTR)) then
+         jlo = 1-Ng;  jhi = N+Ng
+      endif
+      do j = jlo, jhi
+         do k = 1, 2
+            isp = isp_HeI
+            if (k .eq. 2) isp = isp_HeTR
+            v = f_sp(j,isp)
+            if (.not. (abs(v) .le. huge(1.0d0))) then
+               inventory%status = background_density_not_finite
+               if (column_is_solved(isp))                                 &
+                  inventory%status = species_density_not_finite
+            else if (v .lt. 0.0d0) then
+               inventory%status = background_density_negative
+               if (column_is_solved(isp))                                 &
+                  inventory%status = species_density_negative
+            else
+               cycle
+            endif
+            inventory%species   = isp
+            inventory%cell      = j
+            inventory%total     = v*nd(j)
+            inventory%magnitude = abs(v)*nd(j)
+            return
+         enddo
+         singlet = f_sp(j,isp_HeI) - f_sp(j,isp_HeTR)
+         helium_scale = abs(f_sp(j,isp_HeI))
+         ! With frozen neutral helium, He I is stored independently of the
+         ! carried stages. Keep the separate eight-epsilon subtraction
+         ! allowance at the He I scale for this neutral partition.
+         singlet_allowance = inventory_feasible_slack
+         if (carrier_solved(ic_HeII)) then
+            ! He I is the remainder after the carried stages and HeH+
+            ! are subtracted from the helium budget (carrier_write_back).
+            ! Its absolute subtraction error scales with that budget,
+            ! including where He I is tiny. The closure allowance counts
+            ! the same fractions as the ionization simplex check.
+            ! Invalid columns/totals retain their separate refusal checks.
+            helium_scale = abs(f_sp(j,isp_HeI)) + &
+                           abs(f_sp(j,isp_HeII)) + &
+                           abs(f_sp(j,isp_HeIII)) + &
+                           abs(f_sp(j,isp_HeHp))
+            singlet_allowance = helium_closure_allowance(thereis_HeITR, &
+                                          thereis_mol .and. nucHe(j) .gt. 0.0d0)
+         endif
+         if (singlet .lt. -singlet_allowance*helium_scale) then
+            inventory%status    = helium_singlet_negative
+            inventory%element   = ien_He
+            inventory%species   = isp_HeI
+            inventory%cell      = j
+            inventory%total     = singlet*nd(j)
+            inventory%magnitude = helium_scale*nd(j)
+            return
+         endif
+      enddo
+
+      contains
+
+      logical function column_is_solved(isp_col)
+      ! Whether a solved carrier of this run holds the f_sp column.
+      integer, intent(in) :: isp_col
+      integer :: icar
+      column_is_solved = .false.
+      do icar = 1, n_carrier
+         if (carrier_solved(icar) .and.                                    &
+             carrier_species_index(icar) .eq. isp_col)                    &
+            column_is_solved = .true.
+      enddo
+      end function column_is_solved
+
+      end subroutine stored_helium_partition_validity
 
 
       ! The row scales of the last carrier residual assembly: terms_full is
@@ -3433,6 +4031,7 @@
       if (allocated(pct_Dco))              chk%pct_Dco = pct_Dco
       if (allocated(pct_cell_constrained))                                &
                        chk%pct_cell_constrained = pct_cell_constrained
+      if (allocated(pct_cell_excess)) chk%pct_cell_excess=pct_cell_excess
       chk%pct_newton_steps              = pct_newton_steps
       chk%pct_newton_resid              = pct_newton_resid
       chk%pct_newton_resid_before_limit = pct_newton_resid_before_limit
@@ -3453,6 +4052,7 @@
       call put_back_2d(chk%pct_Dco, pct_Dco)
       call put_back_1d_logical(chk%pct_cell_constrained,                  &
                                pct_cell_constrained)
+      call put_back_1d(chk%pct_cell_excess,pct_cell_excess)
       pct_newton_steps              = chk%pct_newton_steps
       pct_newton_resid              = chk%pct_newton_resid
       pct_newton_resid_before_limit = chk%pct_newton_resid_before_limit
@@ -3473,6 +4073,7 @@
       ok = ok .and. same_2d(chk%pct_Dco, pct_Dco)
       ok = ok .and. same_1d_logical(chk%pct_cell_constrained,             &
                                     pct_cell_constrained)
+      ok = ok .and. same_1d(chk%pct_cell_excess,pct_cell_excess)
       ok = ok .and. (chk%pct_newton_steps .eq. pct_newton_steps)
       ok = ok .and. (chk%pct_newton_resid .eq. pct_newton_resid)
       ok = ok .and. (chk%pct_newton_resid_before_limit .eq.               &
@@ -3586,6 +4187,7 @@
                                          jworst, icworst, rvol, rlegacy, &
                                          res_out, terms_out, absent_out, &
                                          base_face_flux)
+      use, intrinsic :: ieee_arithmetic, only: ieee_value, ieee_quiet_nan
       real(dp), dimension(1-Ng:N+Ng),           intent(in) :: rho, v
       real(dp), dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
       real(dp), intent(out) :: rcmax
@@ -3620,9 +4222,10 @@
       integer,  dimension(0:N,n_carrier_max) :: updrf
       real(dp), dimension(1:N,n_carrier_max) :: res
       real(dp) :: rnorm_unused, cs, sc, rel, w, nH_avail
-      real(dp) :: num_l, den_l, num_w, den_w
+      real(dp) :: num_l, den_l, num_w, den_w, row_nan
       integer  :: j, ic
       logical  :: inv_carried(n_species)
+      type(signed_element_total) :: inv_state
 
       rcmax = 0.0d0;  jworst = 0;  icworst = 1
       if (present(rvol))      rvol      = 0.0d0
@@ -3642,7 +4245,23 @@
       row_terms      = 0.0d0
       row_terms_phys = 0.0d0
       call carrier_state(rho, f_sp, fc, ntot, nrho, wfac, TK,            &
-                         mbar, nH_free, nO_free, nC_free)
+                         mbar, nH_free, nO_free, nC_free, inv_state)
+      ! NO CARRIER ROW IS FORMED ON A NEGATIVE OR NONFINITE ELEMENT TOTAL.
+      ! The rows and their measures are returned as not-a-number, which
+      ! every consumer already reads as a row that is not a finite number
+      ! (a refused trial, a state that is not finite, an unavailable
+      ! certification entry), and the refusal is named.
+      if (inv_state%status .ne. element_total_ok) then
+         call write_carrier_inventory_refusal('carrier_steady_residual')
+         row_nan = ieee_value(row_nan, ieee_quiet_nan)
+         rcmax = row_nan
+         if (present(rvol))      rvol      = row_nan
+         if (present(rlegacy))   rlegacy   = row_nan
+         if (present(res_out))   res_out   = row_nan
+         if (present(terms_out)) terms_out = row_nan
+         if (present(base_face_flux)) base_face_flux = row_nan
+         return
+      endif
       call carrier_geometry(spread(1.0d0,1,N+2*Ng), rp, rep, dt_big)
       call mixture_pressure_acceleration(rho, TK/T0, f_sp, geff)
       call carrier_advective_state(.true., rho, f_sp, msum, Frho)
@@ -3650,7 +4269,7 @@
       call carrier_diffusivities(f_sp, rho, TK, ntot, Dco)
       call carrier_face_coefficients(ntot, TK, mbar, geff, Dco, rp,      &
                                      Agrd, Bdrf, updrf)
-      call carrier_stage_face_state(rho, TK, f_sp, .true., msum, Frho)
+      call carrier_stage_face_state(rho, TK, f_sp, .true., Frho)
       ! The stage sum identity of THIS state, measured on the same face
       ! fluxes the rows below are the divergence of.
       if (carrier_solved(ic_Hp)) then
@@ -4573,25 +5192,23 @@
       ! element's own nucleus flux face by face.
       !
       ! THE FACE MASS FLUX IS HANDED OVER IN g cm^-2 s^-1.  The rows' own
-      ! F_rho is the code face mass flux of the mass row, with the mixture
-      ! mass per unit of f_sp still outside it; the element operator wants
-      ! the physical flux, so the mixture mass enters at the face, on the
-      ! arithmetic mean every other face coefficient of that operator uses.
+      ! F_rho is the code face mass flux of the mass row; the element
+      ! operator wants the physical flux, F_rho n0 mu v0
+      ! (face_mass_flux_cgs): the fixed unit of the hydrodynamic mass flux,
+      ! which the composition's mass closure msum does not enter.
       ! Where the rows carry no advective term -- the marching operator,
       ! whose proton rode on the Runge-Kutta stages -- it is zero, and the
       ! stage flux is then the element's diffusive half plus the stage's
       ! own eddy term, which is the operator-split remainder the molecular
       ! rows carry there too.
-      subroutine carrier_stage_face_state(rho, TK, f_sp, advect, msum,    &
-                                          Frho)
+      subroutine carrier_stage_face_state(rho, TK, f_sp, advect, Frho)
       real(dp), dimension(1-Ng:N+Ng),           intent(in) :: rho, TK
       real(dp), dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
       logical,                                  intent(in) :: advect
-      real(dp), dimension(1-Ng:N+Ng),           intent(in) :: msum, Frho
+      real(dp), dimension(1-Ng:N+Ng),           intent(in) :: Frho
 
       real(dp), dimension(1-Ng:N+Ng) :: Frho_cgs, N_H, N_He
       real(dp), dimension(0:N) :: n_Hf, n_Hef, Kf, drf
-      integer :: j
 
       if (.not. allocated(stg_Nel))                                      &
          allocate(stg_Nel(1-Ng:N+Ng,n_carrier_max),                      &
@@ -4604,11 +5221,7 @@
       if (.not. ionization_transport) return
 
       Frho_cgs = 0.0d0
-      if (advect) then
-         do j = 1-Ng, N+Ng-1
-            Frho_cgs(j) = Frho(j)*0.5d0*(msum(j) + msum(j+1))*n0*mu*v0
-         enddo
-      endif
+      if (advect) call face_mass_flux_cgs(Frho, Frho_cgs)
       call hydrogen_and_helium_nucleus_face_flux(rho, TK/T0, f_sp,       &
                     Frho_cgs, N_H, N_He, n_Hf, n_Hef, Kf, drf)
       stg_Nel(:,ic_Hp)  = N_H
@@ -4638,20 +5251,15 @@
       !
       !    F(f) = x(f) N_el(f) - n_el(f) K(f) [x(j+1) - x(j)]/dr(f)
       !
-      ! with x(f) the reconstructed, limited and upwinded face fraction --
-      ! the same rule the element mass fractions take, with the donor side
-      ! chosen by the sign of the ELEMENT flux -- and the eddy term zero at
-      ! the two end faces, where the element itself crosses only with the
-      ! gas.  Equation (1) and its boundary paragraph in
-      ! ionization_stage_transport.
+      ! with x(f) the DONOR cell's fraction, the donor side chosen by the
+      ! sign of the ELEMENT flux (ionization_stage_face_fractions states the
+      ! rule and the measurement that made it the donor value), and the
+      ! eddy term zero at the two end faces, where the element itself
+      ! crosses only with the gas.  Equation (1) and its boundary paragraph
+      ! in ionization_stage_transport.
       !
-      ! The derivatives are taken at the donor-cell face value, exactly as
-      ! carrier_advective_face_coefficients takes the molecular rows' at
-      ! theirs: the limiter and the second-order part of the reconstruction
-      ! are the strongly nonlinear part of the operator and reach beyond
-      ! the tridiagonal band.  The residual is the full operator either
-      ! way, so this changes what the Newton converges AT and not what it
-      ! converges TO.
+      ! The derivatives are those of this donor face, so for fixed element
+      ! face coefficients they are exact.
       ! ONE STAGE AT A TIME IS EXACT HERE: F_k depends on x_k alone, the
       ! stages of an element coupling only through the closing stage, which
       ! is not a row (ionization_stage_face_jacobian).  The closing face
@@ -4974,9 +5582,10 @@
       ! to be repaired: clipping it to zero while the two ionized stages
       ! stand where they are leaves the cell holding more helium than it
       ! has, and the rows are then evaluated at a partition no cell can be
-      ! in.  How far the STATE THE STEP WROTE stood outside the set is
-      ! MEASURED in carrier_write_back
-      ! (carrier_helium_singlet_under_zero); this routine is called from
+      ! in.  How far the carriers handed to the write-back stood outside
+      ! the set is MEASURED in carrier_write_back
+      ! (carrier_helium_singlet_under_zero), which refuses a singlet below
+      ! zero beyond the representability allowance; this routine is called from
       ! inside the threaded Jacobian assembly and keeps no record of its
       ! own.
       !
@@ -5078,6 +5687,97 @@
                                                          nHe_nuc),       &
                1.0d-300)
       end function carrier_source_derivative_step
+
+
+      ! THE NEUTRAL REMAINDERS THE SOURCE CLOSES EACH ELEMENT ON, before
+      ! any clip: rem(1) the atomic hydrogen, rem(2) the helium ground
+      ! singlet, rem(3) the free atomic oxygen, at trial densities nc
+      ! [cm^-3].  These are the expressions carrier_source forms for n_hi,
+      ! n_heiSI and n_o0, written here without their max(.,0) so that a
+      ! state outside an element budget reads as a negative remainder
+      ! instead of the clipped continuation.  A change to the closure of
+      ! carrier_source has to be made here as well.
+      subroutine carrier_closure_remainders(j, nc, nH_free, nO_free, rem)
+      integer,  intent(in)  :: j
+      real(dp), intent(in)  :: nc(n_carrier_max), nH_free, nO_free
+      real(dp), intent(out) :: rem(3)
+      real(dp) :: n_heiTR
+      rem(1) = hydrogen_available_to_carriers(j, nH_free)                &
+               - 2.0d0*nc(ic_H2) - nc(ic_OH) - 2.0d0*nc(ic_H2O)
+      if (ionization_transport) rem(1) = rem(1) - nc(ic_Hp)
+      n_heiTR = cbg_nheiTR(j)
+      if (carrier_solved(ic_HeTR)) n_heiTR = nc(ic_HeTR)
+      if (carrier_solved(ic_HeII)) then
+         rem(2) = carrier_helium_available_to_stages(j)                  &
+                  - nc(ic_HeII) - nc(ic_HeIII)
+         if (carrier_solved(ic_HeTR)) rem(2) = rem(2) - n_heiTR
+      else
+         rem(2) = cbg_nhei(j) - n_heiTR
+      endif
+      rem(3) = nO_free - cbg_nOion(j) - nc(ic_OH) - nc(ic_H2O) - nc(ic_CO)
+      end subroutine carrier_closure_remainders
+
+
+      ! THE SIGNED PERTURBATION WITH WHICH THE CHEMISTRY COLUMN OF CARRIER
+      ! kc IS DIFFERENCED in cell j, from the magnitude dn of
+      ! carrier_source_derivative_step.  ONE RULE FOR EVERY CARRIER: the
+      ! perturbed densities must stay nonnegative and inside every element
+      ! budget the source closes on (carrier_closure_remainders).  A
+      ! difference taken across a budget samples the clipped continuation
+      ! of the neutral closure -- H2 pushed past the hydrogen budget while
+      ! the atomic H remainder is held at zero -- and returns a derivative
+      ! of the clip, not of the chemistry (md/carrier_newton_diagnosis_codex
+      ! _20261028.md: the assembled H+ derivative with respect to f(H2) was
+      ! -8.4e4 where the closure is not differentiable at all).  So:
+      !   +dn when it is admissible (the forward difference as before);
+      !   else -dn when that is (the inward difference, as the helium
+      !        stages already took at their sum rule);
+      !   else half of the larger admissible room, with its sign;
+      !   else, with no admissible perturbation of this carrier in either
+      !        direction (the carrier at zero AND its element exhausted by
+      !        others), +dn: the row is then differentiated along the
+      !        clipped continuation, which is the closure the residual
+      !        itself evaluates on that side, and no other one-sided
+      !        derivative of this column exists.
+      ! A remainder already below zero by round-off counts as zero room in
+      ! the direction that lowers it and as no obstacle in the one that
+      ! raises it.  The remainders are linear in nc with the integer nuclei
+      ! counts as slopes, recovered exactly by rounding.
+      double precision function carrier_feasible_source_step(kc, j, nc,   &
+                               dn, nH_free, nO_free) result(h)
+      integer,  intent(in) :: kc, j
+      real(dp), intent(in) :: nc(n_carrier_max), dn, nH_free, nO_free
+      real(dp) :: ncp(n_carrier_max), r0(3), r1(3), slope(3)
+      real(dp) :: room_up, room_down
+      integer  :: e
+      call carrier_closure_remainders(j, nc, nH_free, nO_free, r0)
+      ncp = nc
+      ncp(kc) = nc(kc) + dn
+      call carrier_closure_remainders(j, ncp, nH_free, nO_free, r1)
+      room_up   = huge(1.0d0)
+      room_down = max(nc(kc), 0.0d0)
+      do e = 1, 3
+         slope(e) = dble(nint((r1(e) - r0(e))/dn))
+         if (slope(e) .lt. 0.0d0) then
+            room_up = min(room_up, max(r0(e), 0.0d0)/(-slope(e)))
+         else if (slope(e) .gt. 0.0d0) then
+            room_down = min(room_down, max(r0(e), 0.0d0)/slope(e))
+         endif
+      enddo
+      if (dn .le. room_up) then
+         h = dn
+      else if (dn .le. room_down) then
+         h = -dn
+      else if (max(room_up, room_down) .gt. 0.0d0) then
+         if (room_up .ge. room_down) then
+            h = 0.5d0*room_up
+         else
+            h = -0.5d0*room_down
+         endif
+      else
+         h = dn
+      endif
+      end function carrier_feasible_source_step
 
 
       ! Chemical production minus loss of each active carrier in cell j,
@@ -6161,7 +6861,7 @@
                                   updrf,                                 &
                                   nH_free, nO_free, nC_free, sigrate,    &
                                   res, Jf, dJl, dJr, rnorm, rnorm_phys,   &
-                                  absent_out, base_face_out)
+                                  absent_out, base_face_out, merit_scale)
       ! advect: whether the row carries the material advective term.  The
       ! MARCHING rows do not, because the advection of a carrier is the
       ! divergence of the hydrodynamic face mass flux and is taken with the
@@ -6199,6 +6899,12 @@
       ! short substep, a state the acceptance refuses
       ! (declaration of row_terms_phys).
       real(dp),                       optional, intent(out) :: rnorm_phys
+      ! THE SCALE THE NEWTON LINE SEARCH JUDGES A TRIAL ON, row by row: the
+      ! physical terms of the row (row_terms_phys: transport, gross
+      ! production and loss, the element floor) plus the time term the
+      ! iteration carries (see the line search of solve_carriers).
+      real(dp), dimension(1:N,n_carrier_max), optional, intent(out) ::    &
+                                                             merit_scale
       ! WHERE THE CARRIER IS ABSENT: the cells in which this carrier stands
       ! below carrier_absent_fraction of the free reservoir of its own
       ! element.  The row is still assembled and still measured there -- it
@@ -6302,6 +7008,7 @@
       dJl = 0.0d0
       dJr = 0.0d0
       if (present(absent_out)) absent_out = .false.
+      if (present(merit_scale)) merit_scale = 0.0d0
       do ic = 1, n_carrier
          if (.not. carrier_solved(ic)) cycle
          ! AN IONIZATION STAGE CARRIES ITS WHOLE FACE FLUX HERE, advective
@@ -6423,8 +7130,15 @@
             ! channel rates; any change of the background at the
             ! convergence level of the wind solve moved the measure across
             ! 1e-5 and back from pass to pass.  The Newton's own scale dsc
-            ! keeps |src|: it sets the step and the stop of the iteration
-            ! on the cell's own row, not the statement about the state.
+            ! keeps |src|: it sets the stopping test of the iteration on
+            ! the cell's own row, not the statement about the state.  It is
+            ! NOT the scale the line search judges a trial on: that one is
+            ! this physical scale plus the time term (merit_scale), for the
+            ! reason the same section 94 measurement gives -- where the
+            ! chemistry is fast, |net| stands orders below the row's own
+            ! terms, and a measure built on it reads a second-order term of
+            ! those terms as a large imbalance (line search of
+            ! solve_carriers).
             dph = dph + srcp(ic) + srcl(ic)
             ! ABSOLUTE FLOOR ON THE ROW SCALE, and it is not cosmetic. A
             ! relative residual with no floor asks a row whose species is
@@ -6501,6 +7215,9 @@
             rsc(j,ic)  = dsc
             if (allocated(row_terms)) row_terms(j,ic) = dsc
             if (allocated(row_terms_phys)) row_terms_phys(j,ic) = dph
+            if (present(merit_scale)) merit_scale(j,ic) = dph            &
+                 + abs(nref*fc(j,ic)/dt_phys(j))                         &
+                 + abs(nref*fc_old(j,ic)/dt_phys(j))
             if (abs(rr)/max(dsc, 1.0d-300) .gt. rnorm)                   &
                rnorm = abs(rr)/max(dsc, 1.0d-300)
             if (abs(rr)/max(dph, 1.0d-300) .gt. rnormp)                  &
@@ -6539,7 +7256,8 @@
 
       ! Newton solve of the coupled system, block-tridiagonal in space with
       ! dense n_carrier x n_carrier blocks (up to n_carrier_max). The chemistry
-      ! Jacobian is a forward difference of the residual rows.
+      ! Jacobian is a one-sided difference of the residual rows, taken inside
+      ! the admissible set (carrier_feasible_source_step).
       subroutine solve_carriers(fc, fc_old, nrho, wfac, dt_phys, rp,     &
                                 rep, msum, Frho, Agrd, Bdrf, updrf, TK,  &
                                 sigrate,                                 &
@@ -6576,6 +7294,7 @@
       real(dp), dimension(1:N,n_carrier_max)  :: dfc
       real(dp), dimension(1-Ng:N+Ng,n_carrier_max) :: ftry
       real(dp) :: nc(n_carrier_max), s0(n_carrier_max), s1(n_carrier_max)
+      real(dp) :: ncp(n_carrier_max)
       real(dp) :: Kj, sL, sR, cadv, dn, dnref
       ! The one geometry of the grid, in cm: A(f) R0^2 and V(j) R0^3.
       real(dp), dimension(0:N) :: fa
@@ -6590,6 +7309,11 @@
       real(dp) :: rnorm, rprev, rstart, rtry, damp
       ! The same residual on the scale the returned state is judged on.
       real(dp) :: rnormp, rtryp
+      ! The line-search merit: the largest row residual on the physical
+      ! row scale with the time term (merit_scale of carrier_residual),
+      ! each state on its own scale.
+      real(dp), dimension(1:N,n_carrier_max) :: mscale
+      real(dp) :: rmerit, rmerit_try
       integer  :: j, ic, kc, it, ihalf
       ! Did the last Newton iteration exhaust its halvings without finding a
       ! trial state below the current residual? That is a line-search
@@ -6621,7 +7345,8 @@
                             msum, Frho, carrier_rows_advect, Agrd, Bdrf, &
                             updrf, nH_free, nO_free,                     &
                             nC_free, sigrate, res, Jf, dJl, dJr, rnorm,  &
-                            rnormp)
+                            rnormp, merit_scale=mscale)
+      rmerit = carrier_merit(res, mscale)
       rstart = rnorm
       rprev  = rnorm
       pct_newton_steps = 0
@@ -6665,7 +7390,7 @@
          ! any number of threads.  The Thomas sweep that consumes them is
          ! sequential in space and stays serial.
          !$omp parallel do default(shared) schedule(static)              &
-         !$omp   private(j,ic,kc,Kj,sL,sR,cadv,nc,s0,s1,dn,dnref)
+         !$omp   private(j,ic,kc,Kj,sL,sR,cadv,nc,ncp,s0,s1,dn,dnref)
          do j = 1, N
             Kj = 1.0d0/(cv(j)*R0cb)
             sL = fa(j-1)*R0sq
@@ -6835,7 +7560,11 @@
             ! The perturbation is carrier_source_derivative_step: a fraction
             ! of the carrier itself with a floor tied to the free density of
             ! the carrier's OWN element, which is the same table the
-            ! residual row's absolute floor reads.
+            ! residual row's absolute floor reads.  Its SIGN AND SIZE are
+            ! carrier_feasible_source_step's: the perturbed cell stays
+            ! nonnegative and inside every element budget the source
+            ! closes on, for every carrier alike, and each column is
+            ! differenced from the saved unperturbed densities.
             call carrier_cell_densities(fc(j,:), j, nrho(j), nc)
             call carrier_source(j, nc, nH_free(j), nO_free(j), s0)
             do kc = 1, n_carrier
@@ -6845,31 +7574,11 @@
                                                    nO_free(j),           &
                                                    nC_free(j),           &
                                                    cbg_nHenuc(j))
-               ! THE PERTURBATION STAYS INSIDE THE ADMISSIBLE SET.  A
-               ! helium stage at the sum rule cannot be raised: the two
-               ! ionized stages together hold at most the helium available
-               ! to them, and a forward difference taken past that bound
-               ! differentiates the closure's behaviour outside the set
-               ! and not the chemistry.  The difference is taken inward
-               ! there, which is the same derivative of the same row, and
-               ! only while the stage itself stays nonnegative.
-               ! With the He 2^3S level carried it is the third state of
-               ! the same simplex and enters the same sum.
-               if (kc .eq. ic_HeII .or. kc .eq. ic_HeIII .or.            &
-                   kc .eq. ic_HeTR) then
-                  if (carrier_solved(ic_HeTR)) then
-                     if (nc(ic_HeII) + nc(ic_HeIII) + nc(ic_HeTR) + dn   &
-                         .gt. carrier_helium_available_to_stages(j)      &
-                         .and. nc(kc) .gt. dn) dn = -dn
-                  else if (nc(ic_HeII) + nc(ic_HeIII) + dn .gt.          &
-                      carrier_helium_available_to_stages(j) .and.        &
-                      nc(kc) .gt. dn) then
-                     dn = -dn
-                  endif
-               endif
-               nc(kc) = nc(kc) + dn
-               call carrier_source(j, nc, nH_free(j), nO_free(j), s1)
-               nc(kc) = nc(kc) - dn
+               dn = carrier_feasible_source_step(kc, j, nc, dn,          &
+                                                 nH_free(j), nO_free(j))
+               ncp     = nc
+               ncp(kc) = nc(kc) + dn
+               call carrier_source(j, ncp, nH_free(j), nO_free(j), s1)
                ! The chain rule closes on the COLUMN's own reference
                ! density: d src/d f_c(kc) = (d src/d n(kc)) times the
                ! density that column's fraction is taken against, which is
@@ -6938,25 +7647,64 @@
                                   rep, msum, Frho, carrier_rows_advect,  &
                                   Agrd, Bdrf, updrf, nH_free,            &
                                   nO_free, nC_free, sigrate, res, Jf,    &
-                                  dJl, dJr, rtry, rtryp)
-            if (rtry .lt. rnorm) exit
+                                  dJl, dJr, rtry, rtryp,                 &
+                                  merit_scale=mscale)
+            ! THE TRIAL IS JUDGED ON THE PHYSICAL ROW SCALE, the one the
+            ! acceptance of the returned state divides by (row_terms_phys:
+            ! transport, gross production and loss, the element floor) with
+            ! the time term the iteration carries added, each state on its
+            ! own terms.  (A scale held at the current iterate was tried
+            ! and refused: a carrier that starts a substep at zero has a
+            ! row of one term, and any trial that raises it brings a time
+            ! term the old scale does not hold, so every trial reads above
+            ! the current merit and the step can never start --
+            ! carrier_retry, He++ at f = 0.)  It is not dsc, whose reaction part is the NET source: where the
+            ! molecular ions are in fast balance their gross rates stand
+            ! about 700 times above |net| (H2 front of the LHS 1140 b
+            ! He/H 1.2 state, md/carrier_newton_diagnosis_20261028.md; the
+            ! He 2^3S row of update log stage 3 section 94 is the same
+            ! case), so the second-order term of a full Newton step was
+            ! 5-10 times dsc while under one per cent of the row's own
+            ! terms, the search admitted steps of 2^-6 to 2^-8 only, and
+            ! the iteration crept for about 90 iterations.  The stopping
+            ! tests, the verdict and the step itself are unchanged.
+            rmerit_try = carrier_merit(res, mscale)
+            if (rmerit_try .lt. rmerit) exit
             if (ihalf .eq. newton_halves) then
                ! Every halving down to 2^-8 of the Newton step left the
-               ! residual where it was or above it: the direction is not a
-               ! descent direction of the measure this solve minimizes.  The
-               ! last trial is still taken -- rejection and retry do not
-               ! exist -- so the outcome has to be
-               ! carried out in the status instead.
+               ! merit where it was or above it: the direction is not a
+               ! descent direction of the measure this search uses.
                line_search_failed = .true.
                exit
             endif
             damp = 0.5d0*damp
          enddo
+         pct_newton_steps = it
+         ! A FAILED SEARCH IS NOT ADOPTED, AND IT ENDS THE SOLVE.  The
+         ! iterate is kept: a trial that leaves the merit above its present
+         ! value is no progress, and taking it (as this loop once did) let a
+         ! solve drift for 200 iterations at a residual measure of one.
+         ! Repeating the iteration from the kept iterate would assemble the
+         ! same matrix and try the same trials bit for bit, so the first
+         ! failure is already the last; the solve ends with
+         ! carrier_solve_line_search_failed and the interval retry halves
+         ! the substep.  An iterate already at the discretization floor is
+         ! the exception: there the search fails because nothing is left to
+         ! reduce, which is the stall at the floor and not a failure.
+         ! The residual, row scales and worst row of the kept iterate are
+         ! re-formed by the residual of the returned state below.
+         if (line_search_failed) then
+            if (rnorm .le. newton_floor) then
+               stall = carrier_stall_at_floor
+               line_search_failed = .false.
+            endif
+            exit
+         endif
          fc     = ftry
          rprev  = rnorm
          rnorm  = rtry
          rnormp = rtryp
-         pct_newton_steps = it
+         rmerit = rmerit_try
          ! The iteration has stopped making progress. Whether that is the
          ! discretization's floor or a residual that merely fell a long way
          ! from a large start is carrier_stall_class's statement, and it is
@@ -6993,6 +7741,16 @@
 
       call limit_to_element_budget(fc, nrho, TK, nH_free, nO_free,        &
                                    nC_free)
+      if (carrier_debug_on()) then
+         do j=1,N+Ng
+            if (.not.pct_cell_constrained(j)) cycle
+            write(*,'(a,i0,a,i0,a,es24.16,a,es12.4,a,l1)') &
+               ' (carrier_constraint) step ',marching_step,' cell ',j, &
+               ' fractional excess ',pct_cell_excess(j), &
+               ' report threshold ',limit_report, &
+               ' above report threshold ',pct_cell_excess(j).gt.limit_report
+         enddo
+      endif
 
       ! THE RESIDUAL REPORTED IS THE RESIDUAL OF THE STATE RETURNED.  The
       ! Newton's last trial is not that state: limit_to_element_budget then
@@ -7037,11 +7795,25 @@
                                           terms_full=row_terms(1:N,:),    &
                                           row_roundoff_limited=row_roundoff)
       call carrier_record_refused_rows(res, row_terms_phys(1:N,:),        &
-                                       row_terms(1:N,:), row_roundoff,    &
-                                       pct_cell_constrained(1:N))
+                                       row_terms(1:N,:), row_roundoff)
       pct_verdict = verdict
 
       end subroutine solve_carriers
+
+
+      ! The line-search merit of solve_carriers: the largest row residual of
+      ! the solved carriers divided by the given row scale.
+      real(dp) function carrier_merit(res, scale) result(rm)
+      real(dp), dimension(1:N,n_carrier_max), intent(in) :: res, scale
+      integer :: j, ic
+      rm = 0.0d0
+      do ic = 1, n_carrier
+         if (.not. carrier_solved(ic)) cycle
+         do j = 1, N
+            rm = max(rm, abs(res(j,ic))/max(scale(j,ic), 1.0d-300))
+         enddo
+      enddo
+      end function carrier_merit
 
 
       ! Block-tridiagonal Thomas sweep with dense n_carrier x n_carrier
@@ -7164,6 +7936,8 @@
       if (.not. allocated(pct_cell_constrained))                          &
          allocate(pct_cell_constrained(1:N+Ng))
       pct_cell_constrained = .false.
+      if (.not. allocated(pct_cell_excess)) allocate(pct_cell_excess(1:N+Ng))
+      pct_cell_excess = 0.0d0
       ! The OUTER ghosts take the partition of the cell they mirror -- the
       ! zero-gradient outflow boundary -- and then go through the same
       ! limiter as an interior cell.  They HAVE to: a ghost carries its own
@@ -7205,6 +7979,7 @@
             pct_worst_limit = max(pct_worst_limit, over)
             nc(ic_CO) = nC_free(j)
             pct_cell_constrained(j) = .true.
+            pct_cell_excess(j)=max(pct_cell_excess(j),over)
             if (over .gt. limit_report) hit = .true.
          endif
          ! oxygen: CO already fits, scale the water family into what is left
@@ -7217,6 +7992,7 @@
             nc(ic_OH)  = nc(ic_OH) *sc
             nc(ic_H2O) = nc(ic_H2O)*sc
             pct_cell_constrained(j) = .true.
+            pct_cell_excess(j)=max(pct_cell_excess(j),over)
             if (over .gt. limit_report) hit = .true.
          endif
          ! hydrogen: scale the three H-bearing carriers together, against
@@ -7253,6 +8029,7 @@
             nc(ic_H2O) = nc(ic_H2O)*sc
             if (carrier_solved(ic_Hp)) nc(ic_Hp) = nc(ic_Hp)*sc
             pct_cell_constrained(j) = .true.
+            pct_cell_excess(j)=max(pct_cell_excess(j),over)
             if (over .gt. limit_report) hit = .true.
          endif
          if (hit) pct_limited = pct_limited + 1
@@ -7296,6 +8073,10 @@
          allocate(pct_cell_constrained(1:N+Ng))
          pct_cell_constrained = .false.
       endif
+      if (.not. allocated(pct_cell_excess)) then
+         allocate(pct_cell_excess(1:N+Ng))
+         pct_cell_excess=0.0d0
+      endif
       ! Hydrogen: one carried stage, so the simplex is the interval [0,1].
       if (carrier_solved(ic_Hp)) then
          do j = 1, N+Ng
@@ -7303,6 +8084,7 @@
             if (over .le. 0.0d0) cycle
             pct_worst_limit = max(pct_worst_limit, over)
             pct_cell_constrained(j) = .true.
+            pct_cell_excess(j)=max(pct_cell_excess(j),over)
             if (over .gt. limit_report) pct_limited = pct_limited + 1
          enddo
          x1(1,:) = fc(:,ic_Hp)
@@ -7352,6 +8134,7 @@
                if (over .le. 0.0d0) cycle
                pct_worst_limit = max(pct_worst_limit, over)
                pct_cell_constrained(j) = .true.
+               pct_cell_excess(j)=max(pct_cell_excess(j),over)
                if (over .gt. limit_report) pct_limited = pct_limited + 1
             enddo
             x3s(1,:) = fc(:,ic_HeII)
@@ -7367,6 +8150,7 @@
             if (over .le. 0.0d0) cycle
             pct_worst_limit = max(pct_worst_limit, over)
             pct_cell_constrained(j) = .true.
+            pct_cell_excess(j)=max(pct_cell_excess(j),over)
             if (over .gt. limit_report) pct_limited = pct_limited + 1
          enddo
          x2(1,:) = fc(:,ic_HeII)
@@ -7384,8 +8168,28 @@
       ! element total and no mass density is changed by the step.  bsp_mass
       ! of a carrier is exactly the sum of its nuclei's masses, so the mass
       ! moved out of H I, O I and C I is the mass moved into the carriers.
+      !
+      ! EVERY ELEMENT OF EVERY WRITTEN CELL (the physical cells and the
+      ! upper ghosts with a positive density; a cell with rho <= 0 is not
+      ! a gas and is skipped) IS COMPLETED BY ONE RULE,
+      ! element_closure_completion (element_inventory.f90), the rule of the
+      ! stationary write map as well: proportional over the closure species
+      ! where they hold nuclei, the whole remainder in the closure species
+      ! where there is only one, and REFUSED where the held species (the
+      ! carriers just solved, the multi-element molecules, a carried He
+      ! 2^3S level) hold more nuclei of an element than the cell has, or
+      ! where a remainder has more than one closure species and none of them
+      ! holds anything.  Neither case is clipped or seeded into a neutral
+      ! stage: a clip creates the nuclei the held species hold beyond the
+      ! total, a seed invents a partition.
+      !
+      ! IT IS ONE TRANSACTION.  The completed composition is formed in a
+      ! copy and f_sp is written only when every cell has been completed;
+      ! a refusal returns `completion` with element, cell and reason and
+      ! leaves f_sp exactly as it was handed in, and the interval that
+      ! called it is then not covered (carrier_transport_interval).
       subroutine carrier_write_back(rho, f_sp, fc, nrho, nH_free,        &
-                                    nO_free, nC_free)
+                                    nO_free, nC_free, completion)
       real(dp), dimension(1-Ng:N+Ng),           intent(in)    :: rho
       real(dp), dimension(1-Ng:N+Ng,n_carrier_max), intent(in)    :: fc
       real(dp), dimension(1-Ng:N+Ng),           intent(in)    :: nrho
@@ -7393,9 +8197,15 @@
       real(dp), dimension(1-Ng:N+Ng),           intent(in)    :: nO_free
       real(dp), dimension(1-Ng:N+Ng),           intent(in)    :: nC_free
       real(dp), dimension(1-Ng:N+Ng,n_species), intent(inout) :: f_sp
+      type(element_completion),                 intent(out)   :: completion
+      real(dp), dimension(1-Ng:N+Ng,n_species) :: f_wb
       real(dp) :: nd, nH2n, nOHn, nH2On, nCOn, nHpn, rest, held, sc
-      real(dp) :: nHeIIn, nHeIIIn, nHeTRn
+      real(dp) :: nHeIIn, nHeIIIn, nHeTRn, mag_e
+      type(element_completion) :: cdec
       integer  :: j, k, i0
+
+      completion = element_completion()
+      f_wb = f_sp
 
       ! THE LOWER GHOSTS ARE NOT WRITTEN.  They hold the composition of the
       ! gas flowing in, which the ionization sweep pins from the handoff and
@@ -7416,97 +8226,101 @@
          if (carrier_solved(ic_Hp))                                      &
             nHpn = fc(j,ic_Hp)                                           &
                   *carrier_nucleus_reference(ic_Hp, j, nrho(j))
-         f_sp(j,isp_H2)  = nH2n /nd
-         f_sp(j,isp_OH)  = nOHn /nd
-         f_sp(j,isp_H2O) = nH2On/nd
-         f_sp(j,isp_CO)  = nCOn /nd
-         if (carrier_solved(ic_Hp)) f_sp(j,isp_HII) = nHpn/nd
+         f_wb(j,isp_H2)  = nH2n /nd
+         f_wb(j,isp_OH)  = nOHn /nd
+         f_wb(j,isp_H2O) = nH2On/nd
+         f_wb(j,isp_CO)  = nCOn /nd
+         if (carrier_solved(ic_Hp)) f_wb(j,isp_HII) = nHpn/nd
 
-         ! The nuclei the carriers did NOT take are shared out over the
-         ! element's other species IN PROPORTION TO WHAT THEY ALREADY HELD.
-         ! Two reasons for the proportional rule rather than putting the
-         ! whole remainder in the neutral stage: it cannot drive a stage
-         ! negative, and it leaves the ionization fraction of the cell where
-         ! it was, which is the right starting point for the sweep that
-         ! re-solves it a moment later.  HeH+ is excluded from the hydrogen
-         ! share because rescaling it would move a helium nucleus too.
-         ! The nuclei the carriers did not take, shared over the stages
-         ! that are still local. WHEN THE PROTON IS CARRIED IT LEAVES THAT
-         ! SHARE: its density has just been written from the transported
-         ! value above, and rescaling it here in proportion to what it held
-         ! would immediately undo the transport. It moves to the taken side
-         ! of the ledger instead, one nucleus each, exactly as H2 takes two.
+         ! ---- hydrogen ------------------------------------------------
+         ! The nuclei the carriers did NOT take go to the element's closure
+         ! species IN PROPORTION TO WHAT THEY ALREADY HELD: it cannot drive
+         ! a stage negative, and it leaves the ionization fraction of the
+         ! cell where it was, which is the right starting point for the
+         ! sweep that re-solves it a moment later.  The closure species are
+         ! H I, H II (unless carried), H2+ and H3+.  HeH+ is held (rescaling
+         ! it would move a helium nucleus too).  WHEN THE PROTON IS CARRIED
+         ! IT IS HELD: its density has just been written from the
+         ! transported value, and rescaling it here would undo the
+         ! transport; it takes one nucleus each, exactly as H2 takes two.
          if (carrier_solved(ic_Hp)) then
             rest = nH_free(j) - 2.0d0*nH2n - nOHn - 2.0d0*nH2On - nHpn
-            held = f_sp(j,isp_HI)*nd                                     &
+            mag_e = nH_free(j) + 2.0d0*nH2n + nOHn + 2.0d0*nH2On + nHpn
+            held = f_sp(j,isp_HI)*nd                                  &
                  + 2.0d0*f_sp(j,isp_H2p)*nd + 3.0d0*f_sp(j,isp_H3p)*nd
+            cdec = element_closure_completion(rest, mag_e, held, 3)
          else
-         rest = nH_free(j) - 2.0d0*nH2n - nOHn - 2.0d0*nH2On
-         held = f_sp(j,isp_HI)*nd + f_sp(j,isp_HII)*nd                   &
-              + 2.0d0*f_sp(j,isp_H2p)*nd + 3.0d0*f_sp(j,isp_H3p)*nd
+            rest = nH_free(j) - 2.0d0*nH2n - nOHn - 2.0d0*nH2On
+            mag_e = nH_free(j) + 2.0d0*nH2n + nOHn + 2.0d0*nH2On
+            held = f_sp(j,isp_HI)*nd + f_sp(j,isp_HII)*nd             &
+                 + 2.0d0*f_sp(j,isp_H2p)*nd + 3.0d0*f_sp(j,isp_H3p)*nd
+            cdec = element_closure_completion(rest, mag_e, held, 4)
          endif
-         if (held .gt. 0.0d0 .and. rest .gt. 0.0d0) then
-            sc = rest/held
-            f_sp(j,isp_HI)  = f_sp(j,isp_HI) *sc
-            if (.not. carrier_solved(ic_Hp))                             &
-               f_sp(j,isp_HII) = f_sp(j,isp_HII)*sc
-            f_sp(j,isp_H2p) = f_sp(j,isp_H2p)*sc
-            f_sp(j,isp_H3p) = f_sp(j,isp_H3p)*sc
-         else if (held .le. 0.0d0) then
-            f_sp(j,isp_HI) = max(rest, 0.0d0)/nd
-         else
-            f_sp(j,isp_HI)  = 0.0d0
-            if (.not. carrier_solved(ic_Hp)) f_sp(j,isp_HII) = 0.0d0
-            f_sp(j,isp_H2p) = 0.0d0
-            f_sp(j,isp_H3p) = 0.0d0
+         if (completion_refused(ien_H)) return
+         if (cdec%mode .eq. closure_by_proportion) then
+            sc = cdec%scale
+            f_wb(j,isp_HI)  = f_sp(j,isp_HI) *sc
+            if (.not. carrier_solved(ic_Hp))                          &
+               f_wb(j,isp_HII) = f_sp(j,isp_HII)*sc
+            f_wb(j,isp_H2p) = f_sp(j,isp_H2p)*sc
+            f_wb(j,isp_H3p) = f_sp(j,isp_H3p)*sc
          endif
+         ! closure_left_empty: the closure species keep the zero they
+         ! hold (three or four of them, so no unique case here).
 
          ! ---- helium, where its two ionized stages are carried -------
          ! The stages are written from the transported fractions, and the
          ! helium nuclei they did not take go to the neutral stage.  The
          ! helium sitting in HeH+ and in any further helium-bearing
-         ! molecule is left where it is, for the reason the hydrogen share
-         ! leaves it: rescaling that molecule would move a nucleus of the
-         ! OTHER element with it.  It is therefore taken out of the
-         ! remainder, from the same frozen count the simplex reserved it
-         ! with, so the element total of the cell is exactly what it was.
+         ! molecule is held, for the reason the hydrogen share holds it:
+         ! rescaling that molecule would move a nucleus of the OTHER
+         ! element with it.  It is therefore taken out of the remainder,
+         ! from the same frozen count the simplex reserved it with.
          ! He 2^3S is a level inside He I.  Left to the sweep, it is
          ! rescaled by the same factor and keeps its share of the neutral
          ! helium, which is the right starting point for the sweep that
          ! re-solves the level a moment later; carried ("He 2^3S
-         ! transport"), it is written from its own row below.
+         ! transport"), it is held and the closure species is the ground
+         ! singlet n(He I) - n(2^3S).
          !
-         ! THE REMAINDER IS NONNEGATIVE ON THE ADMISSIBLE SET and is not
-         ! clipped: the state handed here has been through the projection,
-         ! which bounds the two stages by the helium available to them, so
-         ! what is left is at least the frozen metastable's own population.
-         ! A negative remainder would mean the cell had been made to hold
-         ! more helium than it has, so it is MEASURED into
-         ! carrier_helium_singlet_under_zero and left in the state rather
-         ! than hidden by a floor while the two ionized stages stand.
+         ! The projection bounds the stages by the helium available to
+         ! them, so on its admissible set the singlet is nonnegative.  How
+         ! far a state stood outside that set is still MEASURED into
+         ! carrier_helium_singlet_under_zero; beyond the representability
+         ! allowance it is now refused, and within it the singlet is
+         ! written as zero, so He I >= He 2^3S always holds in the state
+         ! written.
          if (carrier_solved(ic_HeII)) then
             nHeIIn  = fc(j,ic_HeII)                                      &
                      *carrier_nucleus_reference(ic_HeII, j, nrho(j))
             nHeIIIn = fc(j,ic_HeIII)                                     &
                      *carrier_nucleus_reference(ic_HeIII, j, nrho(j))
-            f_sp(j,isp_HeII)  = nHeIIn /nd
-            f_sp(j,isp_HeIII) = nHeIIIn/nd
+            f_wb(j,isp_HeII)  = nHeIIn /nd
+            f_wb(j,isp_HeIII) = nHeIIIn/nd
             rest = carrier_nucleus_reference(ic_HeII, j, nrho(j))        &
                  - nHeIIn - nHeIIIn - cbg_nHemol(j)
-            ! THE CARRIED He 2^3S LEVEL IS WRITTEN FROM ITS OWN ROW, and
-            ! He I, which holds it, takes the whole remainder: the level is
-            ! not rescaled with He I (that would undo its transport), and
-            ! the singlet is rest - n(2^3S), nonnegative on the
-            ! three-dimensional simplex the projection returned.
+            mag_e = carrier_nucleus_reference(ic_HeII, j, nrho(j))       &
+                  + nHeIIn + nHeIIIn + cbg_nHemol(j)
             if (carrier_solved(ic_HeTR)) then
                nHeTRn = fc(j,ic_HeTR)                                    &
                        *carrier_nucleus_reference(ic_HeTR, j, nrho(j))
-               f_sp(j,isp_HeTR) = nHeTRn/nd
+               f_wb(j,isp_HeTR) = nHeTRn/nd
                if (rest - nHeTRn .lt. 0.0d0)                             &
                   carrier_helium_singlet_under_zero =                    &
                      max(carrier_helium_singlet_under_zero,              &
                          (nHeTRn - rest)/max(cbg_nHenuc(j), 1.0d-300))
-               f_sp(j,isp_HeI) = rest/nd
+               ! The singlet is the one closure species of helium.
+               cdec = element_closure_completion(rest - nHeTRn,          &
+                         mag_e + nHeTRn,                                 &
+                         max(f_sp(j,isp_HeI)-f_sp(j,isp_HeTR), 0.0d0)*nd,&
+                         1)
+               if (completion_refused(ien_He)) return
+               ! Left empty, the singlet keeps its zero: He I = He 2^3S.
+               if (cdec%mode .eq. closure_left_empty) then
+                  f_wb(j,isp_HeI) = nHeTRn/nd
+               else
+                  f_wb(j,isp_HeI) = max(rest, nHeTRn)/nd
+               endif
             else
             if (rest - cbg_nheiTR(j) .lt. 0.0d0)                         &
                carrier_helium_singlet_under_zero =                       &
@@ -7514,51 +8328,90 @@
                       (cbg_nheiTR(j) - rest)                             &
                       /max(cbg_nHenuc(j), 1.0d-300))
             held = f_sp(j,isp_HeI)*nd
-            if (held .gt. 0.0d0 .and. rest .gt. 0.0d0) then
-               sc = rest/held
-               f_sp(j,isp_HeI) = f_sp(j,isp_HeI)*sc
+            ! He I, with the level inside it, is the one closure species.
+            cdec = element_closure_completion(rest, mag_e, held, 1)
+            if (completion_refused(ien_He)) return
+            if (cdec%mode .eq. closure_by_proportion) then
+               sc = cdec%scale
+               f_wb(j,isp_HeI) = f_sp(j,isp_HeI)*sc
                if (thereis_HeITR)                                        &
-                  f_sp(j,isp_HeTR) = f_sp(j,isp_HeTR)*sc
-            else
+                  f_wb(j,isp_HeTR) = f_sp(j,isp_HeTR)*sc
+            else if (cdec%mode .eq. closure_unique_species) then
                ! The cell holds no neutral helium to share the remainder
                ! over: it becomes the whole neutral stage, and the level
                ! inside it starts the next sweep empty.
-               f_sp(j,isp_HeI) = rest/nd
-               if (thereis_HeITR) f_sp(j,isp_HeTR) = 0.0d0
+               f_wb(j,isp_HeI) = rest/nd
+               if (thereis_HeITR) f_wb(j,isp_HeTR) = 0.0d0
             endif
             endif
          endif
 
-         rest = nO_free(j) - nOHn - nH2On - nCOn
+         ! ---- oxygen and carbon ----------------------------------------
+         ! Their ion stages close each element; OH, H2O and CO are held.
+         rest  = nO_free(j) - nOHn - nH2On - nCOn
+         mag_e = nO_free(j) + nOHn + nH2On + nCOn
          i0   = melem_i0(iel_O)
          held = 0.0d0
          do k = 0, melem_top(iel_O)
             held = held + f_sp(j,mion_fsp(i0+k))*nd
          enddo
-         if (held .gt. 0.0d0) then
-            sc = max(rest, 0.0d0)/held
+         cdec = element_closure_completion(rest, mag_e, held,            &
+                                           melem_top(iel_O) + 1)
+         if (completion_refused(ien_O)) return
+         if (cdec%mode .eq. closure_by_proportion) then
+            sc = cdec%scale
             do k = 0, melem_top(iel_O)
-               f_sp(j,mion_fsp(i0+k)) = f_sp(j,mion_fsp(i0+k))*sc
+               f_wb(j,mion_fsp(i0+k)) = f_sp(j,mion_fsp(i0+k))*sc
             enddo
-         else
-            f_sp(j,mion_fsp(i0)) = max(rest, 0.0d0)/nd
+         else if (cdec%mode .eq. closure_unique_species) then
+            ! One stage only: it takes the whole remainder.
+            f_wb(j,mion_fsp(i0)) = rest/nd
          endif
 
-         rest = nC_free(j) - nCOn
+         rest  = nC_free(j) - nCOn
+         mag_e = nC_free(j) + nCOn
          i0   = melem_i0(iel_C)
          held = 0.0d0
          do k = 0, melem_top(iel_C)
             held = held + f_sp(j,mion_fsp(i0+k))*nd
          enddo
-         if (held .gt. 0.0d0) then
-            sc = max(rest, 0.0d0)/held
+         cdec = element_closure_completion(rest, mag_e, held,            &
+                                           melem_top(iel_C) + 1)
+         if (completion_refused(ien_C)) return
+         if (cdec%mode .eq. closure_by_proportion) then
+            sc = cdec%scale
             do k = 0, melem_top(iel_C)
-               f_sp(j,mion_fsp(i0+k)) = f_sp(j,mion_fsp(i0+k))*sc
+               f_wb(j,mion_fsp(i0+k)) = f_sp(j,mion_fsp(i0+k))*sc
             enddo
-         else
-            f_sp(j,mion_fsp(i0)) = max(rest, 0.0d0)/nd
+         else if (cdec%mode .eq. closure_unique_species) then
+            ! One stage only: it takes the whole remainder.
+            f_wb(j,mion_fsp(i0)) = rest/nd
+         endif
+
+         ! EVERY DENSITY OF THE COMPLETED CELL IS A FINITE NUMBER, checked
+         ! before the transaction commits: finite sums do not make finite
+         ! quotients (a carrier density over a cell density, a closure
+         ! scaled by R/S).  A cell that is not is refused like any other.
+         if (.not. all(abs(f_wb(j,:)) .le. huge(1.0d0))) then
+            cdec = element_completion(status = completion_unrepresentable)
+            if (completion_refused(0)) return
          endif
       enddo
+      f_sp = f_wb
+
+      contains
+
+      ! Whether the decision just taken for element ie of cell j refuses;
+      ! a refusal is returned in `completion`, f_sp untouched.
+      logical function completion_refused(ie)
+      integer, intent(in) :: ie
+      completion_refused = (cdec%status .ne. completion_ok)
+      if (.not. completion_refused) return
+      cdec%element = ie
+      cdec%cell    = j
+      completion   = cdec
+      end function completion_refused
+
       end subroutine carrier_write_back
 
 
@@ -7614,7 +8467,8 @@
       !
       ! Zero is returned where the loss rate is zero, where the carrier is
       ! not solved, and on every cell if no sweep has filled the background.
-      subroutine carrier_h2_chemical_root(rho, f_sp, n_root, row_imbalance)
+      subroutine carrier_h2_chemical_root(rho, f_sp, n_root, row_imbalance, &
+                                          inventory_refused)
       real(dp), dimension(1-Ng:N+Ng),           intent(in)  :: rho
       real(dp), dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
       real(dp), dimension(1-Ng:N+Ng),           intent(out) :: n_root
@@ -7623,6 +8477,10 @@
       ! and not an estimate of it.  It is the one measurement that tells a
       ! solved root from a divided one, so the seed report carries it.
       real(dp), dimension(1-Ng:N+Ng), optional, intent(out) :: row_imbalance
+      ! .true. where the state holds a negative or nonfinite element total
+      ! (carrier_element_totals): no root is formed and n_root is zero.
+      logical, optional, intent(out) :: inventory_refused
+      type(signed_element_total) :: inv_state
       real(dp), dimension(1-Ng:N+Ng,n_carrier_max) :: fc
       real(dp), dimension(1-Ng:N+Ng) :: ntot, nrho, wfac, TK, mbar
       real(dp), dimension(1-Ng:N+Ng) :: nH_free, nO_free, nC_free
@@ -7639,10 +8497,16 @@
       integer, parameter :: n_bisect = 200
       n_root = 0.0d0
       if (present(row_imbalance)) row_imbalance = 0.0d0
+      if (present(inventory_refused)) inventory_refused = .false.
       if (.not. thereis_mol) return
       if (.not. bg_ready)    return
       call carrier_state(rho, f_sp, fc, ntot, nrho, wfac, TK, mbar,       &
-                         nH_free, nO_free, nC_free)
+                         nH_free, nO_free, nC_free, inv_state)
+      if (inv_state%status .ne. element_total_ok) then
+         call write_carrier_inventory_refusal('carrier_h2_chemical_root')
+         if (present(inventory_refused)) inventory_refused = .true.
+         return
+      endif
       call carrier_photolysis(rho, TK, f_sp)
       do j = 1, N
          call carrier_cell_densities(fc(j,:), j, nrho(j), nc)
@@ -8187,6 +9051,8 @@
          txt = 'the chemistry of the shortest admissible trial did not close'
       case (carrier_relax_mask_safety_stop)
          txt = 'the diagnostic interval mask hit its safety stop'
+      case (carrier_relax_inventory_refused)
+         txt = 'an element total of the composition is negative'
       case default
          txt = 'undefined'
       end select
@@ -8204,6 +9070,7 @@
       case (1);    txt = 'the interval was not covered'
       case (2);    txt = 'the movement bound'
       case (3);    txt = 'the chemistry did not close'
+      case (4);    txt = 'an element total of the closed trial is negative'
       case default; txt = 'unrecognized'
       end select
       end function carrier_trial_refusal_text
@@ -8348,6 +9215,9 @@
          call ioniz_eq(T, u(1,:), f_sp, heat, cool, eta, ledger)
          call set_ioniz_eq_state_may_be_refused(.false.)
          n_cycles = k
+         if (ledger%n_invalid_imposed .gt. 0) then
+            why = chem_closure_invalid_imposed; exit
+         endif
          chem_last_offsimplex  = ledger%n_offsimplex
          chem_last_nonfinite   = ledger%n_nonfinite
          chem_last_mol_clamped = ledger%n_mol_clamped
@@ -8363,6 +9233,12 @@
          ! base handoff and of the ghost's own ionization balance.
          if (ledger%n_ghost_open .gt. 0) then
             why = chem_closure_boundary_open;  exit
+         endif
+         ! A REFUSED MASS PROJECTION, the same kind of statement: the
+         ! composition handed back does not weigh the density it belongs
+         ! to, so the trial is restored by the caller.
+         if (ledger%n_projection_refused .gt. 0) then
+            why = chem_closure_projection_refused;  exit
          endif
          ! n_offsimplex IS A PROPERTY OF THE ROOT SEARCH AND NOT OF THE
          ! STATE HANDED BACK, so it is reported and does not refuse the
@@ -8450,6 +9326,10 @@
       case (chem_closure_nonfinite);      txt = 'nonfinite composition'
       case (chem_closure_not_admissible); txt = 'p, T, heat, cool or eta not admissible'
       case (chem_closure_boundary_open);  txt = 'lower boundary left open'
+      case (chem_closure_projection_refused)
+         txt = 'mass projection refused'
+      case (chem_closure_invalid_imposed)
+         txt = 'invalid imposed transported fraction'
       case default;                       txt = 'unrecognized reason'
       end select
       end function chem_closure_reason_text
@@ -8576,6 +9456,7 @@
       real(dp), parameter :: r_probe(3) = [1.20d0, 1.36d0, 1.60d0]
       integer  :: j, k, ic, ending, step_status, refusal, n_cycles
       logical  :: refused, chem_ok
+      type(signed_element_total) :: inv_relax
       ! The diagnostic interval mask's safety stop (default unreachable:
       ! only a waived omitted set can set it).
       logical  :: interval_mask_safety_tripped
@@ -8585,6 +9466,7 @@
       integer, parameter :: refused_interval  = 1
       integer, parameter :: refused_bound     = 2
       integer, parameter :: refused_chemistry = 3
+      integer, parameter :: refused_inventory = 4
 
       drift  = 0.0d0
       nstep  = 0
@@ -8601,7 +9483,18 @@
       interval_mask_safety_tripped = .false.
       tscale = R0/v0
       call carrier_state(rho, f_sp, fprev, ntot, nrho, wfac, TK,        &
-                         mbar, nH_free, nO_free, nC_free)
+                         mbar, nH_free, nO_free, nC_free, inv_relax)
+      ! AN ENTRY WITH A NEGATIVE OR NONFINITE ELEMENT TOTAL IS NOT RELAXED:
+      ! nothing is advanced, the entry composition is handed back with its
+      ! primitive state, and the ending names the refusal.
+      if (inv_relax%status .ne. element_total_ok) then
+         call write_carrier_inventory_refusal(                           &
+              'relax_photochemical_composition')
+         if (present(outcome)) outcome = carrier_relax_inventory_refused
+         call pressure_and_temperature_at_fixed_conserved_state(u, f_sp,  &
+                                                          p, T, ntot_e, ne_e)
+         return
+      endif
       fentry = fprev
       call carrier_diffusivities(f_sp, rho, TK, ntot, Dco)
       do j = 1, N
@@ -8680,7 +9573,15 @@
          endif
          if (.not. refused) then
             call carrier_state(rho, f_sp, fnow, ntot, nrho, wfac,        &
-                               TK, mbar, nH_free, nO_free, nC_free)
+                               TK, mbar, nH_free, nO_free, nC_free,      &
+                               inv_relax)
+            if (inv_relax%status .ne. element_total_ok) then
+               refused = .true.;  refusal = refused_inventory
+               call write_carrier_inventory_refusal(                     &
+                    'relax_photochemical_composition, trial')
+            endif
+         endif
+         if (.not. refused) then
             ! THE MOVEMENT BOUND, on the particle count of each cell --
             ! what the fixed wind responds to -- unless the run asks for the
             ! retired carrier-fraction measure
@@ -8770,6 +9671,12 @@
                ending = carrier_relax_mask_safety_stop
                exit
             endif
+            ! A trial whose closed composition holds a negative element
+            ! total is not a shorter-step question: the relaxation ends.
+            if (refusal .eq. refused_inventory) then
+               ending = carrier_relax_inventory_refused
+               exit
+            endif
             if (grow .le. relax_grow_min) then
                select case (refusal)
                case (refused_interval)
@@ -8849,7 +9756,14 @@
       enddo
       carrier_rows_advect = .false.
       call carrier_state(rho, f_sp, fnow, ntot, nrho, wfac, TK,          &
-                         mbar, nH_free, nO_free, nC_free)
+                         mbar, nH_free, nO_free, nC_free, inv_relax)
+      ! The composition handed back is the entry or a kept trial, and both
+      ! were judged above; a refusal here is a broken invariant.
+      if (inv_relax%status .ne. element_total_ok) then
+         call write_carrier_inventory_refusal(                           &
+              'relax_photochemical_composition, returned state')
+         error stop 1
+      endif
       ! The diffusivities of the composition this pass returns, at the
       ! background of its last kept chemistry (or of the entry, when no
       ! trial was kept): the state the run holds from here.

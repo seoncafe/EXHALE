@@ -22,6 +22,28 @@ exchange) are on by default, so a bare `input.inp` solves the atomic H/He
 problem with that physics rather than reproducing the legacy ATES model bit
 for bit.
 
+Marching profile convergence is the default scientific route. A stationary
+JFNK root is a separate result; failure to obtain one does not
+invalidate a marching solution whose profiles satisfy the applicable
+physical-time acceptance criterion. The executable separately defaults to
+`Run mode: init`, which is initialization or continuation and does not
+establish a physical elapsed-time window. Use `Run mode: phys` and assess
+saved profiles over the required flow-crossing interval when making a
+physical-time marching claim. The default marching acceptance criterion in
+v1.00 and v1.10 uses K=3 flow-crossing times; ordinary solver termination
+does not automatically apply it.
+The checker `../EXHALE_v1.10/LHS1140b/tools/marching_acceptance.py` requires full-window ranges of at most
+0.004 dex in T and rho in every physical cell. Velocity spans must be at
+most 1 percent of the minimum speed in cells that keep one sign and remain
+at Mach 0.01 or above; the remaining cells use 1 percent of the maximum
+speed across that quasi-hydrostatic set and the window. It uses the larger
+outer-flow/acoustic crossing time from the final snapshot, requires a
+snapshot bracketing the start and at least ten snapshots per crossing time
+on average with no gap greater than one tenth of a crossing time. See the
+physical-time recipe in `README_HOWTO.md` for clock, archive, and restart
+requirements. A zero-speed quasi-hydrostatic set has zero velocity span.
+
+
 ---
 
 ## Features
@@ -212,7 +234,7 @@ for bit.
 
 - Second-order marching with PLM or WENO3 reconstruction and a stated
   interface flux (`Numerical flux:` is mandatory; `HLLC`, `ROE` or `LLF`),
-  usable as a two-stage PLM -> WENO3 sequence. `Low Mach velocity jump:`
+  with an optional two-stage PLM -> WENO3 initialization sequence. `Low Mach velocity jump:`
   (default off) scales the Roe branch's velocity jump by `min(Ma, 1)` after
   Rieper (2011); it is kept for study and is NOT recommended on a
   near-hydrostatic column, where it was measured to remove the damping of the
@@ -222,12 +244,12 @@ for bit.
   a non-monotone (Grippo) line search and a scaled trust region. The
   stationary system carries a row and an unknown for every transported
   balance the configuration activates, not only the hydrodynamic triple
-- The marching stops when the NUMERICAL face mass flux `r^2 F_rho` is flat
+- In `Run mode: init`, the ordinary marching stop requires the NUMERICAL face mass flux `r^2 F_rho` to be flat
   over `r >= r_flux` to a spread below 4e-4 (`march_flux_spread_th`) AND the
   state has stopped changing: over one monitor window of 500 steps no cell's
   rho or total energy moves by 1e-4 relative, nor its momentum by 1e-4 of
   `sqrt(rho E)` (`march_change_th`). A `[stop]` line prints both numbers
-  at every monitor step. The cell-centered spread `du` of `rho v r^2` is
+  at every monitor step. With `Run mode: phys` and `Restart intent: trajectory`, these gates are report-only. The cell-centered spread `du` of `rho v r^2` is
   printed as a diagnostic only (it has a resolution floor next to the outer
   ghost) and still drives the PLM -> WENO3 switch of `du_th [PLM,WENO3]:`.
   `Solver: Newton [switch]` hands the state to the JFNK solve once that face
@@ -275,11 +297,11 @@ for bit.
   reported and not gating, because the same balance is a cancellation of
   advective terms in the wind and of eddy and settling terms in the layer and
   is not resolvable to one number in both. The certification is a
-  DIAGNOSTIC, not the acceptance of a result: a state is accepted for an
-  observable when continuing the solve moves that observable by less than a
-  budget set by its precision, its term balance closes and its profiles are
-  stable (`md/acceptance_by_observable_precision_20261009.md`); a state that
-  is not certified carries the flag and its failing rows. Exit statuses: 0
+  DIAGNOSTIC alongside the default marching profile acceptance. Use the
+  default K=3 complete-profile bands in both trees; no
+  stationary root, observable-change budget or slow-chemistry wait is an
+  additional requirement. An uncertified state retains its flag and failing
+  rows. Exit statuses: 0
   for a certified state or a run that made no stationary claim (the marching
   stop, whose state is a relaxation snapshot, a step cap, a stall, a NaN); 2
   for a state the run declared stationary (the residual gate met while
@@ -616,7 +638,14 @@ make                                    # ifx; use make FC=gfortran or FC=ifort 
 make check                              # bitwise regression over the case matrix
 make test                               # the assertion suites (physics, grid and gates, ...)
 ```
-The Makefile uses `ifx` from `PATH` by default and links its MKL with
+The Makefile selects `ifx` from `PATH` by default. On this machine, the
+installed build uses `/data/opt/oneapi_2026.1.1/setvars.sh`, the pinned
+`/data/opt/oneapi_2026.1.1/compiler/2026.1/bin/ifx` (2026.1.1), the
+matching `MKLROOT`, and the conda-forge GCC link driver. A login shell may
+select a different `ifx`; pin the compiler and library paths when reproducing
+that installed executable. The Makefile fixes the Wind-AE source and link
+object order explicitly and rejects a source-list mismatch. The Intel build
+links MKL with
 `-qmkl=sequential`. With `make FC=gfortran`, it uses OpenBLAS from the compiler's
 prefix when available (as with the conda-forge gfortran 16.2 on this machine),
 records that path in the rpath, and otherwise links the system `-llapack`
@@ -652,33 +681,20 @@ nineteen ready-made configurations, one for each physics or solver option;
 copy one as a starting point. `./run_EXHALE.sh` instead opens a Tk interface
 that fills in the planetary parameters and builds and runs for you.
 
-For a quantitative mass-loss rate, converge with the two-stage scheme and the
-Newton finish, on a domain whose outer face lies past the sonic point:
+For a physical-time marching result, set `Run mode: phys`, retain
+profile snapshots, and measure the full radial temperature, density, and
+velocity bands over the required flow-crossing window. The executable's
+`Run mode: init` default is an initialization route, not a scientific
+acceptance criterion. Both versions use the external K=3 profile
+checker as the default acceptance test; ordinary solver stops do not automatically satisfy that test.
+Check that the outer face is supersonic before treating the mass-loss rate
+as quantitative, because a subsonic outer boundary can influence it.
 
-```
-Reconstruction scheme:  PLM+WENO3
-du_th [PLM,WENO3]:      0.5 1.0e-3
-Solver:                 Newton
-Outer radius [R_p]:     2.0
-```
-
-The first number of `du_th [PLM,WENO3]:` is the `du` at which the PLM stage
-hands over to WENO3; the second only has to be smaller than the first (that
-selects the two-stage mode) and is no longer a stop: the marching stop and
-the JFNK hand-off read the face mass-flux spread (see Features). Check the line `Mach number of the
-outermost cell` in the results: below 1 the outer ghost condition can set
-Mdot, and the outer radius must be moved out. Three run recipes with their
-inputs, commands, run times and outputs are in `examples/recipe_*/README.md`.
-
-An atomic run finished this way certifies. A run that carries a species row,
-an element row from `He_diffusion` or a carrier row from the molecular
-carriers, is solved by alternating the wind solve with the composition
-relaxations over outer passes; many such states certify (the LHS 1140 b
-molecular and atomic diffusion states among them, `cert_reason=certified_in_wind`,
-the species rows gated at `r >= 1.20 R_p`), and some do not yet, what limits
-them being measured and recorded. The `# coupling:` line of every state file
-says which: quote a mass-loss rate only from a state that says `certified=T`,
-or with that qualification.
+`Solver: Newton` requests an optional stationary JFNK finish. The two-stage
+`PLM+WENO3` and `du_th [PLM,WENO3]` input is an optional initialization route;
+its first threshold controls the reconstruction change. A stationary root
+may be certified independently. Failure to obtain one does not negate a
+marching result whose profile band passes its stated criterion.
 
 Everything else (compiler variants, all opt-in physics keys, output-file
 schemas, convergence recipes, post-processing) is in
@@ -808,4 +824,21 @@ the Markdown memos of the development record.
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-10-27 18:35 KST
+Last updated: 2026-11-09 22:51 KST
+
+
+### Regression references (2026-11-09)
+
+The native `backup/regression/` harness contains all 16 default cases and
+references refreshed once at the end of the reviewed change series. Runs
+used this tree's installed ifx 2026.1.1 binary, one thread on lart2. The runner
+and comparator are identical in both versions, but each golden comes from
+its own version: molecular-ion transport and written heating diagnostics
+differ between the trees. The capped cases are relaxation snapshots, not
+accepted physical solutions. `iontrans_metals` is a labeled code-path control
+with a subsonic L1 outer face; a physical 2 R_p stored state is still pending.
+`oxygen_chemistry` is outside the default list and its old golden is unchanged.
+The original references and migration records are preserved in
+`EXHALE_v1.10/scratch_golden_refresh_step2_20261109/` at the workspace root.
+See the shared update log, `EXHALE_v1.00/md/Update_EXHALE_stage3.md`, section 182.
+

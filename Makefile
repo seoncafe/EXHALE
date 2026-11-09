@@ -55,7 +55,7 @@ ifneq (,$(filter ifort ifx,$(FC)))
   # The compiler's runtime (libiomp5, libimf, ...) and MKL are recorded in
   # the rpath, as the OpenBLAS prefix is below, so the binary runs without
   # the oneAPI environment (the run scripts start it under env -i).
-  LAPACK_LIBS ?= -qmkl=sequential -Wl,-rpath,$(TOOLCHAIN_PREFIX)/lib \
+  LAPACK_LIBS ?= -qmkl=sequential -Wl,-rpath,$(TOOLCHAIN_PREFIX)/lib -Wl,-rpath-link,$(TOOLCHAIN_PREFIX)/lib \
                  $(if $(MKLROOT),-Wl$(comma)-rpath$(comma)$(MKLROOT)/lib)
 else
   FFLAGS  := -O3 -fopenmp
@@ -117,6 +117,36 @@ $(shell mkdir -p $(OBJDIR); \
     mv -f $(OBJDIR)/.build_stamp.tmp $(BUILDSTAMP); \
   rm -f $(OBJDIR)/.build_stamp.tmp)
 
+
+# The reviewed object order is an explicit link input, independent of directory enumeration.
+WAE_MODULE_SRC := \
+  src/modules/wind_ae/wae_fe.f90 \
+  src/modules/wind_ae/wae_grid.f90 \
+  src/modules/wind_ae/wae_config.f90 \
+  src/modules/wind_ae/wae_ic_writer.f90 \
+  src/modules/wind_ae/wae_rate_coeffs.f90 \
+  src/modules/wind_ae/wae_glq_rates.f90 \
+  src/modules/wind_ae/wae_exhale_input.f90 \
+  src/modules/wind_ae/wae_lc_oii.f90 \
+  src/modules/wind_ae/wae_soe.f90 \
+  src/modules/wind_ae/wae_spectrum.f90 \
+  src/modules/wind_ae/wae_intode.f90 \
+  src/modules/wind_ae/wae_status.f90 \
+  src/modules/wind_ae/wae_rnew.f90 \
+  src/modules/wind_ae/wae_lc_cii.f90 \
+  src/modules/wind_ae/wae_difeq.f90 \
+  src/modules/wind_ae/wae_nr.f90 \
+  src/modules/wind_ae/wae_lc_oiii.f90 \
+  src/modules/wind_ae/wae_rrec.f90 \
+  src/modules/wind_ae/wae_exhale_bridge.f90 \
+  src/modules/wind_ae/wae_eqns.f90 \
+  src/modules/wind_ae/wae_continuation.f90 \
+  src/modules/wind_ae/wae_types.f90 \
+  src/modules/wind_ae/wae_params.f90 \
+  src/modules/wind_ae/wae_lc_ciii.f90
+ifneq ($(sort $(WAE_MODULE_SRC)),$(sort $(wildcard src/modules/wind_ae/*.f90)))
+  $(error Wind-AE source set differs from its reviewed ordered list)
+endif
 
 SRC := \
   $(BUILDSTAMP) \
@@ -226,7 +256,7 @@ SRC := \
   src/modules/init/molecular_seed_from_atomic_state.f90 \
   src/modules/init/blas_thread_policy.f90 \
   src/modules/init/init.f90 \
-  $(wildcard src/modules/wind_ae/*.f90) \
+  $(WAE_MODULE_SRC) \
   src/EXHALE_main.f90
 
 # objects (flat in $(OBJDIR)); let make find the sources in their subdirs
@@ -246,7 +276,7 @@ WAE_PROGRAM := src/wind_ae_ic.f90
 # standalone build EXCLUDES wae_exhale_bridge.f90 (it alone uses EXHALE's
 # global_parameters; it is linked only into EXHALE.x for "IC mode: windae").
 WAE_SRC := $(filter-out $(WAE_DIR)/wae_exhale_bridge.f90, \
-             $(sort $(wildcard $(WAE_DIR)/*.f90)))
+             $(WAE_MODULE_SRC))
 WAE_OBJ := $(addprefix $(OBJDIR)/,$(notdir $(WAE_SRC:.f90=.o))) \
            $(addprefix $(PROGDIR)/,$(notdir $(WAE_PROGRAM:.f90=.o)))
 WAE_EXE := wind_ae_ic.x
@@ -333,7 +363,7 @@ FLAGSTAMP  := $(OBJDIR)/.buildflags-$(FLAGHASH)
 # The same device, on the link command: its hash names a stamp that the
 # executables depend on, so a changed library relinks them and recompiles
 # nothing, and an unchanged command names the present stamp.
-LINKFLAGS  := $(FC_PATH) $(FC_VERSION) $(FFLAGS) $(MODFLAG) $(LDLIBS)
+LINKFLAGS  := $(FC_PATH) $(FC_VERSION) $(FFLAGS) $(MODFLAG) $(LDLIBS) $(OBJ) $(WAE_OBJ) $(DIFT_OBJ) $(ECT_OBJ) $(CCE_OBJ)
 LINKHASH   := $(firstword $(shell printf '%s' '$(LINKFLAGS)' | cksum))
 LINKSTAMP  := $(OBJDIR)/.linkflags-$(LINKHASH)
 

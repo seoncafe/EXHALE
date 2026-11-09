@@ -1,7 +1,11 @@
       module hydrodynamic_rows_double
       ! Double-precision finite-volume rows from hydrodynamic_rows_body.inc.
-      ! This instantiation must match Reconstruction_step, Numerical_Fluxes,
-      ! source_func, and RK_integration bitwise for the precision comparison.
+      ! These are the same finite-volume expressions as Reconstruction_step,
+      ! Numerical_Fluxes, source_func and RK_integration. Under ifx's default
+      ! fast floating-point model, separate routines can reassociate sums
+      ! and contract products differently; mathematical consistency does
+      ! not imply bitwise identity. The precision tests use explicit bounds
+      ! scaled by the uncanceled face/source terms, as documented in N4.
 
       use global_parameters
       use caloric_eos, only: caloric_cell_mixture,                       &

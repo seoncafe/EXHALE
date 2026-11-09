@@ -76,7 +76,8 @@
                                         mixture_mass_sum,               &
                                         trace_row_terms_diag,           &
                                         trace_row_terms_from
-      use species_table,          only: n_melem, melem_name
+      use species_table,          only: n_melem, melem_name, melem_i0, &
+                                        melem_top, mion_fsp
       ! THE ONE STOICHIOMETRIC MAP OF THE NUCLEI OF A CELL. The
       ! shared element constraint of the step, its derivatives and the
       ! element totals the write-back restores are all read from here, so
@@ -88,7 +89,19 @@
                                         nuclei_per_particle,             &
                                         inventory_feasible_slack,        &
                                         n_inv_element, ien_H, ien_He,    &
-                                        ien_O, ien_C, inv_element_name
+                                        ien_O, ien_C, inv_element_name,  &
+                                        element_completion,              &
+                                        element_closure_completion,      &
+                                        element_completion_text,         &
+                                        completion_ok,                   &
+                                        closure_by_proportion,           &
+                                        closure_unique_species,          &
+                                        closure_left_empty,              &
+                                        completion_negative_closure,     &
+                                        completion_unrepresentable,      &
+                                        signed_element_total,            &
+                                        signed_element_total_text,       &
+                                        element_total_ok
       use diffusive_photochemistry, only: carrier_steady_residual,     &
                                         carrier_column_scale,          &
                                         carrier_row_term_scale,        &
@@ -481,9 +494,11 @@
       ! THE MATRIX-FREE ACTION WITH THE WENO3 WEIGHTS DIFFERENTIATED
       ! (EXHALE_JV_FRESH_WEIGHTS=1): the products of the Newton model are
       ! taken with weno_mode = 0, the weights recomputed at every probe, in
-      ! place of the frozen weights of mode 2. Measurement only: it asks
-      ! whether the frozen-weight model is what fails to predict the change
-      ! of a row whose terms cancel.
+      ! place of the frozen weights of mode 2. On the line-search route it
+      ! is a measurement: it asks whether the frozen-weight model is what
+      ! fails to predict the change of a row whose terms cancel. The
+      ! trust-region route takes this map whatever the variable says
+      ! (solve_steady_jfnk, the reconstruction of the Newton model).
       logical :: jv_fresh_weights = .false.
       ! WHAT THE LAST PROBE OF jv_product ACTUALLY DID, so that a defect can
       ! be attributed to a decision of the feasible set rather than to the
@@ -572,23 +587,6 @@
       ! conserved_ghosts_of_evaluated_state puts these ghosts back instead.
       real*8, allocatable :: evaluated_state_conserved(:,:)
       real*8, allocatable :: evaluated_state_composition(:,:)
-
-      ! THE REFUSAL AND COST STATISTICS OF A SOLVE, held aside around a
-      ! DIAGNOSTIC.
-      !
-      ! These belong to the solve and a probe's refusal belongs in them: a
-      ! Newton column the solve was refused is a column it did not get,
-      ! whoever asked for it. What may not write them is a SELF-TEST, which
-      ! is not part of the solve at all; a run reporting different refusal
-      ! counts because a diagnostic was switched on is reporting the
-      ! diagnostic.
-      type :: solve_refusal_statistics
-         integer :: n_trial_headroom      = 0
-         integer :: n_trial_no_chem_root  = 0
-         integer :: no_chem_root_cell_max = 0
-         real*8  :: no_chem_root_res_max  = 0.0d0
-         integer :: n_eval_refusal(0:8)   = 0
-      end type solve_refusal_statistics
 
       ! WITH THE SPECIES ROWS THE GEOMETRY CHANGES, so these are set once per
       ! solve by set_transported_species_rows rather than fixed at compile
@@ -773,10 +771,23 @@
       ! equation of state, boundary state or rate coefficient is evaluated
       ! at it; the trial is refused before any of them.
       integer, parameter :: refuse_conserved_state_inadmissible = 8
+      ! The write map found no element completion for the trial's carriers
+      ! (element_closure_completion): they hold more nuclei of an element
+      ! than the cell has, or released nuclei no closure species of the
+      ! cell can take. The trial has no species vector and is refused
+      ! before the sweep.
+      integer, parameter :: refuse_element_completion = 9
+      ! A pass of the trial's composition loop returned a composition whose
+      ! mass projection ioniz_eq refused (above its limit, or a mixture mass
+      ! that is not a usable number): the composition does not weigh the
+      ! density of the state it belongs to.
+      integer, parameter :: refuse_mass_projection = 10
+      integer, parameter :: refuse_last = refuse_mass_projection
       integer :: eval_refusal        = refuse_none
       integer :: eval_refusal_cell   = 0
       integer :: eval_refusal_row    = 0
       real*8  :: eval_refusal_value  = 0.0d0
+      logical :: eval_refusal_value_measured = .false.
       ! Species unknowns of the evaluated state that sit at or below zero,
       ! i.e. on the lower bound of their own variable. A column with many of
       ! them is a state at a corner of the admissible set, where a
@@ -787,7 +798,25 @@
       ! the top of a solve; a probe's refusal counts, because a refused
       ! probe is a Newton column or a Krylov direction the solve did not
       ! get.
-      integer :: n_eval_refusal(0:8) = 0
+      integer :: n_eval_refusal(0:refuse_last) = 0
+
+      ! THE REFUSAL AND COST STATISTICS OF A SOLVE, held aside around a
+      ! DIAGNOSTIC.
+      !
+      ! These belong to the solve and a probe's refusal belongs in them: a
+      ! Newton column the solve was refused is a column it did not get,
+      ! whoever asked for it. What may not write them is a SELF-TEST, which
+      ! is not part of the solve at all; a run reporting different refusal
+      ! counts because a diagnostic was switched on is reporting the
+      ! diagnostic.
+      type :: solve_refusal_statistics
+         integer :: n_trial_headroom      = 0
+         integer :: n_trial_no_chem_root  = 0
+         integer :: no_chem_root_cell_max = 0
+         real*8  :: no_chem_root_res_max  = 0.0d0
+         integer :: n_eval_refusal(0:refuse_last) = 0
+      end type solve_refusal_statistics
+
       ! Jacobian-vector products this solve had to take on the BACKWARD side
       ! of the direction because no forward step along it landed on a
       ! describable state (jv_product). Zero over a solve is the statement
@@ -1430,9 +1459,9 @@
       ! The extremes of E at the last outer iteration, for the diagnostic.
       real*8  :: model_row_equil_min = 1.0d0, model_row_equil_max = 1.0d0
 
-      ! Linear-model row scaling judged_row_scaling_on
-      ! (EXHALE_JUDGED_ROWS=0 restores column scales on the three-unknown
-      ! route). Divide hydrodynamic row k of cell j by tol_k(j) s_k(j),
+      ! Linear-model row scaling judged_row_scaling_on (off by default, so
+      ! the three-unknown route keeps its column scales; EXHALE_JUDGED_ROWS=1
+      ! turns it on). Divide hydrodynamic row k of cell j by tol_k(j) s_k(j),
       ! where residual_row_scale supplies s_k and certification supplies
       ! the local tolerance. Thus each component of F/Dj is its distance
       ! from tolerance. The four-unknown route already uses cell_row_scales.
@@ -2041,12 +2070,12 @@
       integer :: n_budget_face_at_the_iterate = 0
 
       ! ---- THE SHARED ELEMENT CONSTRAINT AS ROWS OF THE STEP ----
-      ! One row for each element a carrier of the cell holds: hydrogen,
-      ! oxygen and carbon. Helium is held by no carrier and has no row.
-      integer, parameter :: n_element_constraint_rows = 3
+      ! One row for each element a carrier of the cell holds. HeH+ remains
+      ! locked, and a carried triplet uses the HeI singlet remainder.
+      integer, parameter :: n_element_constraint_rows = 4
       integer, parameter ::                                              &
          element_constraint_element(n_element_constraint_rows) =          &
-            [ ien_H, ien_O, ien_C ]
+            [ ien_H, ien_He, ien_O, ien_C ]
       ! c of each row at the iterate [cm^-3], and the budget it is measured
       ! against [cm^-3], frozen with the box.
       real*8, allocatable :: elem_row_c(:,:)
@@ -2078,12 +2107,16 @@
       logical :: elem_nu_table_known = .false.
       logical :: elem_species_is_carried(n_species) = .false.
       ! WHICH SPECIES MAY TAKE BACK THE REMAINDER OF AN ELEMENT: the ones
-      ! that hold nuclei of THAT element and of no other element a carrier
-      ! constrains, and that the solve does not carry. A species holding two
-      ! constrained elements at once cannot be rescaled onto one of them
+      ! that hold nuclei of THAT element alone and that the solve does not
+      ! carry. This includes HeI when ion stages are transported. A species
+      ! holding two elements cannot be rescaled onto one of them
       ! without moving the other, so its nuclei are held fixed with the
       ! locked hydrogen of HeH+ and the remainder is shared over the rest.
       logical :: elem_species_absorbs(n_species,n_inv_element) = .false.
+      ! How many species close each element (the size of the closure set
+      ! of element_closure_completion): with none of them holding any
+      ! nuclei a remainder has a partition only when there is one.
+      integer :: elem_n_absorbing(n_inv_element) = 0
       logical :: elem_rows_frozen = .false.
       logical :: elem_rows_active_set_frozen = .false.
       ! HOW NEARLY ACTIVE IS ACTIVE. A row within this fraction of its own
@@ -2111,17 +2144,24 @@
       integer :: n_elem_restoration_steps = 0
       real*8  :: elem_restoration_worst_before = 0.0d0
       real*8  :: elem_restoration_worst_after  = 0.0d0
-      ! The write-back's own statement: cells in which the carriers the
-      ! Newton set demanded more nuclei of an element than the cell holds,
-      ! so that the closure species could not absorb the remainder and the
-      ! element total of the written cell is short of the total it was
-      ! formed from. It is the one place a write-back can create or destroy
-      ! nuclei, and it is counted rather than silent.
+      ! The write map's own statement: write maps refused because the
+      ! carriers the Newton set demanded more nuclei of an element than the
+      ! cell holds, or released nuclei no closure species of the cell could
+      ! take (element_closure_completion). A refused map writes nothing, so
+      ! no write map creates or destroys nuclei; the count, the largest
+      ! relative remainder and the last refused completion are kept.
       ! Components a finite-difference probe could not move at any step
       ! length, summed over the probes of a solve: they are the ones sitting
       ! exactly on a face with the direction pointing out of it.
       integer :: n_probe_blocked_components = 0
       integer :: n_write_back_element_deficit = 0
+      ! Write maps refused at an upper ghost (set_upper_ghosts_of_the_
+      ! carrier_columns), counted apart from the physical cells above.
+      integer :: n_write_back_ghost_refused = 0
+      real*8 :: write_back_element_deficit_last = 0d0
+      ! The completion of the last write map that refused, element, cell,
+      ! reason and the dimensional remainder, for the refusal message.
+      type(element_completion) :: write_back_completion_last
       real*8  :: write_back_worst_element_deficit = 0.0d0
       ! THE SMALLEST RATIO OF AN ADOPTED CARRIER DENSITY TO ITS OWN FLOOR
       ! over every state the solve adopted, and how many (state, unknown)
@@ -3261,7 +3301,8 @@
       end function element_rows_registered
 
 
-      subroutine write_species_rows_into_composition(Y, u, f_sp)
+      subroutine write_species_rows_into_composition(Y, u, f_sp,      &
+                                                    completion)
       ! The species unknowns of Y, written into the species vector: the
       ! element totals first, through the one map an element mass fraction
       ! has back into a species vector, and the carrier columns after, so a
@@ -3285,23 +3326,43 @@
       ! species that close the element (H I, and the H II, H2+ and H3+ the
       ! step does not re-solve; the oxygen and carbon stages), in proportion
       ! to what they held, which is carrier_write_back's rule on the
-      ! marching path. The reservoir ratio is never rescaled: helium is held
-      ! by no carrier, so restoring the hydrogen total restores the ratio.
-      ! Where the carriers demand MORE of an element than the cell holds the
-      ! closure species have nothing left to give, and that cell is counted
-      ! (n_write_back_element_deficit) and refused by the feasibility screen
-      ! rather than written with nuclei nobody supplied.
+      ! marching path. Hydrogen and helium totals are restored separately,
+      ! including the neutral He remainder displaced by carried ion stages.
+      ! The remainder is decided by element_closure_completion (one rule
+      ! for this map and the marching write-back): proportional where the
+      ! closure species hold nuclei, the whole remainder in the one closure
+      ! species where only one exists and holds none, and REFUSED where the
+      ! carriers demand more of an element than the cell holds or where a
+      ! remainder has no closure species to go to.  A refused map writes
+      ! nothing: the composition the map was handed is put back whole, the
+      ! refusal is counted (n_write_back_element_deficit) and returned in
+      ! `completion`, and the caller refuses the trial before anything
+      ! evaluates it.  No cell is written with nuclei nobody supplied and
+      ! no released nuclei are dropped.  This holds for the physical cells
+      ! and the upper ghosts (set_upper_ghosts_of_the_carrier_columns, the
+      ! same rule after the zero-gradient outflow copy) under the
+      ! conserving write-back (element_write_back_conserves);
+      ! EXHALE_ELEMENT_WRITE_BACK=0, the control it is measured against,
+      ! writes the carrier columns with no completion at all.  A ground
+      ! singlet n(He I) - n(He 2^3S) below zero beyond its rounding is a
+      ! negative closure and refuses the map (ground_singlet_of_cell).
       real*8, dimension(nvar_jac*N),          intent(in)    :: Y
       real*8, dimension(3,1-Ng:N+Ng),         intent(in)    :: u
       real*8, dimension(1-Ng:N+Ng,n_species), intent(inout) :: f_sp
+      type(element_completion), intent(out), optional :: completion
       real*8, dimension(1-Ng:N+Ng,1+n_melem) :: Yel
+      real*8, dimension(1-Ng:N+Ng,n_species) :: f_sp_entry
       real*8  :: absorb_before(n_inv_element)
       real*8  :: carried_before(n_inv_element)
       real*8  :: carried_after(n_inv_element)
-      real*8  :: absorb_target, rscale, nd_cell, deficit
+      real*8  :: absorb_target, rscale, nd_cell, deficit, he_singlet_before
       integer :: j, i, ie, isp, nu
       logical :: restore_the_totals
+      type(element_completion) :: cdec
+      write_back_element_deficit_last = 0d0
+      if (present(completion)) completion = element_completion()
       if (nspec_row .le. 0) return
+      f_sp_entry = f_sp
       if (element_rows_registered()) then
          ! The LOWER ghosts keep the composition they were given: the base is
          ! the Dirichlet reservoir of the element operator (srow_base_value).
@@ -3365,6 +3426,19 @@
          ! back by the species that close the element.
          if (restore_the_totals) then
             nd_cell = max(u(1,j), 0.0d0)*n0
+            cdec = element_completion()
+            call ground_singlet_of_cell(f_sp(j,isp_HeI), f_sp(j,isp_HeTR), &
+                                        he_singlet_before, cdec)
+            if (cdec%status .ne. completion_ok) then
+               cdec%cell = j
+               n_write_back_element_deficit =                             &
+                  n_write_back_element_deficit + 1
+               write_back_element_deficit_last = 0d0
+               write_back_completion_last = cdec
+               if (present(completion)) completion = cdec
+               f_sp = f_sp_entry
+               return
+            endif
             carried_before = 0.0d0
             absorb_before  = 0.0d0
             do isp = 1, n_species
@@ -3375,22 +3449,25 @@
                      carried_before(ie) = carried_before(ie)              &
                         + dble(nu)*f_sp(j,isp)*nd_cell
                   else if (elem_species_absorbs(isp,ie)) then
-                     absorb_before(ie) = absorb_before(ie)                &
-                        + dble(nu)*f_sp(j,isp)*nd_cell
+                     if (isp .eq. isp_HeI) then
+                        absorb_before(ie) = absorb_before(ie)             &
+                           + he_singlet_before*nd_cell
+                     else
+                        absorb_before(ie) = absorb_before(ie)             &
+                           + dble(nu)*f_sp(j,isp)*nd_cell
+                     endif
                   endif
                enddo
             enddo
          endif
          do i = 1, nspec_row
             if (srow_kind(i) .ne. srow_carrier) cycle
-            ! A CARRIER NUMBER DENSITY IS BOUNDED ON [0,rho] HERE, in code
-            ! density units; the shared nucleus constraints and the species
-            ! box impose the tighter composition bounds. Dividing by rho
-            ! gives the f_sp column (a number density per unit mass), not a
-            ! species mass fraction. The trial that left it outside these
-            ! bounds has already been recorded by the positivity screen of
-            ! eval_residual, so nothing is hidden by evaluating the bounded
-            ! state. Every consumer of the carrier
+            ! A carrier number density is bounded on [0,rho] here in code
+            ! density units. The shared nucleus constraints and species box
+            ! impose the tighter composition bounds. Dividing by rho gives
+            ! the f_sp number-density column, not a species mass fraction.
+            ! The positivity screen records an inadmissible candidate
+            ! before evaluating the bounded composition. Every consumer of the carrier
             ! fraction is linear in it -- the H2 opacity and self-shielding
             ! column, the H2 share of the caloric mixture, the reaction rates
             ! of the molecular network -- so a negative value is not an
@@ -3424,49 +3501,93 @@
             enddo
          enddo
          do ie = 1, n_inv_element
-            if (ie .eq. ien_He) cycle
             if (carried_after(ie) .eq. carried_before(ie)) cycle
             absorb_target = absorb_before(ie) + carried_before(ie)         &
                           - carried_after(ie)
-            if (absorb_before(ie) .le. 0.0d0) then
-               ! Nothing of this element is left in a species that could
-               ! take the remainder, so the carriers cannot be given one.
-               if (carried_after(ie) .gt. carried_before(ie)) then
-                  n_write_back_element_deficit =                          &
-                     n_write_back_element_deficit + 1
-                  write_back_worst_element_deficit =                      &
-                     max(write_back_worst_element_deficit,                &
-                         (carried_after(ie) - carried_before(ie))         &
-                         /max(carried_after(ie), 1.0d-300))
-               endif
-               cycle
-            endif
-            if (absorb_target .lt. 0.0d0) then
-               ! The carriers demand more of the element than the cell
-               ! holds: the closure species go to zero and the written cell
-               ! is short of the total it was formed with by this much.
-               deficit = -absorb_target                                   &
+            cdec = element_closure_completion(absorb_target,              &
+                      absorb_before(ie) + carried_before(ie)              &
+                      + carried_after(ie), absorb_before(ie),             &
+                      elem_n_absorbing(ie))
+            cdec%element = ie
+            cdec%cell    = j
+            if (cdec%status .ne. completion_ok) then
+               ! The relative size is taken on the nuclei the cell was
+               ! formed with, or on the carriers' own demand where it was
+               ! formed with none, so the diagnostic never divides by zero.
+               deficit = abs(absorb_target)                               &
                         /max(absorb_before(ie) + carried_before(ie),      &
-                             1.0d-300)
+                             carried_after(ie), tiny(1.0d0))
                n_write_back_element_deficit =                             &
                   n_write_back_element_deficit + 1
                write_back_worst_element_deficit =                         &
                   max(write_back_worst_element_deficit, deficit)
-               absorb_target = 0.0d0
+               write_back_element_deficit_last = deficit
+               write_back_completion_last = cdec
+               if (present(completion)) completion = cdec
+               f_sp = f_sp_entry
+               return
             endif
-            rscale = absorb_target/absorb_before(ie)
-            do isp = 1, n_species
-               if (.not. elem_species_absorbs(isp,ie)) cycle
-               f_sp(j,isp) = f_sp(j,isp)*rscale
-            enddo
+            if (cdec%mode .eq. closure_by_proportion) then
+               rscale = cdec%scale
+               do isp = 1, n_species
+                  if (.not. elem_species_absorbs(isp,ie)) cycle
+                  if (isp .eq. isp_HeI) then
+                     f_sp(j,isp_HeI) = f_sp(j,isp_HeTR)                    &
+                        + he_singlet_before*rscale
+                  else
+                     f_sp(j,isp) = f_sp(j,isp)*rscale
+                  endif
+               enddo
+            else if (cdec%mode .eq. closure_unique_species) then
+               ! The one closure species takes the remainder: nd_cell > 0
+               ! here, because a remainder above the allowance needs nuclei.
+               do isp = 1, n_species
+                  if (.not. elem_species_absorbs(isp,ie)) cycle
+                  if (isp .eq. isp_HeI) then
+                     f_sp(j,isp_HeI) = f_sp(j,isp_HeTR)                    &
+                        + absorb_target/nd_cell
+                  else
+                     f_sp(j,isp) = absorb_target                          &
+                        /(dble(elem_nu_of_species(isp,ie))*nd_cell)
+                  endif
+               enddo
+            endif
+            ! closure_left_empty writes nothing: the closure species keep
+            ! the zero they hold.
          enddo
+         ! EVERY DENSITY OF THE COMPLETED CELL IS A FINITE NUMBER before
+         ! the map is kept (finite sums do not make finite quotients); a
+         ! cell that is not refuses the map exactly as an element does.
+         if (.not. all(abs(f_sp(j,:)) .le. huge(1.0d0))) then
+            cdec = element_completion(status = completion_unrepresentable)
+            cdec%cell = j
+            n_write_back_element_deficit = n_write_back_element_deficit + 1
+            write_back_element_deficit_last = 0d0
+            write_back_completion_last = cdec
+            if (present(completion)) completion = cdec
+            f_sp = f_sp_entry
+            return
+         endif
       enddo
-      call set_upper_ghosts_of_the_carrier_columns(f_sp, restore_the_totals)
+      ! THE UPPER GHOSTS, by the same completion rule; a ghost refusal
+      ! refuses the whole map exactly as a physical cell does, and is
+      ! counted apart (n_write_back_ghost_refused) so that a run meeting it
+      ! says it was the boundary.
+      call set_upper_ghosts_of_the_carrier_columns(f_sp,                 &
+                                                   restore_the_totals, cdec)
+      if (cdec%status .ne. completion_ok) then
+         n_write_back_ghost_refused = n_write_back_ghost_refused + 1
+         write_back_element_deficit_last = 0d0
+         write_back_completion_last = cdec
+         if (present(completion)) completion = cdec
+         f_sp = f_sp_entry
+         return
+      endif
       end subroutine write_species_rows_into_composition
 
 
       subroutine set_upper_ghosts_of_the_carrier_columns(f_sp,            &
-                                                         restore_totals)
+                                                   restore_totals, cdec)
       ! THE UPPER GHOST OF A TRANSPORTED CARRIER IS THE OUTERMOST CELL'S
       ! PARTITION, AND IT IS THIS ITERATE'S.  The carrier operator poses a
       ! zero-gradient outflow condition at the top of the column -- the same
@@ -3477,33 +3598,52 @@
       ! the outermost cell.  The lower ghosts are the inflow reservoir and
       ! are not touched here.
       !
-      ! The element totals of the ghost are then restored exactly as they are
-      ! for a physical cell: a carrier is a partition WITHIN an element, and
-      ! moving it may not move the element the ghost holds, which the
-      ! zero-gradient element condition above has just written.  Every term
-      ! of that restoration is proportional to the cell's density and only
-      ! their ratio is used, so the ghost's own density -- which Apply_BC has
-      ! not written yet at this point of a residual evaluation -- is not
-      ! needed and the counts below are per unit density.
+      ! The element totals of the ghost are then completed by the rule of a
+      ! physical cell (element_closure_completion): a carrier is a partition
+      ! WITHIN an element, and moving it may not move the element the ghost
+      ! holds, which the zero-gradient element condition of the write map
+      ! has just written.  Every term is proportional to the ghost's density
+      ! and only their ratio is used, so the ghost's own density -- which
+      ! Apply_BC has not written yet at this point of a residual evaluation
+      ! -- is not needed and the counts below are per unit density.
       !
-      ! A GHOST DEFICIT IS NOT A REFUSAL.  A ghost carries its own density,
-      ! so the same fraction is a different number of nuclei there and can
-      ! ask for more of an element than the ghost holds; the carrier operator
-      ! clamps that at its own outer ghosts rather than refusing the state
-      ! (limit_to_element_budget of diffusive_photochemistry.f90), and the
-      ! clamp below is the same statement.  A physical cell is an unknown and
-      ! its deficit IS refused, above.
+      ! A GHOST THE TWO OUTFLOW CONDITIONS CANNOT BOTH HOLD IN IS REFUSED.
+      ! The carrier condition (zero-gradient carried fractions) and the
+      ! element condition (zero-gradient element mass fractions) are posed
+      ! on different variables; where the copied carriers hold more of an
+      ! element than the ghost's element condition gives, or release nuclei
+      ! no closure species of the ghost can take, or the completion is not
+      ! a representable number, no nonnegative ghost composition satisfies
+      ! both.  The ghost is then not clipped, no remainder is dropped and no
+      ! partition is invented: the completion is returned refused, with the
+      ! ghost cell named, and the write map puts back the whole composition
+      ! it was handed.  With one closure species and an empty support the
+      ! remainder goes to that species; inside the representability
+      ! allowance an empty support is left empty.  This states the
+      ! completion/refusal of the ghost state presented to the write map;
+      ! it does not make the stationary outer-face state equal to the one
+      ! the marching carrier operator forms, which limits its copied
+      ! carriers to the element budget before its write-back
+      ! (limit_to_element_budget, diffusive_photochemistry.f90).
       real*8, dimension(1-Ng:N+Ng,n_species), intent(inout) :: f_sp
       logical,                                intent(in)    :: restore_totals
+      type(element_completion),               intent(out)   :: cdec
       real*8  :: absorb_before(n_inv_element)
       real*8  :: carried_before(n_inv_element)
       real*8  :: carried_after(n_inv_element)
-      real*8  :: absorb_target, rscale
+      real*8  :: absorb_target, rscale, he_singlet_before
       integer :: j, i, ie, isp, nu
+      cdec = element_completion()
       if (nspec_row .le. 0) return
       if (.not. carrier_rows_registered()) return
       do j = N+1, N+Ng
          if (restore_totals) then
+            call ground_singlet_of_cell(f_sp(j,isp_HeI), f_sp(j,isp_HeTR), &
+                                        he_singlet_before, cdec)
+            if (cdec%status .ne. completion_ok) then
+               cdec%cell = j
+               return
+            endif
             carried_before = 0.0d0
             absorb_before  = 0.0d0
             do isp = 1, n_species
@@ -3514,8 +3654,13 @@
                      carried_before(ie) = carried_before(ie)              &
                         + dble(nu)*f_sp(j,isp)
                   else if (elem_species_absorbs(isp,ie)) then
-                     absorb_before(ie) = absorb_before(ie)                &
-                        + dble(nu)*f_sp(j,isp)
+                     if (isp .eq. isp_HeI) then
+                        absorb_before(ie) = absorb_before(ie)             &
+                           + he_singlet_before
+                     else
+                        absorb_before(ie) = absorb_before(ie)             &
+                           + dble(nu)*f_sp(j,isp)
+                     endif
                   endif
                enddo
             enddo
@@ -3535,21 +3680,75 @@
             enddo
          enddo
          do ie = 1, n_inv_element
-            ! Helium is held by no carrier, so its total cannot move here.
-            if (ie .eq. ien_He) cycle
             if (carried_after(ie) .eq. carried_before(ie)) cycle
-            if (absorb_before(ie) .le. 0.0d0) cycle
             absorb_target = absorb_before(ie) + carried_before(ie)         &
                           - carried_after(ie)
-            if (absorb_target .lt. 0.0d0) absorb_target = 0.0d0
-            rscale = absorb_target/absorb_before(ie)
-            do isp = 1, n_species
-               if (.not. elem_species_absorbs(isp,ie)) cycle
-               f_sp(j,isp) = f_sp(j,isp)*rscale
-            enddo
+            cdec = element_closure_completion(absorb_target,              &
+                      absorb_before(ie) + carried_before(ie)              &
+                      + carried_after(ie), absorb_before(ie),             &
+                      elem_n_absorbing(ie))
+            cdec%element = ie
+            cdec%cell    = j
+            if (cdec%status .ne. completion_ok) return
+            if (cdec%mode .eq. closure_by_proportion) then
+               rscale = cdec%scale
+               do isp = 1, n_species
+                  if (.not. elem_species_absorbs(isp,ie)) cycle
+                  if (isp .eq. isp_HeI) then
+                     f_sp(j,isp_HeI) = f_sp(j,isp_HeTR)                    &
+                        + he_singlet_before*rscale
+                  else
+                     f_sp(j,isp) = f_sp(j,isp)*rscale
+                  endif
+               enddo
+            else if (cdec%mode .eq. closure_unique_species) then
+               do isp = 1, n_species
+                  if (.not. elem_species_absorbs(isp,ie)) cycle
+                  if (isp .eq. isp_HeI) then
+                     f_sp(j,isp_HeI) = f_sp(j,isp_HeTR) + absorb_target
+                  else
+                     f_sp(j,isp) = absorb_target                          &
+                        /dble(elem_nu_of_species(isp,ie))
+                  endif
+               enddo
+            endif
+            ! closure_left_empty writes nothing: the closure species keep
+            ! the zero they hold.
          enddo
+         ! EVERY FRACTION OF THE COMPLETED GHOST IS A FINITE NUMBER before
+         ! the map is kept, as for a physical cell.
+         if (.not. all(abs(f_sp(j,:)) .le. huge(1.0d0))) then
+            cdec = element_completion(status = completion_unrepresentable)
+            cdec%cell = j
+            return
+         endif
+         cdec = element_completion()
       enddo
       end subroutine set_upper_ghosts_of_the_carrier_columns
+
+
+      subroutine ground_singlet_of_cell(n_hei, n_hetr, singlet, cdec)
+      ! THE GROUND-SINGLET HELIUM OF A CELL, n(He I) - n(He 2^3S), the
+      ! closure nuclei helium holds beside a carried metastable level.  The
+      ! stored He I contains the level, so the difference is a measured
+      ! inventory and is signed: below zero by more than the rounding of
+      ! the two densities (inventory_feasible_slack of n(He I)) it is a
+      ! composition with a negative closure, refused
+      ! (completion_negative_closure, element He); inside that rounding it
+      ! is the zero it rounds to.
+      real*8, intent(in)  :: n_hei, n_hetr
+      real*8, intent(out) :: singlet
+      type(element_completion), intent(inout) :: cdec
+      singlet = n_hei - n_hetr
+      if (singlet .lt. -inventory_feasible_slack*abs(n_hei)) then
+         cdec = element_completion(status = completion_negative_closure)
+         cdec%element = ien_He
+         cdec%closure = singlet
+         singlet = 0.0d0
+         return
+      endif
+      singlet = max(singlet, 0.0d0)
+      end subroutine ground_singlet_of_cell
 
 
       double precision function elem_he_to_code() result(c)
@@ -3568,12 +3767,41 @@
 
 
       subroutine unpack_species_rows(Y, u, f_sp)
-      ! Inverse of pack_species_rows, onto the physical cells only.
+      ! Inverse of pack_species_rows, onto the physical cells only.  It is
+      ! applied to an iterate the solve holds (the best one, or the one it
+      ! returns), which was admitted with its completion, so a refused
+      ! completion here is a defect of the solver and stops the run.
       real*8, dimension(nvar_jac*N),          intent(in)    :: Y
       real*8, dimension(3,1-Ng:N+Ng),         intent(in)    :: u
       real*8, dimension(1-Ng:N+Ng,n_species), intent(inout) :: f_sp
-      call write_species_rows_into_composition(Y, u, f_sp)
+      type(element_completion) :: cdec
+      call write_species_rows_into_composition(Y, u, f_sp, cdec)
+      if (cdec%status .ne. completion_ok) then
+         call report_refused_element_completion(cdec)
+         write(*,'(A)') ' (steady_newton) ERROR: the iterate the solve'//  &
+              ' holds has no element completion. Aborting.'
+         error stop 1
+      endif
       end subroutine unpack_species_rows
+
+
+      subroutine report_refused_element_completion(cdec)
+      ! One refused completion of the write map, in the units it was formed
+      ! in [cm^-3]: element, cell, reason, remainder, the magnitude of the
+      ! sums it came from and the closure nuclei the cell held.
+      type(element_completion), intent(in) :: cdec
+      character(len=2) :: ename
+      ename = '? '
+      if (cdec%element .ge. 1 .and. cdec%element .le. n_inv_element)     &
+         ename = inv_element_name(cdec%element)
+      write(*,'(A,A,A,I0,A,A)') ' (steady_newton) element completion'//  &
+           ' refused: element ', trim(ename), ', cell ', cdec%cell, ': ',  &
+           trim(element_completion_text(cdec%status))
+      write(*,'(A,ES12.4,A,ES12.4,A,ES12.4,A)') '    remainder ',         &
+           cdec%remainder, ' cm^-3 of nuclei, sums of magnitude ',        &
+           cdec%magnitude, ' cm^-3, closure nuclei ', cdec%closure,       &
+           ' cm^-3'
+      end subroutine report_refused_element_completion
 
 
       subroutine eval_residual(Y, f_sp_seed, f_sp, Fvec, heat, cool, n_part, &
@@ -3720,7 +3948,12 @@
       ! violation over the grid, and the cell and the element row that carry
       ! it (element_budget_violation_of_composition).
       real*8  :: v_headroom_last
-      integer :: jheadroom, kheadroom, n_write_back_deficit_entry
+      integer :: jheadroom, kheadroom
+      type(element_completion) :: wb_comp
+      ! The passes of the composition loop whose sweep refused its mass
+      ! projection, the largest |s-1| among them and its cell.
+      integer :: n_projection_refused_eval, projection_cell_eval
+      real*8  :: projection_worst_eval
       type(cert_evaluation_facts) :: cfacts
       real*8, dimension(1:N,n_carrier_max) :: cres
       ! The face mass flux the elemental rows ride on, read from the mass row
@@ -3776,10 +4009,10 @@
       n_headroom_last = 0
       v_headroom_last = 0.0d0
       jheadroom = 0;  kheadroom = 0
-      n_write_back_deficit_entry = n_write_back_element_deficit
       eval_refusal = refuse_none
       eval_refusal_cell = 0;  eval_refusal_row = 0
       eval_refusal_value = 0.0d0
+      eval_refusal_value_measured = .false.
       n_species_at_lower_bound = 0
       ! THE CONSERVED STATE IS A GAS, OR NOTHING BELOW IS EVALUATED.
       ! The temperature of a cell is p/(n_tot + n_e) with p from rho e =
@@ -3812,12 +4045,15 @@
              .not. (abs(u(1,jj4)) .le. huge(1.0d0))) then
             eval_refusal_row   = 1
             eval_refusal_value = u(1,jj4)
+            eval_refusal_value_measured = .true.
          else if (.not. (abs(u(2,jj4)) .le. huge(1.0d0))) then
             eval_refusal_row   = 2
             eval_refusal_value = u(2,jj4)
+            eval_refusal_value_measured = .true.
          else
             eval_refusal_row   = 3
             eval_refusal_value = u(3,jj4) - 0.5d0*u(2,jj4)*(u(2,jj4)/u(1,jj4))
+            eval_refusal_value_measured = .true.
          endif
          if (.not. present(admissible)) then
             write(*,'(A,I0,A,I0,A,ES12.4)') ' (steady_newton) ERROR: the'//&
@@ -3872,6 +4108,7 @@
                   eval_refusal_cell  = jj4
                   eval_refusal_row   = ii4
                   eval_refusal_value = nspec_j
+                  eval_refusal_value_measured = .true.
                endif
             endif
             ! THE HEADROOM IS A CARRIER CONSTRAINT.  It asks whether a
@@ -3900,11 +4137,56 @@
                   eval_refusal_cell  = jj4
                   eval_refusal_row   = ii4
                   eval_refusal_value = nspec_j
+                  eval_refusal_value_measured = .true.
                endif
             endif
          enddo
          enddo
-         call write_species_rows_into_composition(Y, u, f_sp)
+         call write_species_rows_into_composition(Y, u, f_sp, wb_comp)
+         ! A TRIAL WITH NO ELEMENT COMPLETION IS REFUSED BEFORE ANYTHING
+         ! EVALUATES IT.  The write map has put the composition back whole
+         ! and named element, cell and reason; the trial has no species
+         ! vector, so no sweep, residual or screen below is asked about it.
+         ! It is refused exactly as an inadmissible conserved state is
+         ! (above): no residual, the seed composition, the module products
+         ! put back.  Evaluated as the iterate of the solve (no
+         ! `admissible`) it stops the run, because an iterate was admitted
+         ! with its completion.
+         if (wb_comp%status .ne. completion_ok) then
+            f_sp = f_sp_seed
+            if (eval_refusal .eq. refuse_none) then
+               eval_refusal       = refuse_element_completion
+               eval_refusal_cell  = wb_comp%cell
+               eval_refusal_row   = wb_comp%element
+               eval_refusal_value = write_back_element_deficit_last
+               eval_refusal_value_measured = .true.
+            endif
+            if (.not. present(admissible)) then
+               call report_refused_element_completion(wb_comp)
+               write(*,'(A)') ' (steady_newton) ERROR: the state'//       &
+                    ' evaluated as the iterate of the solve has no'//      &
+                    ' element completion. Aborting.'
+               error stop 1
+            endif
+            admissible = .false.
+            n_trial_headroom = n_trial_headroom + 1
+            n_eval_refusal(eval_refusal) = n_eval_refusal(eval_refusal) + 1
+            Fvec = ieee_value(0.0d0, ieee_quiet_nan)
+            heat = 0.0d0;  cool = 0.0d0
+            if (present(n_part)) n_part = 0.0d0
+            if (present(rows_judged))          rows_judged = sqrt(huge(1.0d0))
+            if (present(resid_relnorm_judged))                            &
+               resid_relnorm_judged = sqrt(huge(1.0d0))
+            if (present(rowmax_judged))        rowmax_judged = sqrt(huge(1.0d0))
+            if (present(cells_judged))         cells_judged  = wb_comp%cell
+            if (present(which_judged))         which_judged  = 0
+            if (present(cells_outside_judged)) cells_outside_judged = N
+            if (present(cell_outside_judged))  cell_outside_judged  =     &
+                                                  wb_comp%cell
+            if (put_products_back)                                        &
+               call put_back_residual_evaluation_products(products_at_entry)
+            return
+         endif
          ! THE SHARED ELEMENT CONSTRAINT AT THE CANDIDATE, BY MAGNITUDE.
          ! What decides feasibility is how far a
          ! candidate stands outside the budget of a cell, not how many cells
@@ -3937,18 +4219,7 @@
                eval_refusal       = refuse_element_budget_breach
                eval_refusal_cell  = jheadroom
                eval_refusal_value = v_headroom_last
-            endif
-         endif
-         ! AND THE WRITE-BACK'S OWN STATEMENT: a cell whose carriers took
-         ! nuclei that no species of the cell gave up is not a state,
-         ! whatever its budgets say, and it is refused here rather than
-         ! evaluated.
-         if (n_write_back_element_deficit .gt. n_write_back_deficit_entry) &
-         then
-            headroom_ok = .false.
-            if (eval_refusal .eq. refuse_none) then
-               eval_refusal       = refuse_element_budget_breach
-               eval_refusal_value = write_back_worst_element_deficit
+               eval_refusal_value_measured = .true.
             endif
          endif
       endif
@@ -4013,6 +4284,9 @@
       radiative_field_of_previous_pass = .false.
       npart_pass = 0.0d0;  xh2_pass = 0.0d0
       heat_pass  = 0.0d0;  cool_pass = 0.0d0
+      n_projection_refused_eval = 0
+      projection_worst_eval     = 0.0d0
+      projection_cell_eval      = 0
       do it_eq = 1, n_sweep_max
       f_sp_prev = f_sp
       call U_to_W(u, W)
@@ -4054,6 +4328,42 @@
       call ioniz_eq(T,rho,f_sp,heat,cool,eta,sweep)
       if (ieq_cell_dump_requested()) call set_ieq_cell_dump_tags(0, 0)
       call set_ioniz_eq_state_may_be_refused(.false.)
+      if (sweep%n_invalid_imposed .gt. 0) then
+         ! The cell solve was not entered. No chemical root or residual
+         ! exists for this trial, and later residual assembly must not read
+         ! the deliberately absent heating and cooling rates.
+         Fvec = ieee_value(0.0d0, ieee_quiet_nan)
+         if (present(n_part)) n_part = 0.0d0
+         if (present(rows_judged)) rows_judged = huge(1.0d0)
+         if (present(resid_relnorm_judged))                         &
+            resid_relnorm_judged = huge(1.0d0)
+         if (present(rowmax_judged)) rowmax_judged = huge(1.0d0)
+         if (present(cells_judged)) cells_judged = 0
+         if (present(which_judged)) which_judged = 0
+         if (present(cells_outside_judged)) cells_outside_judged = 0
+         if (present(cell_outside_judged)) cell_outside_judged = 0
+         if (present(admissible)) then
+            cfacts = cert_evaluation_facts()
+            cfacts%n_sweep_invalid_imposed = sweep%n_invalid_imposed
+            admissible = trial_state_is_admissible(cfacts)
+         endif
+         if (put_products_back)                                      &
+            call put_back_residual_evaluation_products(products_at_entry)
+         return
+      endif
+      ! A REFUSED MASS PROJECTION IN ANY PASS refuses the evaluation: the
+      ! pass handed on a composition that does not weigh the density of
+      ! this state, and the later passes started from it.  Recorded here,
+      ! decided with the other facts of the evaluation below.
+      if (sweep%n_projection_refused .gt. 0) then
+         n_projection_refused_eval = n_projection_refused_eval + 1
+         if (n_projection_refused_eval .eq. 1 .or.                        &
+             sweep%projection_refusal_measure .gt. projection_worst_eval) &
+         then
+            projection_worst_eval = sweep%projection_refusal_measure
+            projection_cell_eval  = sweep%projection_refusal_cell
+         endif
+      endif
       ! Refresh the particle count from the equilibrium fractions, exactly as
       ! the marching loop does before its transport stage, so the residual's
       ! T = p/(n_tot+n_e) is the same temperature the marching step diffuses.
@@ -4136,6 +4446,17 @@
       radiative_field_of_previous_pass = .true.
       enddo
       n_eq_sweeps_tot = n_eq_sweeps_tot + n_eq_sweeps_last
+      if (n_projection_refused_eval .gt. 0 .and. .not. present(admissible)) &
+      then
+         write(*,'(A,I0,A,ES12.4,A,I0)') ' (steady_newton) ERROR: the'//  &
+              ' sweep refused its mass projection in ',                   &
+              n_projection_refused_eval, ' pass(es) of the iterate of'//  &
+              ' the solve; |s-1| = ', projection_worst_eval, ' at cell ',  &
+              projection_cell_eval
+         write(*,'(A)') '    a held iterate returned a refused mass projection;'// &
+              ' inspect the reported cell and composition.'
+         error stop 1
+      endif
 
       ! THE GHOST CELLS' PARTICLE COUNT IS THAT OF THE GHOSTS THE RESIDUAL
       ! READS. The Apply_BC at the end of each sweep pass rebuilds the ghost
@@ -4311,6 +4632,8 @@
          ! it is the expensive half.
          cfacts%n_sweep_nonfinite    = sweep%n_nonfinite
          cfacts%n_sweep_ghost_open   = sweep%n_ghost_open
+         cfacts%n_sweep_projection_refused = n_projection_refused_eval
+         cfacts%n_sweep_invalid_imposed = sweep%n_invalid_imposed
          cfacts%n_no_chem_root_trial = n_no_chem_root_last
          cfacts%n_no_chem_root_state = n_no_chem_root_state
          cfacts%chem_root_gate       = gate_chem_root
@@ -4351,11 +4674,20 @@
              eval_refusal .eq. refuse_none) then
             eval_refusal       = refuse_sweep_nonfinite
             eval_refusal_value = dble(cfacts%n_sweep_nonfinite)
+            eval_refusal_value_measured = .true.
          endif
          if (cfacts%n_sweep_ghost_open .gt. 0 .and.                      &
              eval_refusal .eq. refuse_none) then
             eval_refusal       = refuse_lower_boundary_open
             eval_refusal_value = dble(cfacts%n_sweep_ghost_open)
+            eval_refusal_value_measured = .true.
+         endif
+         if (cfacts%n_sweep_projection_refused .gt. 0 .and.              &
+             eval_refusal .eq. refuse_none) then
+            eval_refusal       = refuse_mass_projection
+            eval_refusal_cell  = projection_cell_eval
+            eval_refusal_value = projection_worst_eval
+            eval_refusal_value_measured = .true.
          endif
          if (gate_chem_root) then
             admissible = trial_state_is_admissible(cfacts)
@@ -4363,6 +4695,7 @@
                eval_refusal       = refuse_no_chemical_root
                eval_refusal_value = dble(n_no_chem_root_last              &
                                          - n_no_chem_root_state)
+               eval_refusal_value_measured = .true.
             endif
          else
             admissible = probe_direction_is_usable(cfacts)
@@ -4798,9 +5131,27 @@
               int(eval_refusal_value), ' cell(s) more than the iterate'// &
               ' carry a composition that is not a root of the network'
       case (refuse_lower_boundary_open)
-         write(*,'(A,A,I0,A)') tag, '      refused: ',                    &
-              int(eval_refusal_value), ' lower-boundary solve(s) of the'//&
-              ' sweep left open (ghost partition or ghost fixed point)'
+         if (eval_refusal_value_measured) then
+            write(*,'(A,A,I0,A)') tag, '      refused: ',                 &
+                 int(eval_refusal_value), ' lower-boundary solve(s) of the'//&
+                 ' sweep left open (ghost partition or ghost fixed point)'
+         else
+            write(*,'(A,A)') tag, '      refused: lower-boundary solve'// &
+                 ' left open; count UNAVAILABLE'
+         endif
+      case (refuse_element_completion)
+         write(*,'(A,A,A,A,I0,A,ES10.3,A)') tag, '      refused: no'//    &
+              ' element completion of ',                                  &
+              trim(inv_element_name(max(1,min(n_inv_element,              &
+                   eval_refusal_row)))), ' at cell ', eval_refusal_cell,  &
+              ' (remainder ', eval_refusal_value,                         &
+              ' of the nuclei the cell was formed with): '//              &
+              trim(element_completion_text(                               &
+                   write_back_completion_last%status))
+      case (refuse_mass_projection)
+         write(*,'(A,A,ES10.3,A,I0)') tag, '      refused: the mass'//    &
+              ' projection of the sweep was refused, |s-1| = ',           &
+              eval_refusal_value, ' at cell ', eval_refusal_cell
       case (refuse_conserved_state_inadmissible)
          if (eval_refusal_row .eq. 3) then
             write(*,'(A,A,I0,A,ES11.3,A)') tag, '      refused: the'//    &
@@ -9492,6 +9843,42 @@
       end function front_of_the_steepest_fraction
 
 
+      pure subroutine hydrogen_partition_seed(reference, species, delta, &
+                                              candidate, admissible)
+      ! An eliminated hydrogen partition is displaced at fixed H nuclei:
+      ! one H I for H II and two H I for H2. No clipping or normalization.
+      use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
+      real*8, intent(in) :: reference(n_species), delta
+      integer, intent(in) :: species
+      real*8, intent(out) :: candidate(n_species)
+      logical, intent(out) :: admissible
+      real*8 :: proposed, transferred, donor
+      integer :: hydrogen_count
+      candidate = reference
+      admissible = .false.
+      hydrogen_count = 1
+      if (species .eq. isp_H2) hydrogen_count = 2
+      proposed = reference(species)*(1.0d0 + delta)
+      transferred = proposed - reference(species)
+      donor = reference(isp_HI) - dble(hydrogen_count)*transferred
+      if (.not. ieee_is_finite(proposed) .or. &
+          .not. ieee_is_finite(transferred) .or. &
+          .not. ieee_is_finite(donor)) return
+      if (proposed .lt. 0.0d0 .or. proposed .gt. 1.0d0) return
+      if (donor .lt. 0.0d0 .or. donor .gt. 1.0d0) return
+      candidate(species) = proposed
+      candidate(isp_HI) = donor
+      admissible = .true.
+      end subroutine hydrogen_partition_seed
+
+
+      pure real*8 function relative_inventory_difference(a, b)
+      real*8, intent(in) :: a, b
+      relative_inventory_difference = abs(a-b)/ &
+           max(abs(a),abs(b),1.0d-300)
+      end function relative_inventory_difference
+
+
       subroutine branch_and_closure_of_the_seed_family(Y, f_sp, u)
       ! Compare eliminated-composition seeds on one fixed state Y:
       ! R(Y) = L(Y) + S(Y,c*(Y)). Seeds reaching the same root must agree
@@ -9499,8 +9886,9 @@
       ! their compositions and residuals, never averaged or preferred.
       ! Group by maximum relative composition difference against
       ! distinct_root_separation (0.1), well above eq_sweep_reltol.
-      ! The family scales the state's H2 partition by 1+delta, including
-      ! delta=0 as reference. EXHALE_RESID_BRANCH_REPORT=1 writes this
+      ! The family scales the state's eliminated partition by 1+delta,
+      ! transferring its hydrogen nuclei with H I at fixed mass. Delta=0
+      ! is the reference. EXHALE_RESID_BRANCH_REPORT=1 writes this
       ! diagnostic and stops the run.
       ! See ../EXHALE_v1.00/md/Update_EXHALE_stage2.md section 7 (B5h).
       real*8, dimension(nvar_jac*N),           intent(in) :: Y
@@ -9511,9 +9899,10 @@
       ! was measured in, and the one a Newton step moves -- and three
       ! displace the whole composition by 1, 5 and 10 cells, which is the
       ! construction that found the second root of the front: every cell is
-      ! then given the composition of a neighbor a few scale heights away,
-      ! positive, normalized and not the equilibrium of the cell it is given
-      ! to. Seed 1 is the state's own composition and is the reference.
+      ! then given the composition of a neighbor a few scale heights away.
+      ! A displaced seed with different held mass or element inventories is
+      ! refused, not normalized into a different physical state. Seed 1 is
+      ! the state's own composition and is the reference.
       integer, parameter :: nscale = 7, nshift = 3, nseed = nscale + nshift
       real*8,  parameter :: dlist(nscale) = (/ 0.0d0, 1.0d-6, -1.0d-6,   &
                                                1.0d-4, -1.0d-4,          &
@@ -9542,13 +9931,33 @@
       real*8  :: datum(nseed)
       integer :: root_of(nseed), jsep(nseed), ssep(nseed)
       real*8  :: spread_row, lo, hi, dmx, d
-      integer :: is, k, j, iroot, nroot, ncount, jh2, jhi, isc
+      integer :: is, k, j, iroot, nroot, ncount, nadmitted, &
+                 nshift_admitted, jh2, jhi, isc
+      integer :: im, istage, refused_cell(nseed), refused_cause(nseed)
+      integer :: refused_eval_code(nseed)
+      logical :: seed_admissible, seed_cell_admissible, admitted(nseed)
+      logical :: refused_measure_available(nseed)
+      logical :: no_carriers(n_species)
+      type(element_inventory_cell) :: reference_inventory, seed_inventory
+      real*8 :: seed_mass(1-Ng:N+Ng), reference_mass(1-Ng:N+Ng)
+      real*8 :: metal_ref, metal_seed
+      real*8 :: refused_value(nseed)
+      ! Each nonnegative cell sum uses at most n_species weighted products
+      ! and fewer than 3*n_species additions across nucleus, metal,
+      ! molecule, and final mass groups. Compare two sums with 2*gamma_k,
+      ! k=4*n_species. This bounds floating-point accumulation only;
+      ! it does not relax the physical projection or admission threshold.
+      integer, parameter :: inventory_sum_ops = 4*n_species
+      real*8, parameter :: inventory_roundoff = 2.0d0* &
+           (dble(inventory_sum_ops)*epsilon(1.0d0))/ &
+           (1.0d0-dble(inventory_sum_ops)*epsilon(1.0d0))
       character(len=8) :: cfam
       ! `count` is a global integer of this build (global_parameters, the
       ! marching step counter), so the intrinsic of that name is not
       ! available here and a seed tally is written out.
       character(len=8)  :: env
       character(len=16) :: cname
+      character(len=32) :: cause_text
 
       call get_environment_variable('EXHALE_RESID_BRANCH_REPORT', env)
       if (trim(env) .ne. '1') return
@@ -9586,29 +9995,155 @@
                 srow_isp(k) .eq. isp_H2) isp_seed = isp_HII
          enddo
       endif
+      admitted = .false.
+      refused_cell = 0
+      refused_cause = 0
+      refused_eval_code = refuse_none
+      refused_value = 0.0d0
+      refused_measure_available = .false.
+      no_carriers = .false.
+      ! mixture_mass_sum has no refusal argument. Check the reference's
+      ! species before calling it, so an invalid diagnostic reference is
+      ! reported as such rather than triggering its held-state abort.
+      do j = 1-Ng, N+Ng
+         do k = 1, n_species
+            if (finite_real(f_sp(j,k))) then
+               if (f_sp(j,k) .ge. 0.0d0) cycle
+            endif
+            write(*,'(A,I0,A,I0)') ' (resid_branch) REFUSED seed 1 cell ', &
+                 j, ' nonfinite or negative species ', k
+            write(*,'(A)') ' (resid_branch) FAIL: reference seed refused;'// &
+                 ' no positive root or closure verdict is available.'
+            deallocate(comp)
+            error stop 1
+         enddo
+      enddo
+      call mixture_mass_sum(f_sp, reference_mass)
       do is = 1, nseed
          seed = f_sp
          if (is .le. nscale) then
             do j = 1, N
-               seed(j,isp_seed) = min(1.0d0, max(0.0d0,                   &
-                    f_sp(j,isp_seed)*(1.0d0 + dlist(is))))
+               call hydrogen_partition_seed(f_sp(j,:), isp_seed, &
+                    dlist(is), seed(j,:), seed_cell_admissible)
+               if (.not. seed_cell_admissible) then
+                  refused_cell(is) = j
+                  refused_cause(is) = 1  ! impossible partition or donor
+                  exit
+               endif
             enddo
          else
             do j = 1, N
                seed(j,:) = f_sp(min(N, j + slist(is-nscale)),:)
             enddo
          endif
-         ! The state is not adopted: the family is a probe of the closure
-         ! and every one of its evaluations is discarded.
-         ! The state is not adopted, so the evaluation puts back what it
-         ! overwrote and the next seed of the family starts from the same
-         ! frozen background as this one; the row maxima are therefore
-         ! taken INSIDE the evaluation, where the rows of this seed exist.
+         if (refused_cause(is) .ne. 0) cycle
+         ! A displaced seed is a comparison at the same held Y. Do not
+         ! normalize its mixture or invent any element to make it fit.
+         ! Every physical element total and the mixture mass must agree
+         ! with the unshifted state; impossible displacements are refused.
+         ! The gamma_k comparison below assumes nonnegative terms. The
+         ! mass routine has no refusal argument, so screen first.
+         do j = 1-Ng, N+Ng
+            do k = 1, n_species
+               if (finite_real(seed(j,k))) then
+                  if (seed(j,k) .ge. 0.0d0) cycle
+               endif
+               refused_cell(is) = j
+               refused_cause(is) = 6
+               exit
+            enddo
+            if (refused_cause(is) .ne. 0) exit
+         enddo
+         if (refused_cause(is) .ne. 0) cycle
+         call mixture_mass_sum(seed, seed_mass)
+         do j = 1, N
+            if (.not. finite_real(seed_mass(j)) .or. &
+                .not. finite_real(reference_mass(j)) .or. &
+                seed_mass(j) .le. 1.0d-30 .or. &
+                reference_mass(j) .le. 1.0d-30) then
+               refused_cell(is) = j
+               refused_cause(is) = 2
+               exit
+            endif
+            if (abs(seed_mass(j)-reference_mass(j)) .gt. &
+                inventory_roundoff*max(abs(seed_mass(j)), &
+                                       abs(reference_mass(j)),1.0d-300)) then
+               refused_cell(is) = j
+               refused_cause(is) = 2  ! changed hydrodynamic mass
+               refused_value(is) = relative_inventory_difference( &
+                    seed_mass(j), reference_mass(j))
+               refused_measure_available(is) = .true.
+               exit
+            endif
+            call element_inventory_of_cell(1.0d0, f_sp(j,:), &
+                                           no_carriers, reference_inventory)
+            call element_inventory_of_cell(1.0d0, seed(j,:), &
+                                           no_carriers, seed_inventory)
+            if (reference_inventory%validity%status .ne. element_total_ok &
+                .or. seed_inventory%validity%status .ne. element_total_ok) then
+               refused_cell(is) = j
+               refused_cause(is) = 3
+               exit
+            endif
+            do k = 1, n_inv_element
+               if (abs(seed_inventory%n_total(k)-reference_inventory%n_total(k)) &
+                   .le. inventory_roundoff*max( &
+                   abs(seed_inventory%n_total(k)), &
+                   abs(reference_inventory%n_total(k)),1.0d-300)) cycle
+               refused_cell(is) = j
+               refused_cause(is) = 3  ! changed H, He, O, or C inventory
+               refused_value(is) = relative_inventory_difference( &
+                    seed_inventory%n_total(k), &
+                    reference_inventory%n_total(k))
+               refused_measure_available(is) = .true.
+               exit
+            enddo
+            if (refused_cause(is) .ne. 0) exit
+            do im = 1, n_melem
+               ! O and C bound in OH, H2O, or CO were counted above.
+               ! Their atomic stages alone need not be invariant.
+               if (im .eq. iel_O .or. im .eq. iel_C) cycle
+               metal_ref = 0.0d0; metal_seed = 0.0d0
+               do istage = 0, melem_top(im)
+                  metal_ref = metal_ref + f_sp(j,mion_fsp(melem_i0(im)+istage))
+                  metal_seed = metal_seed + seed(j,mion_fsp(melem_i0(im)+istage))
+               enddo
+               if (.not. finite_real(metal_seed) .or. &
+                   .not. finite_real(metal_ref)) then
+                  refused_cell(is) = j
+                  refused_cause(is) = 4
+                  exit
+               endif
+               if (abs(metal_seed-metal_ref) .le. inventory_roundoff* &
+                   max(abs(metal_seed),abs(metal_ref),1.0d-300)) cycle
+               refused_cell(is) = j
+               refused_cause(is) = 4  ! changed metal inventory
+               refused_value(is) = relative_inventory_difference( &
+                    metal_seed, metal_ref)
+               refused_measure_available(is) = .true.
+               exit
+            enddo
+            if (refused_cause(is) .ne. 0) exit
+         enddo
+         if (refused_cause(is) .ne. 0) cycle
+         ! Each evaluation is discarded. Request admissibility so a
+         ! refused probe is reported and excluded from root comparisons.
          call eval_residual(Y, seed, cwork, Fvec, heat, cool,             &
+                            admissible=seed_admissible,                   &
                             state_is_discarded=.true.,                    &
                             rowmax_judged=rmx, cells_judged=jcl,          &
                             which_judged=iwh, n_part=npart_d)
-         comp(:,:,is)   = cwork
+         if (.not. seed_admissible) then
+            refused_cell(is) = eval_refusal_cell
+            refused_cause(is) = 5  ! residual admission refused
+            refused_eval_code(is) = eval_refusal
+            refused_value(is) = eval_refusal_value
+            refused_measure_available(is) = &
+                 eval_refusal_value_measured .and. finite_real(refused_value(is))
+            cycle
+         endif
+         admitted(is) = .true.
+         comp(:,:,is) = cwork
          ! The two NON-ROOT acceptance classes of the last sweep of this
          ! evaluation: a cell in class 4 or 6 has no root of the network at
          ! this state and keeps what it was seeded with, so a composition
@@ -9623,6 +10158,64 @@
          iwhich(:,is)   = iwh
       enddo
 
+      nadmitted = 0
+      do is = 1, nseed
+         if (admitted(is)) then
+            nadmitted = nadmitted + 1
+            cycle
+         endif
+         select case (refused_cause(is))
+         case (1); cause_text = 'partition or H I donor bound'
+         case (2); cause_text = 'held mass changed'
+         case (3); cause_text = 'held H/He/O/C nuclei changed'
+         case (4); cause_text = 'held metal nuclei changed'
+         case (5); cause_text = 'residual admission refused'
+         case (6); cause_text = 'nonfinite or negative species'
+         case default; cause_text = 'unknown refusal'
+         end select
+         if (refused_measure_available(is)) then
+            if (refused_cause(is) .ge. 2 .and. &
+                refused_cause(is) .le. 4) then
+               write(*,'(A,I0,A,I0,A,A,A,I0,A,ES12.4)') &
+                    ' (resid_branch) REFUSED seed ', is, ' cell ', &
+                    refused_cell(is), ' cause ', trim(cause_text), &
+                    ' evaluation reason ', refused_eval_code(is), &
+                    ' relative change ', refused_value(is)
+            else
+               write(*,'(A,I0,A,I0,A,A,A,I0,A,ES12.4)') &
+                    ' (resid_branch) REFUSED seed ', is, ' cell ', &
+                    refused_cell(is), ' cause ', trim(cause_text), &
+                    ' evaluation reason ', refused_eval_code(is), &
+                    ' measure ', refused_value(is)
+            endif
+         else
+            write(*,'(A,I0,A,I0,A,A,A,I0,A)') &
+                 ' (resid_branch) REFUSED seed ', is, ' cell ', &
+                 refused_cell(is), ' cause ', trim(cause_text), &
+                 ' evaluation reason ', refused_eval_code(is), &
+                 ' measure UNAVAILABLE'
+         endif
+      enddo
+      if (.not. admitted(1)) then
+         write(*,'(A)') ' (resid_branch) FAIL: reference seed refused;'// &
+              ' no positive root or closure verdict is available.'
+         deallocate(comp)
+         error stop 1
+      endif
+      write(*,'(A)') ' (resid_branch) reference seed ADMITTED'
+      nshift_admitted = 0
+      do is = nscale+1, nseed
+         if (admitted(is)) nshift_admitted = nshift_admitted + 1
+      enddo
+      if (nshift_admitted .eq. 0) then
+         write(*,'(A)') ' (resid_branch) shifted family: UNAVAILABLE;'// &
+              ' no displaced seed was admitted.'
+         write(*,'(A)') ' (resid_branch) all-seed spread covers scaled family only.'
+      else
+         write(*,'(A,I0,A,I0)') ' (resid_branch) shifted family: ', &
+              nshift_admitted, ' of ', nshift
+      endif
+
       ! The two fronts of the reference seed, from its own composition: the
       ! cell of the steepest relative change of the H2 partition and of the
       ! neutral hydrogen fraction. A front is where the closure has two
@@ -9631,6 +10224,7 @@
       jhi = front_of_the_steepest_fraction(comp(:,1,1))
 
       do is = 1, nseed
+         if (.not. admitted(is)) cycle
          call worst_composition_change(comp(:,:,is), comp(:,:,1), dmx,    &
                                        jsep(is), ssep(is))
          sep(is)   = dmx
@@ -9648,6 +10242,7 @@
       root_of = 0
       nroot   = 0
       do is = 1, nseed
+         if (.not. admitted(is)) cycle
          do iroot = 1, nroot
             do k = 1, nseed
                if (root_of(k) .ne. iroot) cycle
@@ -9674,6 +10269,7 @@
            '  branch datum |  max|df/f| against the reference'//          &
            ' (cell, species) |  cells with no root (class 4 / class 6)'
       do is = 1, nseed
+         if (.not. admitted(is)) cycle
          if (is .le. nscale) then
             write(*,'(A,I3,A,ES10.2,I5,3(ES12.4,I5,I4),2ES11.3,I5,I4,'//  &
                  '2I7)')                                                  &
@@ -9711,6 +10307,7 @@
       do iroot = 1, nroot
          ncount = 0
          do is = 1, nseed
+            if (.not. admitted(is)) cycle
             if (root_of(is) .ne. iroot) cycle
             if (isc .eq. 1 .and. is .gt. nscale) cycle
             ncount = ncount + 1
@@ -9721,6 +10318,7 @@
          do k = 1, 3
             lo =  huge(1.0d0);  hi = -huge(1.0d0)
             do is = 1, nseed
+                  if (.not. admitted(is)) cycle
                if (root_of(is) .ne. iroot) cycle
                if (isc .eq. 1 .and. is .gt. nscale) cycle
                lo = min(lo, rmax(k,is));  hi = max(hi, rmax(k,is))
@@ -9747,6 +10345,12 @@
       do k = 1, 3
          call certification_row_class_name(k, cname)
          do is = 2, nscale, 2
+            if (.not. admitted(is) .or. .not. admitted(is+1)) then
+               write(*,'(A,A,A,ES9.2)') ' (resid_branch) closure budget,'// &
+                    ' row class ', trim(cname), ', seed ', abs(dlist(is))
+               write(*,'(A)') ' (resid_branch) UNAVAILABLE: refused seed pair'
+               cycle
+            endif
             lo = abs(rmax(k,is)   - rmax(k,1))
             hi = abs(rmax(k,is+1) - rmax(k,1))
             write(*,'(A,A,A,ES9.2,A,ES11.3,A,ES11.3)')                    &
@@ -9764,30 +10368,34 @@
       ! (0.77 at the base) and is measured here on the partition this
       ! configuration eliminates.
       do is = 2, nscale
+         if (.not. admitted(is)) cycle
          write(*,'(A,ES10.2,A,ES11.3)') ' (resid_branch) scaled seed ',   &
               dlist(is), ': retention of the seed at the fronts ',        &
               datum(is)/max(abs(dlist(is)), 1.0d-300)
       enddo
       dmx = 0.0d0
       do is = 1, nseed
+         if (.not. admitted(is)) cycle
          dmx = max(dmx, datum(is))
       enddo
       write(*,'(A,ES11.3,A,ES11.3)')                                      &
            ' (resid_branch) largest branch-datum separation in the'//     &
            ' family ', dmx, ', separation rule ', distinct_root_separation
       write(*,'(A,I0,A,I0,A)') ' (resid_branch) roots found ', nroot,     &
-           ' among ', nseed, ' seeds'
+           ' among ', nadmitted, ' admitted seeds'
       do iroot = 1, nroot
          ncount = 0
          do is = 1, nseed
             if (root_of(is) .eq. iroot) ncount = ncount + 1
          enddo
          do is = 1, nseed
+            if (.not. admitted(is)) cycle
             if (root_of(is) .ne. iroot) cycle
             write(*,'(A,I2,A,I0,A,I0,A,I5,A,ES22.15,A,ES22.15,A,I5,A,'//  &
                  'ES22.15,A,ES12.4)')                                     &
                  ' (resid_branch) root ', iroot, ' holds ', ncount,       &
-                 ' of ', nseed, ' seeds; cell ', jh2, ' x(H2) ',          &
+                 ' of ', nadmitted, ' admitted seeds; cell ', jh2, &
+                 ' x(H2) ', &
                  comp(jh2,isp_H2,is), ' x(H I) ', comp(jh2,1,is),         &
                  '; cell ', jhi, ' x(H I) ', comp(jhi,1,is),              &
                  '; hydrodynamic row maximum ', rmax(1,is)
@@ -9795,12 +10403,16 @@
          enddo
       enddo
       if (nroot .gt. 1) then
-         write(*,'(A)') ' (resid_branch) VERDICT: the seed family'//      &
-              ' reaches more than one root of the closure; every root'//  &
+         write(*,'(A)') ' (resid_branch) VERDICT: the admitted seeds'//    &
+              ' reach more than one root of the closure; every root'//  &
               ' is recorded above and none is adopted.'
       else
-         write(*,'(A)') ' (resid_branch) VERDICT: every seed of the'//    &
-              ' family reaches one root of the closure.'
+         write(*,'(A)') ' (resid_branch) VERDICT: the admitted seeds'// &
+              ' reach one root of the closure.'
+      endif
+      if (.not. all(admitted(1:nscale))) then
+         write(*,'(A)') ' (resid_branch) INCOMPLETE: scaled seed family'// &
+              ' contains refused probes; positive spread coverage unavailable.'
       endif
       deallocate(comp)
       write(*,*) '(steady_newton) EXHALE_RESID_BRANCH_REPORT=1: stopping.'
@@ -10363,7 +10975,15 @@
       ! budget constrains exactly those: a species the solve does not carry
       ! is data of the step and its nuclei are on the other side of the
       ! constraint.
-      integer :: i, isp, k, ie, nel
+      !
+      ! THE CLOSURE SPECIES of each element are the species holding nuclei
+      ! of that element alone that the solve does not carry (the write map's
+      ! completion, element_closure_completion, takes their count).  Every
+      ! element of the map is marked, helium included: a carried helium
+      ! stage moves the helium total, which the write map completes on the
+      ! ground singlet.  HeH+ holds two elements, and He 2^3S is a level
+      ! inside He I (the singlet is the closure), so neither is marked.
+      integer :: i, isp, ie, nel
       elem_species_is_carried = .false.
       do i = 1, nspec_row
          if (srow_kind(i) .ne. srow_carrier) cycle
@@ -10371,19 +10991,20 @@
             elem_species_is_carried(srow_isp(i)) = .true.
       enddo
       elem_species_absorbs = .false.
+      elem_n_absorbing = 0
       do isp = 1, n_species
-         if (isp .eq. isp_HeHp) cycle
+         if (isp .eq. isp_HeHp .or. isp .eq. isp_HeTR) cycle
          if (elem_species_is_carried(isp)) cycle
          nel = 0
-         do k = 1, n_element_constraint_rows
-            if (elem_nu_of_species(isp,element_constraint_element(k))     &
-                .gt. 0) nel = nel + 1
+         do ie = 1, n_inv_element
+            if (elem_nu_of_species(isp,ie) .gt. 0) nel = nel + 1
          enddo
          if (nel .ne. 1) cycle
-         do k = 1, n_element_constraint_rows
-            ie = element_constraint_element(k)
-            if (elem_nu_of_species(isp,ie) .gt. 0)                        &
+         do ie = 1, n_inv_element
+            if (elem_nu_of_species(isp,ie) .gt. 0) then
                elem_species_absorbs(isp,ie) = .true.
+               elem_n_absorbing(ie) = elem_n_absorbing(ie) + 1
+            endif
          enddo
       enddo
       end subroutine mark_the_carried_species
@@ -10499,6 +11120,7 @@
       real*8  :: dc_dn(n_species,n_inv_element)
       real*8  :: dc_dnd(n_inv_element), dc_dbudget(n_inv_element)
       real*8  :: nd, nc, dn_dY, dbudget_dY, xhe, xtr
+      type(element_inventory_cell) :: inv
       integer :: j, i, k, ie, is, islot
       logical :: have_budget
 
@@ -10543,6 +11165,21 @@
          have_budget = .true.
          budget(ien_H) = carrier_headroom(j, ic_H2)                       &
                         *dble(nuclei_per_particle(isp_H2, ien_H))
+         call element_inventory_of_cell(nd, f_sp(j,:),                    &
+                                        elem_species_is_carried, inv)
+         ! A refused inventory cannot define a frozen constraint face.
+         if (inv%validity%status .ne. element_total_ok) then
+            write(*,'(A,A,A,I0,A,A,A,ES12.4,A,ES12.4)')                    &
+                 ' (freeze_element_constraint_rows) REFUSED: the ',        &
+                 trim(inv_element_name(max(1,min(n_inv_element,            &
+                                       inv%validity%element)))),           &
+                 ' inventory of the iterate at cell ', j, ': ',            &
+                 trim(signed_element_total_text(inv%validity%status)),     &
+                 ', signed ', inv%validity%total, ', magnitude ',          &
+                 inv%validity%magnitude
+            error stop 1
+         endif
+         budget(ien_He) = inv%carrier_budget(ien_He)
          budget(ien_O) = carrier_headroom(j, ic_OH)                       &
                         *dble(nuclei_per_particle(isp_OH, ien_O))
          budget(ien_C) = carrier_headroom(j, ic_CO)                       &
@@ -10579,14 +11216,22 @@
                   if (carrier_unknown_is_logarithmic) dn_dY = n0*nc
                   elem_row_grad(islot,j,k) = dc_dn(srow_isp(i),ie)*dn_dY
                else if (srow_kind(i) .eq. srow_element_he) then
-                  ! The hydrogen nuclei of a cell are proportional to
-                  ! 1 - X_He at fixed density; the nuclei the frozen stages
-                  ! hold are frozen with the budget.
+                  ! At fixed density, hydrogen nuclei scale with 1-X_He
+                  ! and helium nuclei with X_He. With locked HeH+, this
+                  ! helium slope is exact when helium limits the mixed
+                  ! ion's scaling. When hydrogen limits it, the true
+                  ! budget increases faster with X_He. The chosen slope
+                  ! is the smaller, conservative directional slope at the
+                  ! branch point; the nonlinear candidate screen judges
+                  ! the actual projected composition.
                   dbudget_dY = 0.0d0
+                  xhe = min(max(Yel(j,1), 0.0d0), 1.0d0)
                   if (ie .eq. ien_H) then
-                     xhe = min(max(Yel(j,1), 0.0d0), 1.0d0)
                      if (1.0d0 - xhe .gt. 1.0d-30)                        &
                         dbudget_dY = -budget(ien_H)/(1.0d0 - xhe)
+                  else if (ie .eq. ien_He) then
+                     if (xhe .gt. 1.0d-30)                                &
+                        dbudget_dY = budget(ien_He)/xhe
                   endif
                   elem_row_grad(islot,j,k) = dc_dbudget(ie)*dbudget_dY
                else if (srow_kind(i) .eq. srow_element_trace) then
@@ -10873,8 +11518,8 @@
       ncell = 0;  nrow = 0
       worst_before = 0.0d0;  worst_after = 0.0d0
       if (.not. elem_rows_frozen) return
-      ! carbon, oxygen, hydrogen
-      korder = [ 3, 2, 1 ]
+      ! carbon, oxygen, helium, hydrogen
+      korder = [ 4, 3, 2, 1 ]
       do j = 1, N
          ! the carrier densities of this cell, in cm^-3
          nc = 0.0d0
@@ -11003,6 +11648,23 @@
       do j = 1, N
          call element_inventory_of_cell(max(u(1,j), 0.0d0)*n0, f_sp(j,:), &
                                         elem_species_is_carried, inv)
+         ! A CANDIDATE WHOSE OWN INVENTORY IS REFUSED (a negative or
+         ! nonfinite element total or available inventory) has no breach
+         ! to measure: it stands outside every budget, by huge(1), at the
+         ! row of the refused element where the cell has one.
+         if (inv%validity%status .ne. element_total_ok) then
+            ncell = ncell + 1
+            if (worst .lt. huge(1.0d0)) then
+               worst  = huge(1.0d0)
+               jworst = j
+               kworst = 0
+               do k = 1, n_element_constraint_rows
+                  if (element_constraint_element(k) .eq.                  &
+                      inv%validity%element) kworst = k
+               enddo
+            endif
+            cycle
+         endif
          do k = 1, n_element_constraint_rows
             ie = element_constraint_element(k)
             v  = relative_violation_of_the_row(inv%n_carried(ie),         &
@@ -15154,6 +15816,7 @@
       real*8  :: fr_cf
       logical :: ok_he_d, ok_tr_d
       integer :: ic, im, jd
+      type(signed_element_total) :: inv_c
 
       t%ok = .false.
       if (isrow .lt. 1 .or. isrow .gt. nspec_row) return
@@ -15172,7 +15835,9 @@
          if (.not. allocated(crow_res_last)) return
          ic = srow_idx(isrow)
          call carrier_state(rho, f_sp, fc, ntot_c, nrho_c, wfac_c, TK_c, &
-                            mbar_c, nH_free, nO_free, nC_free)
+                            mbar_c, nH_free, nO_free, nC_free, inv_c)
+         ! No term is read off a state with a refused element total.
+         if (inv_c%status .ne. element_total_ok) return
          call mixture_mass_sum(f_sp, msum)
          call carrier_advective_divergence(fc, msum, Frho, adv, advmag)
          t%adv_total = adv(jcell,ic)
@@ -16218,7 +16883,7 @@
       ray_verdict = tr_step_taken;  merit_reproducibility = 0.0d0
       merit_first = 0.0d0;  n_passes_first = 0
       Ftrial = F
-      n_refused_at_entry = sum(n_eval_refusal(1:8))
+      n_refused_at_entry = sum(n_eval_refusal(1:refuse_last))
 
       ! THE REFERENCE MERIT IS MEASURED IN THE SAME MODE AS THE TRIALS.
       ! The caller's f2 is the merit of this iterate with the WENO3 weights
@@ -17062,7 +17727,7 @@
               ', ratio ', ratio, ', ||s|| ', snorm
          write(*,'(A,A,A,I0)') ' (JFNK) [diag 6]   exit: ', trim(why_txt),&
               ', samples refused during this step ',                      &
-              sum(n_eval_refusal(1:8)) - n_refused_at_entry
+              sum(n_eval_refusal(1:refuse_last)) - n_refused_at_entry
          ! AND WHAT THE CONSTRAINED STEP DID WITH THE SHARED ROWS: how many
          ! of them the projection was taken on, how many cells the
          ! restoration moved, and the violation magnitude it removed.
@@ -17530,6 +18195,7 @@
       elem_restoration_worst_before = 0.0d0
       elem_restoration_worst_after  = 0.0d0
       n_write_back_element_deficit = 0
+      n_write_back_ghost_refused = 0
       write_back_worst_element_deficit = 0.0d0
       n_probe_blocked_components = 0
       ! From here to the end of the solve the equilibrium sweeps are the
@@ -17809,12 +18475,9 @@
          ! (Jacobian probes, J*v) then reuse them (mode 2), so the inner
          ! problem excludes the strongly nonlinear weight response (the
          ! standard lagged-weights remedy for FV steady solves). The line
-         ! search does NOT use them -- see there.  On the trust-region route
-         ! (EXHALE_TRUST_REGION=1) the merit evaluation sets weno_mode = 0
-         ! and nothing restores it before the leg and the spectral hook, so
-         ! there the products differentiate the weights (INSPECTED and
-         ! MEASURED 2026-09-23: two cycles give different actions on one
-         ! direction); which of the two the leg should use is not decided.
+         ! search does NOT use them -- see there.  The trust-region route
+         ! does not use them either: see the choice of the model's
+         ! reconstruction below.
          weno_mode = 1
          call set_ioniz_eq_sweep_state_kind(ieq_state_steady_iterate)
          call eval_residual(Y, f_sp, f_sp_j, F, heat0, cool0,             &
@@ -17867,8 +18530,26 @@
                  ', unknowns on a bound ', n_species_at_lower_bound
          endif
          call set_ioniz_eq_sweep_state_kind(ieq_state_steady_candidate)
+         ! THE RECONSTRUCTION OF THE NEWTON MODEL: one map for the base
+         ! point F_jac, every probe and every merit the model is compared
+         ! with. On the line-search route the model is the frozen-weight map
+         ! (mode 2, the weights of the mode-1 evaluation above). On the
+         ! trust-region route the merit of every trial is evaluated with the
+         ! weights recomputed (mode 0, trust_region_step), and the Krylov
+         ! leg, the Cauchy product and the products of later trials are
+         ! formed between those evaluations, so the model is the
+         ! recomputed-weight map as well. Before 2026-10-31 the base point
+         ! was taken in mode 2 here while every product after the first
+         ! merit evaluation of trust_region_step ran in mode 0, so those
+         ! products differenced two maps: [F0(Y + h v) - F2(Y)]/h, which is
+         ! the mode-0 derivative plus [F0(Y) - F2(Y)]/h
+         ! (md/briefs/crosscheck_k07_coupled_gate2c_r3_20261030_codex.md
+         ! section 3).
          weno_mode = 2
-         if (jv_fresh_weights) weno_mode = 0
+         if (jv_fresh_weights .or. use_tr) weno_mode = 0
+         if (use_tr .and. iter .eq. 1) write(*,'(A)') ' (JFNK) [TR] the'// &
+              ' Newton model is taken with recomputed reconstruction'//   &
+              ' weights (weno_mode 0), the map of the trust-region merit'
          ! DIAGONAL SCALING FOR THIS OUTER ITERATION, and it is taken AFTER
          ! the evaluation of the iterate. A species row's scale is not a
          ! function of Y alone: cell_row_scales reads the elemental row
@@ -19387,6 +20068,16 @@
               n_eval_refusal(refuse_row_nonfinite),                       &
               ', no chemical root ',                                      &
               n_eval_refusal(refuse_no_chemical_root)
+         if (n_eval_refusal(refuse_element_completion) .gt. 0)            &
+            write(*,'(A,I0)') ' (JFNK) residual samples refused for no'// &
+                 ' element completion of the write map: ',                &
+                 n_eval_refusal(refuse_element_completion)
+      endif
+      if (n_eval_refusal(refuse_mass_projection) .gt. 0)                  &
+         write(*,'(A,I0)') ' (JFNK) residual samples refused for a mass'//&
+              ' projection the sweep refused: ',                          &
+              n_eval_refusal(refuse_mass_projection)
+      if (nspec_row .gt. 0) then
          if (n_eval_refusal(refuse_conserved_state_inadmissible) .gt. 0)  &
             write(*,'(A,I0,A)') ' (JFNK) residual samples refused for a'//&
                  ' conserved state that is not a gas (rho <= 0 or'//      &
@@ -19468,10 +20159,12 @@
               ', worst violation removed from ',                         &
               elem_restoration_worst_before, ' to ',                     &
               elem_restoration_worst_after
-            write(*,'(A,I0,A,ES10.3)') ' (JFNK) write-back cells whose'//&
-              ' closure species could not return an element total: ',    &
+            write(*,'(A,I0,A,ES10.3)') ' (JFNK) write maps refused for'//&
+              ' want of an element completion: ',                         &
               n_write_back_element_deficit, ', worst relative deficit ', &
               write_back_worst_element_deficit
+            write(*,'(A,I0)') ' (JFNK) write maps refused at an upper'//  &
+              ' ghost: ', n_write_back_ghost_refused
             write(*,'(A,I0,A)') ' (JFNK) probe components with no room'//&
               ' at any step length: ', n_probe_blocked_components,       &
               ' (zeroed in the direction rather than costing it whole)'

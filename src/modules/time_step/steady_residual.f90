@@ -44,6 +44,7 @@
                 flux_spread_of_state, steady_gates_met,              &
                 flux_spread_above_radius,                            &
                 n_cells_without_chemical_root,                       &
+                first_cell_without_chemical_root,                    &
                 row_terms_describe_state,                            &
                 face_mass_flux_of_state,                             &
                 mass_row_rounding_floor,                             &
@@ -212,6 +213,9 @@
       real*8, dimension(3,1-Ng:N+Ng), intent(out) :: WL, WR, dF, S
       real*8, dimension(3,1-Ng:N+Ng) :: WLw, WRw, dFw, Sw, ff_plm
       real*8, dimension(1-Ng:N+Ng)   :: fp_plm, epf_plm
+      real*8 :: area_plm(2,1-Ng:N+Ng), grad_plm(2,1-Ng:N+Ng)
+      real*8 :: embedded_plm(1-Ng:N+Ng), qu_plm(1-Ng:N+Ng)
+      real*8 :: qd_plm(1-Ng:N+Ng)
       real*8, dimension(1-Ng:N+Ng)   :: ram_plm, pgr_plm, grv_plm
       logical :: sav_plm, sav_weno
       character(len=:), allocatable :: sav_method
@@ -243,6 +247,10 @@
          call RK_rhs(u_in, WL, WR, dF, S)
          ff_plm  = face_flux
          fp_plm  = face_p
+         area_plm = face_pressure_area
+         grad_plm = face_pressure_gradient
+         embedded_plm = face_pressure_in_flux
+         qu_plm = face_q_up; qd_plm = face_q_dn
          ram_plm = momentum_ram_divergence
          pgr_plm = momentum_pressure_gradient
          grv_plm = momentum_gravity
@@ -260,6 +268,14 @@
          ! correction rebuilds a cell from; keep them on the same homotopy.
          face_flux = om*ff_plm + lam*face_flux
          face_p    = om*fp_plm + lam*face_p
+         ! Pressure contributions must be blended BEFORE taking a cell
+         ! difference. lambda times an already blended face_p is not the
+         ! WENO3 pressure contribution; WB also needs both side departures.
+         face_pressure_area = om*area_plm + lam*face_pressure_area
+         face_pressure_gradient = om*grad_plm + lam*face_pressure_gradient
+         face_pressure_in_flux = om*embedded_plm + lam*face_pressure_in_flux
+         face_q_up = om*qu_plm + lam*face_q_up
+         face_q_dn = om*qd_plm + lam*face_q_dn
          ! The momentum row on the homotopy is the same combination of the
          ! two schemes' rows, so each term of the equation it holds, and
          ! the equilibrium pressure force it is read against under that option,
@@ -1191,9 +1207,12 @@
       !      or it is not a finite number. Such a state is kept only by the
       !      relaxation amnesty, so that a cold start may pass through it,
       !      and the chemistry does not describe it.
-      !   6  NOT a root either, and the candidate was so far from one
-      !      (residual above ieq_nonroot_res_cap) that it was not adopted at
-      !      all: the cell kept the composition it entered the sweep with.
+      !   6  NOT a root either: no admissible root candidate. The residual
+      !      is above ieq_nonroot_res_cap, or no in-simplex candidate has
+      !      a projection that is both admissible and a root. This includes
+      !      an infeasible budget with transported fractions imposed and
+      !      the atomic branch's projected non-root. It was not adopted:
+      !      the cell kept the composition it entered the sweep with.
       !      That composition solved an EARLIER cell state, not this one, so
       !      the chemistry does not describe this state.
       !
@@ -1203,6 +1222,27 @@
       integer, intent(in) :: acc_n(6)
       n_no = acc_n(4) + acc_n(6)
       end function n_cells_without_chemical_root
+
+
+      integer function first_cell_without_chemical_root(classes, found) &
+                                                            result(cell)
+      ! Locate the current sweep's first class 4 or 6 over every stored cell,
+      ! including ghosts. A found flag distinguishes a real cell 0 from an
+      ! absent record; historical non-root streaks are not this verdict.
+      integer, allocatable, intent(in) :: classes(:)
+      logical, intent(out) :: found
+      integer :: j
+      cell = 0
+      found = .false.
+      if (.not. allocated(classes)) return
+      do j = lbound(classes,1), ubound(classes,1)
+         if (classes(j) .eq. 4 .or. classes(j) .eq. 6) then
+            cell = j
+            found = .true.
+            return
+         endif
+      enddo
+      end function first_cell_without_chemical_root
 
 
       logical function steady_gates_met(rnorm, u, resid_tol, fspread,   &

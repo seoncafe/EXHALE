@@ -24,6 +24,19 @@
       real*8, dimension(:,:), allocatable :: face_flux
       real*8, dimension(:),   allocatable :: face_p
 
+      ! Pressure contributions needed to rebuild a momentum row after a
+      ! face is replaced. Index 1 is the cell below a face, 2 the cell above:
+      !   dF_2 = div_A(F_2) + div_A(pressure_area) + diff(pressure_gradient).
+      ! The last difference is divided by the cell width. These pressure
+      ! values, unlike a blended face_p, retain the PLM/WENO3 weights and
+      ! each side's hydrostatic departure under the well-balanced option.
+      ! pressure_in_flux is the pressure already inside F_2, for the
+      ! physical ram/pressure diagnostic. No extra force is added to RK_rhs.
+      real*8, allocatable :: face_pressure_area(:,:)
+      real*8, allocatable :: face_pressure_gradient(:,:)
+      real*8, allocatable :: face_pressure_in_flux(:)
+
+
       ! WELL-BALANCED OPTION.  The face pressure of every interface measured
       ! from the hydrostatic equilibrium of the cell on each side,
       !   face_q_up(f) = face_p(f) - P_up(f),
@@ -125,6 +138,20 @@
          face_q_dn = 0.0d0
       endif
 
+      ! Tests may evaluate a different grid in the same process. These
+      ! face records follow the bounds of that evaluation, like its fluxes.
+      if (allocated(face_pressure_area)) then
+         if (lbound(face_pressure_area,2).ne.1-Ng.or.                     &
+             ubound(face_pressure_area,2).ne.N+Ng)                       &
+            deallocate(face_pressure_area,face_pressure_gradient,        &
+                       face_pressure_in_flux)
+      endif
+      if (.not. allocated(face_pressure_area)) then
+         allocate(face_pressure_area(2,1-Ng:N+Ng),                        &
+                  face_pressure_gradient(2,1-Ng:N+Ng),                    &
+                  face_pressure_in_flux(1-Ng:N+Ng))
+      endif
+
       ! THE LOWEST GHOST CELL HAS NO LOWER FACE, so no flux difference and
       ! no geometric source are defined for it and its residual row is zero:
       ! the cell loop below starts at 2-Ng, and the column is written here
@@ -162,6 +189,10 @@
          if (damp_lowmach) Fp = Fp + Ddis(:,j)
          face_flux(:,j) = Fp
          face_p(j)      = pR
+         call spherical_pressure_face_terms(pR,face_q_up(j),              &
+              face_q_dn(j),merge(1.0d0,0.0d0,use_plm),                    &
+              face_pressure_area(:,j),face_pressure_gradient(:,j),       &
+              face_pressure_in_flux(j))
       enddo
       !$omp end do
 
@@ -304,15 +335,36 @@
       end subroutine equilibrium_pressure_force_of_state
 
 
+      subroutine spherical_pressure_face_terms(p, q_up, q_dn, plm_share, &
+                                                area, gradient, embedded)
+      ! Pressure pieces of one face's momentum operator. PLM puts p in
+      ! the ordinary flux; WENO3 puts p in a Cartesian pressure gradient.
+      ! Both well-balanced fluxes exclude pressure: PLM adds each side's
+      ! equilibrium departure with area/volume, WENO3 with inverse width.
+      ! Linear combination of THESE pieces is the continuation operator.
+      real*8, intent(in) :: p, q_up, q_dn, plm_share
+      real*8, intent(out) :: area(2), gradient(2), embedded
+      area = 0.0d0
+      embedded = 0.0d0
+      if (well_balanced) then
+         area = plm_share*[q_up,q_dn]
+         gradient = (1.0d0-plm_share)*[q_up,q_dn]
+      else
+         gradient = (1.0d0-plm_share)*p
+         embedded = plm_share*p
+      endif
+      end subroutine spherical_pressure_face_terms
+
+
       subroutine momentum_row_terms_of_cell(dr,dAp,dAm,dV,              &
                                             Fp2,Fm2,pR,pL,qp,qm,        &
                                             S2,weight,w_face_p,         &
                                             ram,pgrad,grav)
       ! ONE CELL'S MOMENTUM ROW SPLIT INTO THE TERMS OF THE PHYSICAL
       ! EQUATION, and the single definition of that split.  The three
-      ! outputs add up to the assembled row dF(2) - S(2) exactly, whichever
-      ! reconstruction produced it and whether or not the well-balanced
-      ! option is on:
+      ! ordinary outputs add up to dF(2)-S(2). Under the well-balanced
+      ! option ram+pgrad is the departure row dF(2); grav is its separate
+      ! equilibrium-force reference, not another term to add to that row:
       !
       !   PLM    Phys_flux gives the momentum flux the pressure, so the
       !          face value is rho v v + p and the flux difference holds
@@ -332,8 +384,9 @@
       !          caller passes (equilibrium_pressure_force).
       !
       ! w_face_p is the weight the caller's assembly gave the face-pressure
-      ! difference: one under WENO3, zero under PLM, and recon_lambda where
-      ! the positivity repair rebuilds a cell on the PLM to WENO3 homotopy.
+      ! difference: one under WENO3 and zero under PLM. The positivity
+      ! repair uses the separately stored pressure pieces of each face,
+      ! because a single weight times face_p does not describe a blend.
       !
       ! S2 AND weight ARE READ ONLY TO RECOVER THE GEOMETRIC TERM, as
       ! p_geom = S2 + weight, which is `source`'s own (A+ - A-) p_c/dV with
@@ -479,16 +532,19 @@
       real*8, dimension(3) :: Fp,Fm,dFc
       real*8  :: pL,pR
       real*8  :: qp,qm
-      real*8  :: wgt,w_face_p
+      real*8  :: wgt,plm_share,plm_current,pressure_part,embedded_part
+      real*8 :: area_lo(2,1-Ng:N+Ng), grad_lo(2,1-Ng:N+Ng)
+      real*8 :: embedded_lo(1-Ng:N+Ng)
+      real*8 :: ap,am,lp,lm,ep,em
 
       n_calls_flux_positivity_repair = n_calls_flux_positivity_repair + 1
 
-      ! The momentum row of a rebuilt cell is assembled below, so the term
-      ! it is read against belongs here as well.  A replaced face does not
-      ! move it: the equilibrium pressure force is a property of the cell's
-      ! own density and of the potential, and this stage's state is the one
-      ! whose fluxes are being repaired.
-      if (well_balanced) call equilibrium_pressure_force_of_state(u_stage)
+      ! Keep the stage's source and equilibrium-force reference, including
+      ! their continuation weights. Replacing a face changes no source.
+      plm_current = merge(1.0d0,0.0d0,use_plm)
+      plm_share = plm_current
+      if (recon_lambda_on) plm_share = 1.0d0 -                         &
+                              min(1.0d0,max(0.0d0,recon_lambda))
 
       repaired       = .false.
       is_first_order = .false.
@@ -552,6 +608,14 @@
                   q_up_lo(jf) = p_lo(jf) - wb_P_up(jf)
                   q_dn_lo(jf) = p_lo(jf) - wb_P_dn(min(jf+1,N+Ng))
                endif
+               ! LLF was computed with the restored reconstruction flags.
+               ! Express its ordinary pressure share on the SAME blend as
+               ! the unreplaced faces; the complete Cartesian flux is kept.
+               if (.not. well_balanced) flux_lo(2,jf) = flux_lo(2,jf)   &
+                               + (plm_share-plm_current)*p_lo(jf)
+               call spherical_pressure_face_terms(p_lo(jf),             &
+                    q_up_lo(jf),q_dn_lo(jf),plm_share,                    &
+                    area_lo(:,jf),grad_lo(:,jf),embedded_lo(jf))
                is_first_order(jf) = .true.
                n_new_faces = n_new_faces + 1
 
@@ -585,75 +649,42 @@
 
             if (is_first_order(j-1)) then
                Fm = flux_lo(:,j-1)
-               pL = p_lo(j-1)
-               qm = q_dn_lo(j-1)
+               am = area_lo(2,j-1); lm = grad_lo(2,j-1)
+               em = embedded_lo(j-1)
             else
                Fm = face_flux(:,j-1)
-               pL = face_p(j-1)
-               qm = face_q_dn(j-1)
+               am = face_pressure_area(2,j-1)
+               lm = face_pressure_gradient(2,j-1)
+               em = face_pressure_in_flux(j-1)
             endif
-
             if (is_first_order(j)) then
                Fp = flux_lo(:,j)
-               pR = p_lo(j)
-               qp = q_up_lo(j)
+               ap = area_lo(1,j); lp = grad_lo(1,j)
+               ep = embedded_lo(j)
             else
                Fp = face_flux(:,j)
-               pR = face_p(j)
-               qp = face_q_up(j)
+               ap = face_pressure_area(1,j)
+               lp = face_pressure_gradient(1,j)
+               ep = face_pressure_in_flux(j)
             endif
 
             dFc(1) = (dAp*Fp(1) - dAm*Fm(1))/dV
-            dFc(2) = (dAp*Fp(2) - dAm*Fm(2))/dV
+            pressure_part = (dAp*ap-dAm*am)/dV + (lp-lm)/dr
+            dFc(2) = (dAp*Fp(2)-dAm*Fm(2))/dV + pressure_part
 
-            ! Correct for WENO3 discretization. Under the PLM -> WENO3
-            ! continuation the stored interface fluxes are already on the
-            ! homotopy, so the face-pressure term carries the same weight.
-            ! (The first-order replacement flux itself is built with the
-            ! flags currently set, i.e. the PLM form; it is reached only on
-            ! cells the correction actually repairs, and the counter
-            ! n_faces_flux_positivity_limited reports how many those were.)
-            if (recon_lambda_on) then
-               dFc(2) = dFc(2) + recon_lambda*(pR - pL)/dr
-            else if (use_weno3) then
-               dFc(2) = dFc(2) + (pR - pL)/dr
-            endif
-
-            ! The well-balanced momentum row, as the cell loop of RK_rhs
-            ! assembles it; keep the two in step.  Under the PLM to WENO3
-            ! continuation the face departures stored here are those of the
-            ! LAST of the two evaluations and not their blend (the blend is
-            ! formed in reconstruction_continuation_rhs on dF, S, face_flux
-            ! and face_p), so a face this repair replaces inside a
-            ! continuation ramp carries that evaluation's pressure force rather
-            ! than the homotopy's.  A replaced face is not well balanced in
-            ! any case (see above), and the repair runs only on a stage that
-            ! left rho > 0, rho e > 0.
-            if (well_balanced) then
-               if (use_plm) then
-                  dFc(2) = (dAp*(Fp(2) + qp) - dAm*(Fm(2) + qm))/dV
-               else
-                  dFc(2) = (dAp*Fp(2) - dAm*Fm(2))/dV + (qp - qm)/dr
-               endif
-            endif
-
-            ! THE TERMS OF THE MOMENTUM EQUATION THIS ROW HOLDS FOLLOW
-            ! THE REBUILD, from the same mixture of fluxes.  The weight is
-            ! a property of the cell's own density and of the potential and
-            ! no replaced face can move it, so it is the one this stage's
-            ! own right-hand side left.
-            w_face_p = 0.0d0
-            if (recon_lambda_on) then
-               w_face_p = recon_lambda
-            else if (use_weno3) then
-               w_face_p = 1.0d0
-            endif
+            ! The same split as the stage, with each replaced pressure
+            ! piece substituted once. In WB the pressure diagnostic is the
+            ! departure force and gravity remains a separate reference.
             wgt = momentum_gravity(j)
-            call momentum_row_terms_of_cell(dr,dAp,dAm,dV,              &
-                    Fp(2),Fm(2),pR,pL,qp,qm,S(2,j),wgt,w_face_p,        &
-                    momentum_ram_divergence(j),                         &
-                    momentum_pressure_gradient(j),                      &
-                    momentum_gravity(j))
+            embedded_part = (dAp*ep-dAm*em)/dV
+            momentum_ram_divergence(j) =                                &
+                         (dAp*Fp(2)-dAm*Fm(2))/dV - embedded_part
+            if (well_balanced) then
+               momentum_pressure_gradient(j) = pressure_part
+            else
+               momentum_pressure_gradient(j) = pressure_part            &
+                                               +embedded_part-(S(2,j)+wgt)
+            endif
 
             dF3p  = dAp*Fp(1)*(Gphi_i(j) - Gphi_c(j))         &
                   - dAm*Fm(1)*(Gphi_i(j-1) - Gphi_c(j))
@@ -687,6 +718,9 @@
          if (is_first_order(jf)) then
             face_flux(:,jf) = flux_lo(:,jf)
             face_p(jf)      = p_lo(jf)
+            face_pressure_area(:,jf) = area_lo(:,jf)
+            face_pressure_gradient(:,jf) = grad_lo(:,jf)
+            face_pressure_in_flux(jf) = embedded_lo(jf)
             if (well_balanced) then
                face_q_up(jf) = q_up_lo(jf)
                face_q_dn(jf) = q_dn_lo(jf)

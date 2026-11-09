@@ -22,6 +22,7 @@
       use Conversion,               only: U_to_W
       use steady_residual_mod,      only: residual_row_scale,             &
                                           n_cells_without_chemical_root,  &
+                                          first_cell_without_chemical_root,&
                                           face_mass_flux_of_state,        &
                                           mass_row_rounding_floor,        &
                                           row_terms_describe_state
@@ -40,7 +41,8 @@
                                           carrier_row_terms_write,       &
                                           ionization_stage_sum_measure, &
                        helium_metastable_excitation_energy_divergence
-      use ionization_equilibrium,   only: bg_ready, ieq_nonroot_streak,   &
+      use ionization_equilibrium,   only: bg_ready,                       &
+                                          ieq_cell_acceptance_class,      &
                                           finite_real, ieq_res_tol,       &
                                           ieq_triplet_row,                &
                                           transported_rows_exist,         &
@@ -470,6 +472,7 @@
          integer          :: n_no_chem_root       = 0
          logical          :: chem_root_known      = .false.
          integer          :: first_no_chem_cell   = 0
+         logical          :: first_no_chem_found  = .false.
          ! THE MASS CLOSURE OF THE COMPOSITION, max_j |sum_i f_i A_i - 1|
          ! over the physical cells, and the cell it attains. The mass
          ! fractions are defined by f_i = n_i m_i / rho, so this sum is one
@@ -575,6 +578,14 @@
          ! ieq_state_may_be_refused). The boundary the rows are built on is
          ! then an iterate and not the solution of the stated equations.
          integer :: n_sweep_ghost_open    = 0
+         ! Passes of the evaluation's composition loop whose sweep refused
+         ! its mass projection (ioniz_eq_ledger%n_projection_refused): the
+         ! composition then does not weigh the density of the state, so
+         ! the evaluation has no admitted composition.
+         integer :: n_sweep_projection_refused = 0
+         ! A transported partition that has no admissible element budget
+         ! is invalid input to the chemical solve at this trial state.
+         integer :: n_sweep_invalid_imposed = 0
          integer :: n_no_chem_root_trial  = 0
          integer :: n_no_chem_root_state  = 0
          ! Whether the caller asks for the chemical-root condition at all: a
@@ -637,6 +648,8 @@
       public :: certification_row_measure
       public :: certification_row_measure_over
       public :: cert_tol_element_at, cert_tol_carrier_at
+      public :: carrier_certificate_of_state, carrier_certificate_worst
+      public :: measure_against_target_text
       public :: cert_tol_mass_at, mass_row_cell_verdict
       public :: mass_row_column_verdict
       public :: cert_mass_gate_name
@@ -664,6 +677,21 @@
       public :: certification_evaluate_physical_step
       public :: cert_step_verdict
       public :: cert_step_reason_text
+      public :: returned_state_disposition
+      ! WHAT THE STATIONARY OUTER ITERATION DOES WITH THE STATE ITS
+      ! HYDRODYNAMIC SOLVE RETURNED (returned_state_disposition).
+      integer, parameter, public :: returned_state_handed_on      = 0
+      integer, parameter, public :: returned_state_solved_again   = 1
+      integer, parameter, public :: returned_state_wind_restored  = 2
+      integer, parameter, public :: returned_state_refused_wind_restored = 3
+      integer, parameter, public :: returned_state_refused_entry_restored = 4
+      ! WHICH STATE THE OUTER ITERATION PUTS BACK WHEN ITS STATE IS NOT
+      ! FINITE (nonfinite_state_restore).
+      public :: nonfinite_state_restore
+      integer, parameter, public :: nonfinite_restore_none        = 0
+      integer, parameter, public :: nonfinite_restore_update_entry = 1
+      integer, parameter, public :: nonfinite_restore_earlier_wind = 2
+      integer, parameter, public :: nonfinite_restore_call_entry  = 3
 
       ! The verdict of the LAST stationary certification made, so that the
       ! end of a run can act on the state it actually wrote.
@@ -692,18 +720,103 @@
       logical function trial_state_is_admissible(f) result(ok)
       ! THE STATIONARY NEWTON TRIAL CONTEXT: a
       ! trial is admissible if it is a state at all -- finite rows, a finite
-      ! sweep, a lower boundary the sweep could solve, inside the element
-      ! headroom -- and if its eliminated chemistry
+      ! sweep whose mass projection was not refused, a lower boundary the
+      ! sweep could solve, inside the element headroom -- and if its eliminated chemistry
       ! is locally valid, which here means it leaves no MORE cells without a
       ! chemical root than the iterate it is compared against. The solver's
       ! own merit-decrease and trust-region rules then decide the step; no
       ! stationary tolerance enters this decision.
       type(cert_evaluation_facts), intent(in) :: f
       ok = (f%n_sweep_nonfinite .eq. 0) .and. f%headroom_ok                &
-           .and. f%rows_finite .and. (f%n_sweep_ghost_open .eq. 0)
+           .and. f%rows_finite .and. (f%n_sweep_ghost_open .eq. 0)       &
+           .and. (f%n_sweep_projection_refused .eq. 0)                  &
+           .and. (f%n_sweep_invalid_imposed .eq. 0)
       if (f%chem_root_gate) ok = ok .and.                                  &
            (f%n_no_chem_root_trial .le. f%n_no_chem_root_state)
       end function trial_state_is_admissible
+
+
+      integer function returned_state_disposition(projection_refused,     &
+                       hydro_info, wind_conv_held, species_alternated,    &
+                       first_wind_solves, imposed_input_refused) result(d)
+      ! THE STATE A STATIONARY SOLVE RETURNED, AND WHAT IS DONE WITH IT.
+      ! One decision for the outer iteration of the stationary solve
+      ! (steady_wind_with_element_diffusion), so that the order of its
+      ! cases is stated and tested in one place.
+      !
+      !  * The refresh REFUSED ITS MASS PROJECTION OR IMPOSED INPUT:
+      !    the returned composition is not an admissible state, so the
+      !    state is not an iterate of anything.  It is never solved again
+      !    and never handed on: the last converged wind of the alternation
+      !    and its composition are put back where one is held, otherwise
+      !    the state the solve of this pass was entered with, and the
+      !    iteration ends refused.  This case is decided first, so neither
+      !    the retry of a first wind nor a later pass can take it up.
+      !  * The solve converged: the refreshed state is handed on.
+      !  * It failed before any wind of the alternation converged, with
+      !    species alternated: the iterate is a state of the same equations
+      !    and is solved again once from itself (first_wind_solves counts
+      !    the solves of this pass, the one just made included).
+      !  * It failed after a converged wind: that wind and its composition
+      !    are put back.
+      !  * Otherwise (nothing alternated, or the retry spent): the iterate
+      !    is handed on with its flag.
+      logical, intent(in) :: projection_refused, wind_conv_held
+      logical, intent(in) :: species_alternated
+      integer, intent(in) :: hydro_info, first_wind_solves
+      logical, optional, intent(in) :: imposed_input_refused
+      logical :: invalid_imposed
+      invalid_imposed = .false.
+      if (present(imposed_input_refused)) invalid_imposed = imposed_input_refused
+      if (projection_refused .or. invalid_imposed) then
+         if (wind_conv_held .and. species_alternated) then
+            d = returned_state_refused_wind_restored
+         else
+            d = returned_state_refused_entry_restored
+         endif
+      else if (hydro_info .eq. 0) then
+         d = returned_state_handed_on
+      else if (species_alternated .and. .not. wind_conv_held .and.        &
+               first_wind_solves .lt. 2) then
+         d = returned_state_solved_again
+      else if (species_alternated .and. wind_conv_held) then
+         d = returned_state_wind_restored
+      else
+         d = returned_state_handed_on
+      endif
+      end function returned_state_disposition
+
+
+      pure integer function nonfinite_state_restore(update_entry_usable,  &
+                       earlier_wind_usable, call_entry_usable) result(d)
+      ! A PASS OF THE STATIONARY OUTER ITERATION WHOSE STATE IS NOT FINITE
+      ! (a certification row of the refreshed state, or the composition a
+      ! carrier update returned) ends the iteration refused, and the state
+      ! it hands back must be a state of the gas: every caller reads the
+      ! nonzero flag as "nothing accepted" and goes on from the state it
+      ! is handed (the marching hand-off marches on from it).  So a known
+      ! valid complete state is put back first, the most recent one held:
+      !   the state the composition update of THIS pass was entered with
+      !        (the refreshed state of the pass, whose rows were finite);
+      !   else the converged wind of an EARLIER pass (one of this pass
+      !        may be the refused state itself);
+      !   else the state the routine was called with;
+      ! each only where it was taken and is finite (the caller judges
+      ! that: u and every species finite).  With none usable the run
+      ! stops (nonfinite_restore_none): no valid state exists to hand
+      ! back, and a checkpoint that was never taken is never restored.
+      logical, intent(in) :: update_entry_usable, earlier_wind_usable
+      logical, intent(in) :: call_entry_usable
+      if (update_entry_usable) then
+         d = nonfinite_restore_update_entry
+      else if (earlier_wind_usable) then
+         d = nonfinite_restore_earlier_wind
+      else if (call_entry_usable) then
+         d = nonfinite_restore_call_entry
+      else
+         d = nonfinite_restore_none
+      endif
+      end function nonfinite_state_restore
 
 
       logical function probe_direction_is_usable(f) result(ok)
@@ -778,6 +891,12 @@
       ! compares file contents and reads its verdict from those, so the
       ! nonzero status changes what a caller sees from the shell and not what
       ! the harness compares.
+      if (run_mode.eq.run_mode_phys) then
+         write(*,'(A)') ' (certification) Physical marching acceptance is'// &
+              ' judged from retained profiles by the external checker.'
+         write(*,'(A)') ' (certification) Stationary certification is a'// &
+              ' diagnostic; this message does not accept the trajectory.'
+      endif
       if (cert_last%certified) return
       if (stationary_solve_failed) then
          write(*,'(A)') ' (certification) the STATIONARY SOLVE FAILED '//  &
@@ -1303,8 +1422,6 @@
       logical, optional,              intent(in)  :: record_verdict
 
       integer :: k, ic, i, j, itr, imel
-      real*8, dimension(1:N,n_carrier_max) :: cres, cterms
-      logical, dimension(1:N,n_carrier_max) :: cabsent
       real*8, dimension(3,1-Ng:N+Ng)       :: Wcert
       real*8, dimension(1-Ng:N+Ng) :: Tcert, cn_hi, cn_hii, cn_hei
       real*8, dimension(1-Ng:N+Ng) :: cn_heii, cn_heiii, cn_heitr
@@ -1428,32 +1545,8 @@
       endif
 
       ! ---- the transported carrier balances ----
-      ! The set is carrier_set_init's, fixed once after the keys are parsed;
-      ! a carrier the run does not solve carries no equation.
-      carriers_measured = .false.
-      cabsent = .false.
-      if (transported_rows_exist() .and. bg_ready) then
-         call carrier_rows_of_state(Wcert(1,:), Wcert(2,:), f_sp,         &
-                                    cres, cterms, cabsent)
-         carriers_measured = .true.
-      endif
-      do ic = 1, n_carrier_max
-         if (ic .gt. n_carrier .or. .not. carrier_solved(ic)               &
-             .or. .not. transported_rows_exist()) then
-            call add_entry(rep, 'carrier balance '//trim(carrier_name(ic)),&
-                           cert_not_applicable,                           &
-                           'the run does not carry this species', ient)
-            cycle
-         endif
-         if (.not. carriers_measured) then
-            call add_entry(rep, 'carrier balance '//trim(carrier_name(ic)),&
-                           cert_unavailable,                              &
-                           'the frozen background is not ready (bg_ready)',&
-                           ient)
-            cycle
-         endif
-         call carrier_row_entry(rep, ic, cres, cterms, cabsent)
-      enddo
+      call add_carrier_balance_entries(rep, Wcert(1,:), Wcert(2,:), f_sp,  &
+                                       carriers_measured)
 
       ! ---- the ionization stage sum: moving charge moves no nucleus ----
       ! With the ionization state transported, the stage fluxes of an
@@ -1618,12 +1711,10 @@
       ! The first cell of the state whose composition is not a root, so a
       ! refusal names a cell and not only a count.
       rep%first_no_chem_cell = 0
-      if (n_no_chem_root .gt. 0 .and. allocated(ieq_nonroot_streak)) then
-         do j = 1, N
-            if (ieq_nonroot_streak(j) .gt. 0) then
-               rep%first_no_chem_cell = j;  exit
-            endif
-         enddo
+      rep%first_no_chem_found = .false.
+      if (n_no_chem_root .gt. 0) then
+         rep%first_no_chem_cell = first_cell_without_chemical_root(      &
+              ieq_cell_acceptance_class,rep%first_no_chem_found)
       endif
 
       if (context .eq. cert_context_stationary .and. cert_records_verdict)  &
@@ -1915,6 +2006,119 @@
       enddo
       ent%within_tol = ent%finite .and. wi_bind
       end subroutine mass_row_column_verdict
+
+
+      subroutine add_carrier_balance_entries(rep, rho, v, f_sp,            &
+                                             carriers_measured)
+      ! THE TRANSPORTED CARRIER BALANCES OF A STATE, one entry each, with
+      ! the applicability and absence rules of the certificate.  The set
+      ! is carrier_set_init's, fixed once after the keys are parsed; a
+      ! carrier the run does not solve carries no equation
+      ! (cert_not_applicable), and an active carrier whose rows could not
+      ! be formed (no frozen background) is cert_unavailable, never a zero.
+      type(cert_report), intent(inout) :: rep
+      real*8, dimension(1-Ng:N+Ng),           intent(in)  :: rho, v
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
+      logical,                                intent(out) :: carriers_measured
+      real*8, dimension(1:N,n_carrier_max)  :: cres, cterms
+      logical, dimension(1:N,n_carrier_max) :: cabsent
+      integer :: ic, ient
+      carriers_measured = .false.
+      cabsent = .false.
+      if (transported_rows_exist() .and. bg_ready) then
+         call carrier_rows_of_state(rho, v, f_sp, cres, cterms, cabsent)
+         carriers_measured = .true.
+      endif
+      do ic = 1, n_carrier_max
+         if (ic .gt. n_carrier .or. .not. carrier_solved(ic)               &
+             .or. .not. transported_rows_exist()) then
+            call add_entry(rep, 'carrier balance '//trim(carrier_name(ic)),&
+                           cert_not_applicable,                           &
+                           'the run does not carry this species', ient)
+            cycle
+         endif
+         if (.not. carriers_measured) then
+            call add_entry(rep, 'carrier balance '//trim(carrier_name(ic)),&
+                           cert_unavailable,                              &
+                           'the frozen background is not ready (bg_ready)',&
+                           ient)
+            cycle
+         endif
+         call carrier_row_entry(rep, ic, cres, cterms, cabsent)
+      enddo
+      end subroutine add_carrier_balance_entries
+
+
+      subroutine carrier_certificate_of_state(rho, v, f_sp, rep)
+      ! THE CELLWISE CARRIER CERTIFICATE OF A STATE, ALONE: the carrier
+      ! entries certification_evaluate forms, in a report of their own,
+      ! measured in the isolated workspace of carrier_rows_of_state and
+      ! recording nothing (no base-face record, no row-terms file), so a
+      ! report that reads it moves no state and no output.
+      real*8, dimension(1-Ng:N+Ng),           intent(in)  :: rho, v
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
+      type(cert_report),                      intent(out) :: rep
+      logical :: records_at_entry, measured
+      records_at_entry     = cert_records_verdict
+      cert_records_verdict = .false.
+      call add_carrier_balance_entries(rep, rho, v, f_sp, measured)
+      cert_records_verdict = records_at_entry
+      end subroutine carrier_certificate_of_state
+
+
+      subroutine carrier_certificate_worst(rep, n_evaluated, n_failed,     &
+                                           n_unavailable, iworst, distance)
+      ! THE WORST APPLICABLE CARRIER ENTRY OF A REPORT, by its distance to
+      ! its own tolerance, row_max_gate/tol over the gated cells: iworst
+      ! (0 if no carrier entry was evaluated with a gated cell) and that
+      ! distance; how many carrier entries were evaluated, how many of them
+      ! are not within their tolerance, and how many are unavailable (an
+      ! active equation with no measurement, or an evaluated one with no
+      ! applicable cell).  Not-applicable entries are not counted.
+      type(cert_report), intent(in)  :: rep
+      integer,           intent(out) :: n_evaluated, n_failed
+      integer,           intent(out) :: n_unavailable, iworst
+      real*8,            intent(out) :: distance
+      integer :: i
+      real*8  :: d
+      n_evaluated = 0;  n_failed = 0;  n_unavailable = 0
+      iworst = 0;  distance = 0.0d0
+      do i = 1, rep%n
+         if (rep%e(i)%name(1:16) .ne. 'carrier balance ') cycle
+         select case (rep%e(i)%status)
+         case (cert_unavailable)
+            n_unavailable = n_unavailable + 1
+         case (cert_evaluated)
+            n_evaluated = n_evaluated + 1
+            if (.not. rep%e(i)%within_tol) n_failed = n_failed + 1
+            if (rep%e(i)%tol .gt. 0.0d0) then
+               d = rep%e(i)%row_max_gate/rep%e(i)%tol
+            else
+               d = huge(1.0d0)
+            endif
+            if (.not. rep%e(i)%finite) d = huge(1.0d0)
+            if (iworst .eq. 0 .or. d .gt. distance) then
+               iworst = i;  distance = d
+            endif
+         end select
+      enddo
+      end subroutine carrier_certificate_worst
+
+
+      ! THE VERDICT OF A MEASURE AGAINST A CONFIGURED TARGET, as the
+      ! solver's own gates read it (measure < target is met); a target that
+      ! is not positive was not set.
+      function measure_against_target_text(measure, target) result(txt)
+      real*8, intent(in) :: measure, target
+      character(len=12) :: txt
+      if (.not. (target .gt. 0.0d0)) then
+         txt = 'NO TARGET'
+      else if (measure .lt. target) then
+         txt = 'MET'
+      else
+         txt = 'NOT MET'
+      endif
+      end function measure_against_target_text
 
 
       subroutine carrier_row_entry(rep, ic, cres, cterms, cabsent)
@@ -2758,7 +2962,7 @@
       if (rep%chem_root_known) then
          write(*,'(A,I0,A)') '   cells without a chemical root: ',         &
               rep%n_no_chem_root, ' (acceptance class 4 or 6)'
-         if (rep%first_no_chem_cell .gt. 0)                                &
+         if (rep%first_no_chem_found)                                &
             write(*,'(A,I0)') '     first such cell: j = ',                &
                  rep%first_no_chem_cell
       else
@@ -2904,10 +3108,18 @@
                endif
             endif
          enddo
-         if (rep%chem_root_known .and. rep%n_no_chem_root .gt. 0)          &
-            write(*,'(A,I0,A,I0)') '     chemistry: ',                     &
-                 rep%n_no_chem_root, ' cell(s) without a root, first at '//&
-                 'j = ', rep%first_no_chem_cell
+         if (rep%chem_root_known .and. rep%n_no_chem_root .gt. 0) then
+            if (rep%first_no_chem_found) then
+               write(*,'(A,I0,A,I0)') '     chemistry: ',                 &
+                    rep%n_no_chem_root,                                  &
+                    ' cell(s) without a root, first at j = ',             &
+                    rep%first_no_chem_cell
+            else
+               write(*,'(A,I0,A)') '     chemistry: ',                    &
+                    rep%n_no_chem_root,                                  &
+                    ' cell(s) without a root; no current cell index recorded'
+            endif
+         endif
          if (.not. rep%chem_root_known)                                    &
             write(*,'(A)') '     chemistry: the caller made no statement'//&
                  ' about it'

@@ -117,6 +117,7 @@ by the Python loaders except where noted.
 
 | # | Key substring | Match / value word | Type | Units | Default (if absent) | Sets | Notes |
 |---|---|---|---|---|---|---|---|
+| K0 | `Output directory` | rest of line after `:` | path | - | `output/` for `input.inp`; otherwise the input filename stem | output directory | Relative paths are resolved from the working directory. EXHALE creates the directory and writes all reports and restart files inside it. |
 | K1 | `Domain mode` | word 3 == `Spherical` | flag | - | `.false.` (Roche) | `spherical_domain` | Spherical potential out to `Outer radius`. |
 | K2 | `Outer radius` | word 4 | real | R_planet | `0.0` | `r_out_user` | Required (> 1) in spherical mode; in Roche mode extends `r_max` past L1 (the default outer face is the L1 radius). Every run prints the Mach number of the outermost cell with its Mdot (`EXHALE_main.f90`, `steady_mass_loss_rate`; also in `EXHALE_setup.out`) and a note below 1.1: a subsonic outer face lets the outer ghost condition set Mdot, so for a quantitative Mdot of a transonic wind this key puts the face past the sonic point (on `wasp_full_newton` the L1 face at Mach 0.95 moves rho and v by up to 15-17% and log10 Mdot by 0.01 against 2 R_p; `md/outer_boundary_subsonic_review_20261009.md` section 5). |
 | K3 | `Stellar Teff` | word 4 | real | K | `0.0` | `T_star_eff` | With K4 enables the diluted-blackbody Balmer continuum (`use_excited_H`). **Mandatory, and > 0, with `Spectrum type: Planck`** (line 11d): it is then the source of the whole photon grid as well. |

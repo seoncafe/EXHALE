@@ -69,14 +69,14 @@
       integer,intent(in) :: jL,jR
       real*8, intent(in),  optional :: dev_L,dev_R,dp_eq
       real*8, intent(out), optional :: q_up,q_dn
-      logical :: wb, hllc_left
+      logical :: wb, hllc_left, hlle_face
       real*8  :: dp_wb
       real*8 :: gam_L,gam_R,gam_face
       real*8 :: uL(3),uR(3)
       real*8 :: FL(3),FR(3)
       real*8 :: rhoL,vL,pL,aL,EL,HL,SL,phiL
       real*8 :: rhoR,vR,pR,aR,ER,HR,SR,phiR
-      real*8 :: S_star
+      real*8 :: S_star, dp_face
       real*8 :: usL(3),usR(3)
       real*8 :: s,rho_avg,v_avg,H_avg,a_avg          
       real*8 :: l1,l2,l3
@@ -91,6 +91,7 @@
       
       wb = present(dev_L) .and. present(dev_R) .and. present(dp_eq)
       hllc_left = .true.
+      hlle_face = .false.
       dp_wb = 0.0d0
       if (wb) dp_wb = dp_eq + dev_R - dev_L
 
@@ -180,20 +181,40 @@
                
          endif
 
-         ! p_out is one side's own face pressure here, so the departure it
-         ! carries is that side's.  hllc_left says which side the branch
-         ! above took.
+         ! Effective numerical pressure for the spherical momentum split:
+         ! P = p_K + S_K rho*_K (S* - v_K), H - P = mass_flux * v_K,
+         ! where H is the complete Cartesian HLLC momentum flux. P is not
+         ! the usual HLLC contact pressure. The paired subtraction preserves
+         ! H, makes the split continuous at S*=0 and the sonic clamps, and
+         ! retains the upstream pressure at a supersonic face. See
+         ! EXHALE_v1.10/md/hllc_spherical_pressure_split_fix_20261105.md.
+         if (SL .ge. 0.0d0 .or. SR .le. 0.0d0) then
+            dp_face = 0.0d0
+         else if (hllc_left) then
+            dp_face = SL*usL(1)*(S_star - vL)
+         else
+            dp_face = SR*usR(1)*(S_star - vR)
+         endif
+         if (hllc_left) then
+            p_out = pL + dp_face
+         else
+            p_out = pR + dp_face
+         endif
+         ! Ordinary PLM already carries the complete pressure in NF(2).
+         if (.not. (use_plm .and. .not. well_balanced)) &
+            NF(2) = NF(2) - dp_face
+         ! Apply the same pressure increment to the equilibrium departures;
+         ! never recover a small departure by subtracting two O(1) pressures.
          if (wb) then
             if (hllc_left) then
-               q_up = dev_L
-               q_dn = dev_L - dp_eq
+               q_up = dev_L + dp_face
+               q_dn = q_up - dp_eq
             else
-               q_dn = dev_R
-               q_up = dev_R + dp_eq
+               q_dn = dev_R + dp_face
+               q_up = q_dn + dp_eq
             endif
          endif
 
-      
       case ('ROE')
       
          
@@ -239,6 +260,7 @@
             call Phys_flux(WL,FL,jL)
             call Phys_flux(WR,FR,jR)
             call hlle_flux(WL,WR,FL,FR,SL,SR,jL,jR,NF)
+            hlle_face = .true.
 
             !$omp atomic
             n_faces_roe_hlle = n_faces_roe_hlle + 1
@@ -314,13 +336,27 @@
 
          endif
 
-         p_out = 0.5*(pR + pL)
-
-         ! p_out is the average of the two face pressures, on the Roe branch
-         ! and on the HLLE fallback alike
-         if (wb) then
-            q_up = 0.5d0*(dev_L + dev_R + dp_eq)
-            q_dn = q_up - dp_eq
+         ! The HLLE substitute has a wave-weighted pressure contribution.
+         ! Returning the Roe arithmetic mean would not restore its complete
+         ! momentum flux, even in Cartesian geometry for asymmetric bounds.
+         if (hlle_face) then
+            if (SL .ge. 0.0d0) then
+               p_out = pL
+               if (wb) q_up = dev_L
+            else if (SR .le. 0.0d0) then
+               p_out = pR
+               if (wb) q_up = dev_R + dp_eq
+            else
+               p_out = (SR*pL - SL*pR)/(SR - SL)
+               if (wb) q_up = (SR*dev_L - SL*(dev_R + dp_eq))/(SR - SL)
+            endif
+            if (wb) q_dn = q_up - dp_eq
+         else
+            p_out = 0.5*(pR + pL)
+            if (wb) then
+               q_up = 0.5d0*(dev_L + dev_R + dp_eq)
+               q_dn = q_up - dp_eq
+            endif
          endif
 
       case default
