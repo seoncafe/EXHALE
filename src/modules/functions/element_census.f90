@@ -408,7 +408,7 @@
          enddo
          if (dev_worst .gt. tol) then
             n_bad = n_bad + 1
-            write(*,'(A,A,A,A,ES10.3,A,ES10.3,A,I5,A,F9.5)')             &
+            write(*,'(A,A,A,A,A,ES10.3,A,ES10.3,A,I5,A,F9.5)')           &
                  ' (element_census) ', trim(label), ': ',                &
                  trim(element_name(ie)), ' misses its reservoir ', res,  &
                  ' by ', dev_worst, ' at cell ', jw, ' r =', r(jw)

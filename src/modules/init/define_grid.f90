@@ -401,7 +401,9 @@
       !                        constructed grid, unchanged, which keeps
       !                        r_edg(nc) = (r(nc) + r(nc+1))/2 as it was;
       !   r(nc+k) - r(nc+k-1) = s x^(k-1),  k = 2 .. m,  s = r(nc+1) - r(nc);
-      !   r(N+1)             = 2 r_F - r(N), so that r_edg(N) = r_F;
+      !   r(N+1)             = 2 r_F - r(N), so that r_edg(N) = r_F (with
+      !                        r(N) restated from r(N+1) so the midpoint is
+      !                        r_F exactly in floating point, see below);
       !   r(N+j)             = 2 r(N+j-1) - r(N+j-2), j = 2 .. Ng, the
       !                        linear extrapolation the Mixed grid applies
       !                        to its own outer ghosts.
@@ -420,9 +422,11 @@
       ! continuous across the old outer face when m is chosen so that x is
       ! the stretch ratio of the grid below (mixed_stretch_ratio for the
       ! Mixed grid). Both ratios are written to the setup report.
+      use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
       integer, intent(in) :: nc
       integer :: j, k, m, it
       real*8  :: s, q, x, xn, sx, dsx, sp, rf
+      real*8, volatile :: g
 
       m  = n_outer_shells
       rf = r_outer_shells_face
@@ -457,15 +461,76 @@
          sp = sp*x
          r(nc+k) = r(nc+k-1) + sp
       enddo
-      ! The ghost center that puts the last face on r_F. One rounding in the
-      ! difference and one in the sum can leave the midpoint one unit in the
-      ! last place off r_F; the neighbouring double is then taken, so the
-      ! face lands on r_F exactly.
-      r(N+1) = 2.0d0*rf - r(N)
-      do it = 1, 4
-         if (0.5d0*(r(N) + r(N+1)) .eq. rf) exit
-         r(N+1) = nearest(r(N+1), rf - 0.5d0*(r(N) + r(N+1)))
-      enddo
+      ! The ghost center that puts the last face on r_F, exactly. The face
+      ! is the midpoint (r(N) + g)/2 of the last shell center and the ghost
+      ! center g, and it is r_F only when r(N) + g rounds to 2 r_F. The
+      ! ghost is chosen first, since moving it moves no physical cell:
+      ! g = fl(2 r_F - r(N)) does it when the difference is exact, else
+      ! its neighboring double toward r_F may (a round-to-even tie). Neither
+      ! need succeed: when r(N) carries a bit below the unit in the last
+      ! place u of g, r(N) + g is 2 r_F +- u/2 before rounding, and when g
+      ! lies in the binade of 2 r_F (r(N) < r_F < 2^k <= g, so u is also
+      ! the unit of 2 r_F) that is a tie, which rounds away from 2 r_F when
+      ! the last bit of r_F is odd.
+      !
+      ! For two or more shells the last shell center is then restated from
+      ! the ghost, r(N) = 2 r_F - g with g = fl(2 r_F - r(N)) again. The
+      ! restatement is exact by Sterbenz's lemma, applied to the operands
+      ! t = 2 r_F and g, under these floating-point preconditions, checked
+      ! on the values actually computed before the theorem is relied on:
+      !   - r_F, t and g are finite (t = 2 r_F is then exact);
+      !   - r_F <= g <= t, i.e. 0 <= r(N) <= r_F up to the rounding of g,
+      !     so t/2 <= g <= t and t - g is a double;
+      !   - the restated center is finite and keeps the centers strictly
+      !     ordered, r(N-1) < r(N) < r_F < g, so every shell keeps a
+      !     positive width.
+      ! Then r(N) + g = t exactly and the midpoint is r_F. r(N) moves by at
+      ! most half a unit in the last place of g (an absolute bound at the
+      ! scale of g, not a relative bound on r(N) or on the shell width);
+      ! the faces and widths above r_edg(nc) are rebuilt below from the
+      ! final centers, and the last shell width, the ghost widths and their
+      ! volumes follow it. The shell spacings are then geometric to the
+      ! rounding of the construction, not exactly. A grid that fails the
+      ! preconditions is refused with its values.
+      !
+      ! g is VOLATILE so that the compiler stores the rounded g and reloads
+      ! it for t - g, instead of refolding 2 r_F - (2 r_F - r(N)) into the
+      ! old r(N), which the default value-unsafe floating-point model of
+      ! ifx permits. That is the one rewrite it is shown to prevent (the
+      ! store and reload are in the -O3 ifx object); it does not make the
+      ! routine's arithmetic precise in general, and the focused tests
+      ! (grid_and_gates outer_shells) are what check a changed compiler or
+      ! option set.
+      !
+      ! With one shell, r(N) = r(nc+1) is the first outer ghost center of
+      ! the constructed grid, which stays as constructed (r_edg(nc) depends
+      ! on it), and the check below refuses the case where neither
+      ! neighboring ghost puts the midpoint on r_F.
+      g = 2.0d0*rf - r(N)
+      if (0.5d0*(r(N) + g) .ne. rf) then
+         g = nearest(g, rf - 0.5d0*(r(N) + g))
+         if (0.5d0*(r(N) + g) .ne. rf .and. m .ge. 2) then
+            g = 2.0d0*rf - r(N)
+            if (.not. (ieee_is_finite(rf) .and. ieee_is_finite(2.0d0*rf)  &
+                       .and. ieee_is_finite(g) .and. rf .le. g            &
+                       .and. g .le. 2.0d0*rf)) then
+               write(*,'(A,3ES25.17)') ' (define_grid.f90) ERROR: outer'//&
+                  ' shells: the ghost center g lies outside [r_F, 2 r_F]'//&
+                  ' or is not finite (r_F, g, r(N)): ', rf, g, r(N)
+               error stop 1
+            endif
+            r(N) = 2.0d0*rf - g
+            if (.not. (ieee_is_finite(r(N)) .and. r(N-1) .lt. r(N)      &
+                       .and. r(N) .lt. rf .and. rf .lt. g)) then
+               write(*,'(A,4ES25.17)') ' (define_grid.f90) ERROR: outer'//&
+                  ' shells: the restated last center does not keep the'// &
+                  ' centers ordered (r(N-1), r(N), r_F, g): ', r(N-1),    &
+                  r(N), rf, g
+               error stop 1
+            endif
+         endif
+      endif
+      r(N+1) = g
       do j = 2, Ng
          r(N+j) = 2.0d0*r(N+j-1) - r(N+j-2)
       enddo
@@ -475,10 +540,18 @@
       r_edg(N+Ng) = 2.0d0*r_edg(N+Ng-1) - r_edg(N+Ng-2)
       dr_j(nc+1:N+Ng) = r_edg(nc+1:N+Ng) - r_edg(nc:N+Ng-1)
 
+      ! Exact by construction for two or more shells under the
+      ! preconditions checked above; with one shell the constructed ghost
+      ! center r(nc+1) may admit no ghost that puts the midpoint on r_F
+      ! (see above), and then a second shell is needed.
       if (r_edg(N) .ne. rf) then
          write(*,'(A,ES23.16,A,ES23.16,A)') ' (define_grid.f90) ERROR: '// &
             'the outer face of the shells is ', r_edg(N), ' R_p, not the ', &
             rf, ' R_p "Outer shells" states.'
+         if (m .eq. 1) write(*,'(A)') '   With one shell the first'//     &
+            ' appended center r(nc+1) stays as constructed, and neither'// &
+            ' neighboring ghost center puts the midpoint on r_face;'//    &
+            ' use two or more shells.'
          error stop 1
       endif
 

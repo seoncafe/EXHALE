@@ -41,11 +41,13 @@
       !       rebuilt per stage from its own donor rule, does not return one
       !       element flux.  This module never rebuilds N_el; the caller
       !       reads it from the element operator.
-      !   C2  the face fractions close the simplex exactly: the carried
-      !       stages are reconstructed and the CLOSING stage is one minus
-      !       their sum, never reconstructed on its own.  The donor side is
-      !       taken from the sign of N_el and not from any stage's own
-      !       gradient, so every stage leaves the cell its element leaves.
+      !   C2  the face fractions close the simplex exactly: every carried
+      !       stage takes the DONOR cell's fraction and the CLOSING stage is
+      !       one minus their sum, never formed on its own.  The donor side
+      !       is taken from the sign of N_el and not from any stage's own
+      !       gradient, so every stage leaves the cell its element leaves
+      !       (ionization_stage_face_fractions states the rule and why it is
+      !       the donor value and not a reconstruction).
       !   C3  n_el(f), K(f) and dr(f) are ONE face value shared by every
       !       stage, and the closing stage's eddy term is MINUS the sum of
       !       the others'.  Forming it from the closing stage's own cell
@@ -131,7 +133,6 @@
 
       use global_parameters
       use grid_construction, only: spherical_face_area_and_cell_volume
-      use species_advective_transport, only: species_face_fraction
       use binary_element_diffusion, only: element_nucleus_face_flux,      &
                                           element_nucleus_counts,         &
                                           m_He_amu
@@ -177,41 +178,67 @@
 
 
       subroutine ionization_stage_face_fractions(xion, Nel, xf, xclose)
-      ! THE FACE FRACTIONS OF ONE ELEMENT'S STAGES, closing the simplex at
-      ! the RECONSTRUCTED face and not only at the cell centres (condition
-      ! C2 of the header).
+      ! THE FACE FRACTIONS OF ONE ELEMENT'S STAGES: THE DONOR CELL'S OWN
+      ! VALUES.  At the face f between cells j and j+1 the donor is d = j
+      ! where N_el(f) >= 0 and d = j+1 where N_el(f) < 0, and
       !
-      ! Every carried stage goes through species_face_fraction, the same
-      ! reconstruction, limiter and donor rule the element mass fractions
-      ! take; the donor side is selected by the ELEMENT nucleus flux Nel, so
-      ! one stage cannot be donated from one side of a face while another is
-      ! donated from the other.  The closing stage is then one minus their
-      ! sum, which makes sum_k x_k(f) = 1 to one subtraction's rounding
-      ! (MEASURED 2.2e-16).
+      !    x_k(f)     = x_k(d)                for every carried stage,
+      !    x_close(f) = 1 - sum_k x_k(d)      the closing stage.
       !
-      ! What this rule buys is the SUM and nothing else.  The carried stages
-      ! come back inside [0,1] because species_face_fraction scales them
-      ! there; the closing stage is a difference and can still leave it
-      ! (MEASURED largest negative face value -8.6e-4 on the simplex-face
-      ! column).  Bounding the closing face value as well would break (2),
-      ! so the excursion is measured at the CELL state by
-      ! stage_simplex_projection and reported, never repaired at the face.
+      ! One rule for every carried state of the element: the ionization
+      ! stages and, where "He 2^3S transport" carries it, the He 2^3S level.
+      ! The eddy term of (1) is formed by the caller from the two cell
+      ! values and is not touched here, and the boundary faces take the
+      ! same donor rule (the header's boundary paragraph).
+      !
+      ! WHY THE DONOR VALUE AND NOT A RECONSTRUCTION.  A reconstructed face
+      ! value is not bounded by its donor cell at a local minimum next to a
+      ! large neighbor, and an empty donor then advects the stage OUTWARD:
+      ! at zero content the semidiscrete rate of that cell points out of the
+      ! nonnegative domain, so the operator does not leave that domain
+      ! invariant.  An implicit substep from a positive old state can still
+      ! exist; short substeps make progress toward the boundary and then
+      ! stall there.  MEASURED on the LHS 1140 b
+      ! He/H 1.2 state (k07 of euv_match_20261027/HeH1.2/xuv_x1p28): at the
+      ! face between cells 358 and 359, donor He++ fraction 0, WENO3 face
+      ! fraction 9.94e-6, outward He++ flux +8.46e4 cm^-2 s^-1, against
+      ! -1.88e4 (inward, the eddy term alone) with the donor value; every
+      ! carrier relaxation of that state was refused on that row
+      ! (md/lowheh_newbinary_failure_20261029.md, steps 1 and 2;
+      ! md/briefs/crosscheck_lowheh_steps12_20261030_*).  With admissible
+      ! cell fractions every donor face fraction and the closing one lie
+      ! in [0,1], an empty donor carries nothing out, and the identity (2)
+      ! holds at every face because all the stages share the one donor.
+      !
+      ! ITS ORDER.  The advective half of (1) is FIRST ORDER in space.  For
+      ! locally constant coefficients on a uniform grid of spacing h, its
+      ! leading error is a diffusive flux with coefficient |N_el| h/2 (a
+      ! nucleus flux per unit fraction gradient), i.e. an added diffusivity
+      ! |N_el| h/(2 n_el) in the equation of the fraction x_k; it is
+      ! nonnegative whatever the sign of N_el.  On a stretched grid or where
+      ! N_el and n_el vary within a cell this is the leading term only.  Its
+      ! size on the observables of one state is measured in
+      ! md/stage_face_donor_rule_20261030.md (a two-grid sensitivity, not a
+      ! measured truncation error).  A
+      ! higher-order face needs a positivity proof for the implicit carrier
+      ! step it serves before it can replace this one.  The Jacobian of the
+      ! stage rows (ionization_stage_face_jacobian) is the exact derivative
+      ! of this face for fixed element face coefficients.
       real*8, dimension(:,1-Ng:),   intent(in)  :: xion
       real*8, dimension(1-Ng:N+Ng), intent(in)  :: Nel
       real*8, dimension(:,0:),      intent(out) :: xf
       real*8, dimension(0:N),       intent(out) :: xclose
 
-      real*8, dimension(1-Ng:N+Ng) :: work, wf
-      integer :: k, nk, j
+      integer :: k, nk, j, jd
 
       nk     = size(xion,1)
       xclose = 1.0d0
-      do k = 1, nk
-         work = xion(k,:)
-         call species_face_fraction(work, Nel, wf)
-         do j = 0, N
-            xf(k,j) = wf(j)
-            xclose(j) = xclose(j) - wf(j)
+      do j = 0, N
+         jd = j
+         if (Nel(j) .lt. 0.0d0) jd = j + 1
+         do k = 1, nk
+            xf(k,j)   = xion(k,jd)
+            xclose(j) = xclose(j) - xion(k,jd)
          enddo
       enddo
 
@@ -220,7 +247,7 @@
 
       subroutine ionization_stage_face_flux(xion, Nel, n_elf, Kf, drf,    &
                                             xf, xclose, Fk, Fclose,       &
-                                            donor_value, Ek_out)
+                                            Ek_out)
       ! EQUATION (1) OF THE HEADER, at the faces f = 0 ... N, in nuclei
       ! cm^-2 s^-1 when Nel is in nuclei cm^-2 s^-1, n_elf in cm^-3, Kf in
       ! cm^2 s^-1 and drf in cm.
@@ -235,10 +262,9 @@
       ! paragraph).  No width floor is applied to drf: a zero-width cell is
       ! a grid error the grid constructor refuses.
       !
-      ! donor_value = .true. replaces the reconstruction by the donor cell's
-      ! own value, which is the face the Jacobian below differentiates.  The
-      ! identity (2) holds in both, because it is a statement about the
-      ! stages sharing one face rule and not about which rule that is.
+      ! The face fractions are the donor cell's
+      ! (ionization_stage_face_fractions), the face the Jacobian below
+      ! differentiates.
       !
       ! Ek_out returns the stage eddy terms themselves, the second term of
       ! (1).  They are what the rounding bound of identity (2) is written
@@ -252,30 +278,13 @@
       real*8, dimension(0:N),       intent(out) :: xclose
       real*8, dimension(:,0:),      intent(out) :: Fk
       real*8, dimension(0:N),       intent(out) :: Fclose
-      logical, optional,            intent(in)  :: donor_value
       real*8, dimension(:,0:), optional, intent(out) :: Ek_out
 
       real*8  :: nKdr, Ek
-      integer :: j, k, nk, jd
-      logical :: donor
+      integer :: j, k, nk
 
       nk    = size(xion,1)
-      donor = .false.
-      if (present(donor_value)) donor = donor_value
-
-      if (donor) then
-         xclose = 1.0d0
-         do j = 0, N
-            jd = j
-            if (Nel(j) .lt. 0.0d0) jd = min(j+1, N+Ng)
-            do k = 1, nk
-               xf(k,j)   = xion(k,jd)
-               xclose(j) = xclose(j) - xion(k,jd)
-            enddo
-         enddo
-      else
-         call ionization_stage_face_fractions(xion, Nel, xf, xclose)
-      endif
+      call ionization_stage_face_fractions(xion, Nel, xf, xclose)
 
       Fk     = 0.0d0
       Fclose = 0.0d0
@@ -323,10 +332,9 @@
       !
       ! ONE carried stage has |sum_k E_k| = sum_k |E_k| and reaches 3/2; two
       ! or more can cancel their eddy terms against one another, and reach 2
-      ! in that limit.  The carried face fractions are in [0,1] by
-      ! construction (ionization_stage_face_fractions); the closing one is a
-      ! difference and leaves it by at most -8.6e-4 (MEASURED, that routine),
-      ! which raises the right-hand side by that much of itself.
+      ! in that limit.  The face fractions are the donor cell's
+      ! (ionization_stage_face_fractions), so with admissible cell fractions
+      ! the carried ones and the closing one all lie in [0,1].
       !
       ! MEASURED over manufactured columns whose eddy coefficient spans
       ! K_0 = 0 to 1e15 cm^2 s^-1: 1.00 to 1.50.
@@ -416,13 +424,10 @@
       ! alone: the closing stage is where the stages couple, and the closing
       ! stage is not a row.
       !
-      ! The limiter and the second-order part of the reconstruction are left
-      ! out, exactly as element_advective_face_coefficients leaves them out
-      ! of the element row: they are the strongly nonlinear part of the
-      ! operator and reach beyond the tridiagonal band.  The residual is the
-      ! full operator either way, so this changes what a Newton converges AT,
-      ! not what it converges TO.  The acceptance row differentiates the
-      ! donor-value face and measures the second-order part separately.
+      ! The face fractions are the donor cell's
+      ! (ionization_stage_face_fractions), so this is the exact derivative
+      ! of the flux for fixed element face coefficients N_el, n_el(f), K(f)
+      ! and dr(f).
       !
       ! The sign pattern is the M-matrix one: the eddy half puts a positive
       ! entry on the left cell and a negative one on the right, and the

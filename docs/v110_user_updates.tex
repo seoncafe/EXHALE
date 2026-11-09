@@ -2,15 +2,26 @@
 \clearpage
 \section{What changed in v1.10}\label{sec:v110-user}
 
-The chapters following this section were copied from the v1.00 manual. They
-describe the physical options and output schemas of that version. Their
-planet-specific timings, residuals, and convergence examples are historical
-v1.00 measurements; they are not renewed v1.10 results. This section gives the
-current v1.10 behavior where the versions differ. In particular, the older
-use of the word ``converged'' for a marching snapshot does not certify a
-stationary solution.
+This manual describes the current v1.10 physical options and output schemas.
+Shared descriptions also apply to v1.00 where stated. Planet-specific
+timings, residuals and convergence examples retained from v1.00 are
+historical measurements, not current v1.10 results. The features below
+are specific to v1.10. A stable marching profile and a stationary
+certificate answer different questions.
 
-\subsection{Two levels of convergence}
+\subsection{Marching acceptance and stationary convergence}
+
+Marching is the default solution route. In both v1.00 and v1.10 the
+default criterion accepts a physical marching state when the retained profiles pass the
+$K=3$ flow-crossing-time test in \S\ref{sec:convctl}: every cell's complete
+temperature and density bands are at most 0.004~dex, and its velocity band
+is at most 1\% under the flow or quasi-hydrostatic normalization. The
+external checker reports the measured maxima and requires adequate snapshot
+coverage. A JFNK stationary root is optional; failure to obtain one is not
+a failure of a marching state that passes this test. Stationary certificates
+are reported separately according to the equations they actually test.
+The regional monitor below is a distinct optional test and does not replace
+the default complete-profile criterion.
 
 \textbf{Regional stabilization} is the finite-duration test implemented for
 atomic global physical-time marching. It checks whether upper-atmosphere
@@ -19,8 +30,8 @@ the configured bounds. It ends a successful regional run without launching a
 Newton--Krylov solve. \textbf{Stationary convergence} requires the enabled
 fluid, chemical, radiative, and boundary equations to satisfy specified
 stationary residual and consistency tolerances. Regional stabilization alone
-does not imply a stationary root. The numerical method does not define either
-physical criterion.
+does not imply a stationary root. The numerical method does not define these
+physical criteria.
 
 Enable the regional test with \texttt{Regional convergence: True}. The main
 program accepts it only with \texttt{Run mode: phys} in an atomic calculation

@@ -1025,13 +1025,19 @@
       real*8           ::  du                   ! Cell-centered mass-flux spread
       real*8           ::  dtu                  ! Norm of time derivative
 
-      ! Convergence stall detection (ported from ATES_extended): stop runs
+      ! Convergence stall detection (ported from ATES_extended): stop relaxation runs
       ! whose du settles on a plateau above du_th (steady state reached but
       ! the strict thresholds physically unreachable for the given setup).
+      ! A physical trajectory reports settling/stall gates without stopping.
       ! Hard cap on marching iterations, settable as "Max steps: <N>".
       ! (The env variable EXHALE_MAXSTEPS is a separate, lower deterministic
       ! cap used by the regression harness; it exits the loop without the
       ! "reached count_max" message and never raises this one.)
+      ! Archived accepted states: 0 disables additional output. The legacy
+      ! live-output cadence remains unchanged. Diagnostics: 0 prints only
+      ! refused attempts and the final record; 1 retains every attempt.
+      integer :: marching_snapshot_interval = 0
+      integer :: marching_diagnostic_interval = 1
       integer :: marching_step_max = 1000000   ! printed as "count_max"
       integer :: N_stall   = 2000     ! window of stalled steps; settable via
                                       !   input line "Stall [tol,N]: <tol> <N>"

@@ -1,7 +1,18 @@
       module hydrodynamic_rows_double
       ! Double-precision finite-volume rows from hydrodynamic_rows_body.inc.
-      ! This instantiation must match Reconstruction_step, Numerical_Fluxes,
-      ! source_func, and RK_integration bitwise for the precision comparison.
+      ! The text evaluates the same expressions as Reconstruction_step,
+      ! Numerical_Fluxes, source_func and RK_integration. Under the build's
+      ! floating-point model (ifx -O3 -xHost, i.e. -fp-model fast=1) each
+      ! compiled routine may reassociate sums and contract products into FMAs
+      ! in its own order, so the rows agree bitwise only where the compiled
+      ! orders coincide. On the two k07 held states measured (2026-11-04),
+      ! the mass and momentum face fluxes were bitwise equal; the HLLC energy
+      ! face flux differed by at most 4.1e-16 relative to the face flux, and
+      ! the energy rows by at most 4.8e-14 of the energy-row scale. These are
+      ! tested-state observations of an arithmetic-order difference, not
+      ! bounds for other states. A bitwise precision-comparison control
+      ! requires a paired build and explicit validation as described in
+      ! md/floating_point_contract_hydrodynamic_rows_20261104.md.
 
       use global_parameters
       use caloric_eos, only: caloric_cell_mixture,                       &
@@ -81,7 +92,8 @@
       ! departures in RK_integration arrays for later row diagnostics.
 
       use global_parameters
-      use RK_integration, only: face_flux, face_p, face_q_up, face_q_dn
+      use RK_integration, only: face_flux, face_p, face_q_up, face_q_dn,  &
+                                face_contact_side
       use Reconstruction_step, only: n_faces_positivity_limited
       use Numerical_Fluxes, only: n_faces_roe_hlle, n_faces_llf
       use low_mach_dissipation, only: low_mach_damping_active
@@ -186,6 +198,10 @@
       endif
       face_flux = ff
       face_p    = fp
+      ! These rows return no contact side: every face is marked without one.
+      if (.not. allocated(face_contact_side))                            &
+         allocate(face_contact_side(1-Ng:N+Ng))
+      face_contact_side(:)%valid = .false.
       if (well_balanced) then
          if (.not. allocated(face_q_up)) then
             allocate(face_q_up(1-Ng:N+Ng), face_q_dn(1-Ng:N+Ng))

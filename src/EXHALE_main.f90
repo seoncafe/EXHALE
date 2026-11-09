@@ -5,7 +5,9 @@
       use species_table, only: n_mion, mion_fsp, isp_HeI, isp_HeTR, n_melem
       use Read_input
       use stationary_boundary_chemistry, only: stationary_ghost_state, &
-           boundary_chemistry_result, boundary_thermodynamic_invalid
+           boundary_chemistry_result, boundary_thermodynamic_invalid,     &
+           boundary_closure_work, boundary_closure_work_reset,            &
+           boundary_closure_work_count
       use Initialization
       ! What the restart file said it was produced under (parsed by load_IC).
       ! The molecular state implied by a solved atomic one: an
@@ -42,9 +44,8 @@
       ! The shell volume of one cell, for the domain sum of the energy the
       ! held-pressure composition update adds.
       use grid_construction, only: spherical_cell_volume
-      use binary_element_diffusion, only: element_diffusion_step,          &
-                                          element_step_last_status,      &
-                                          element_step_accepted,         &
+      use binary_element_diffusion, only: element_step_accepted,         &
+                                          element_step_entry_invalid,    &
                                           element_step_outcome_text,     &
                                           relax_element_composition,      &
                                           element_transport_residual_norm,&
@@ -56,11 +57,14 @@
                                           species_advection_active,       &
                                           species_advection_begin_step,   &
                                           species_advection_stage,        &
-                                          species_advection_project,      &
+                                          element_operation_of_the_attempt,&
                                           interdiffusion_enthalpy_active, &
                                           interdiffusion_enthalpy_face_flux, &
                                           interdiffusion_enthalpy_divergence
       use diffusive_photochemistry, only: photochemical_transport_step,   &
+                                          carrier_work_count,           &
+                                          carrier_work_reset,           &
+                                          carrier_work_of_pass,         &
                                           carrier_enthalpy_active,      &
                                           carrier_enthalpy_divergence_of_state,&
                                           carrier_verdict,              &
@@ -122,7 +126,8 @@
                                      residual_row_scale,                &
                                      face_mass_flux_of_state,           &
                                      mass_row_rounding_floor,           &
-                                     n_cells_without_chemical_root
+                                     n_cells_without_chemical_root,    &
+                                     first_cell_without_chemical_root
       ! MEASUREMENT ONLY, default off (EXHALE_BOUNDARY_TRACE).
       use boundary_state_trace_mod, only: boundary_trace_armed,          &
                                      base_mass_row_trace,               &
@@ -150,7 +155,10 @@
       ! THE ATTEMPTED-STEP CONTROLLER: the checkpoint of the whole
       ! step, the acceptance predicate at the adoption boundary, the
       ! step-size policy of a rejection and the integration-error estimate.
-      use attempted_step, only: attempted_step_checkpoint,               &
+      use attempted_step, only: element_operation_disposition,           &
+                               element_disposition_accepted,             &
+                               element_disposition_refuse_attempt,       &
+                               attempted_step_checkpoint,               &
                                attempted_step_verdict,                   &
                                attempted_step_checkpoint_take,           &
                                attempted_step_checkpoint_restore,        &
@@ -183,6 +191,8 @@
                                as_reject_hydro_stage, as_reject_int_error, &
                                as_reject_energy, as_reject_conduction,   &
                                as_reject_source_fixed_point,             &
+                               as_reject_mass_projection,                &
+                               as_reject_imposed_input,                  &
                                integration_error, err_class_name,        &
                                n_err_class, err_inner_fraction,          &
                                err_order_p,                              &
@@ -190,6 +200,16 @@
                                attempted_step_note_inner_error,          &
                                n_error_estimates_unresolved
       use certification, only: cert_report, cert_context_stationary,     &
+                               returned_state_disposition,               &
+                               nonfinite_state_restore,                  &
+                               nonfinite_restore_none,                   &
+                               nonfinite_restore_update_entry,           &
+                               nonfinite_restore_earlier_wind,           &
+                               nonfinite_restore_call_entry,             &
+                               returned_state_solved_again,              &
+                               returned_state_wind_restored,             &
+                               returned_state_refused_wind_restored,     &
+                               returned_state_refused_entry_restored,    &
                                cert_evaluated, cert_unavailable,         &
                                certification_evaluate,                   &
                                certification_report_write,               &
@@ -197,7 +217,10 @@
                                certification_note_stationarity_claim,    &
                                certification_note_stationary_solve_failed, &
                                certification_stop_uncertified,           &
-                               certification_reports_side_by_side
+                               certification_reports_side_by_side, &
+                               carrier_certificate_of_state,       &
+                               carrier_certificate_worst,          &
+                               measure_against_target_text
       use stationary_operator, only: select_stationary_reconstruction,   &
                                reconstruction_selection,                &
                                restore_reconstruction_selection,        &
@@ -265,6 +288,8 @@
       type(adv_derived_state) :: adv_state
 
       ! Logical variables
+      logical :: physical_trajectory = .false.
+      logical :: print_energy_rows
       logical :: l_isnan = .false.
       logical :: in_plm_stage = .false.   ! true while in the stage-1 (PLM) phase of a two-stage PLM->WENO3 run
       ! PLM -> WENO3 continuation ("Reconstruction continuation:", off by
@@ -594,7 +619,7 @@
       ! estimate needs (the state the step began at, and the result of the
       ! full step held aside while the two halves are taken).
       type(attempted_step_checkpoint) :: as_chk, as_entry, as_full
-      type(attempted_step_verdict)    :: as_verd
+      type(attempted_step_verdict)    :: as_verd, as_verd_full
       real*8, dimension(:,:), allocatable :: L_hyd, u_err_full, u_hyd
       ! THE FULL-PASS STATE THE COMPARISON IS TAKEN AGAINST, on every row
       ! class of the estimate: the conservative rows, the species
@@ -657,6 +682,9 @@
       ! final report, so a refusal never passes silently in either mode.
       integer :: n_element_refused_init = 0
       integer :: as_carrier_status
+      ! The outcome of the element operation of the attempt
+      ! (element_step_* codes of binary_element_diffusion).
+      integer :: as_element_status
       ! The ledger family in force around a stationary solve, which is
       ! continuation and writes to the initialization family.
       integer :: ledger_family_held
@@ -918,6 +946,10 @@
       ! Read planetary parameters from file
       call configure_run_paths
       call input_read
+      physical_trajectory = run_mode .eq. run_mode_phys .and. &
+                            restart_intent .eq. restart_intent_trajectory
+      if (physical_trajectory .and. use_newton_solver) &
+         error stop 'physical trajectory requires Solver off; use a steady route for Newton'
       call regional_read(trim(inp_file))
       if(regional_enabled) then
          if(run_mode.ne.run_mode_phys.or.use_local_dt.or.thereis_mol.or. &
@@ -1148,6 +1180,16 @@
          call comp_T_from_p(p,n_tot,ne,T)
          if (use_excited_H) call excited_H_update(T,rho,f_sp,v,exc_rel)
          call ioniz_eq(T,rho,f_sp,heat,cool,eta,last_sweep)
+         ! A REFUSED MASS PROJECTION LEAVES NO STATE TO MEASURE: the
+         ! composition does not weigh the density, so no row assembled on
+         ! it is the residual of a state.  The diagnostic is refused.
+         if (last_sweep%n_projection_refused .gt. 0) then
+            call report_refused_mass_projection('the EXHALE_RESIDUAL'//    &
+                 ' diagnostic', last_sweep)
+            write(*,'(A)') ' (EXHALE_main) EXHALE_RESIDUAL=1: the'//       &
+                 ' evaluation is REFUSED; no residual is reported.'
+            error stop 1
+         endif
          call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,      &
                                     nheiii,nheiTR,nm,ne,n_tot)
          ! ONE COMPOSITION, ONE BOUNDARY, ONE RESIDUAL: the boundary derived
@@ -1571,6 +1613,8 @@
       ! and stop. Validation of increment (ii)-4 against the marching
       ! reference (WASP-121b ~13.71).
       call get_environment_variable('EXHALE_PTC', diag_env)
+      if (physical_trajectory.and.trim(diag_env).eq.'1') &
+         error stop 'EXHALE_PTC cannot replace a physical trajectory with a steady solve'
       if (trim(diag_env) .eq. '1' .and. ionization_transport) then
          ! THE SECOND ENTRANCE TO THE STEADY SOLVE, and the one route with
          ! the ionization state carried that is refused: it solves
@@ -2024,9 +2068,11 @@
       ! and the NaN scan leave from inside the body. Each condition has its
       ! own flag and its own line in the stop report below, so the reason
       ! printed is the reason that fired.
-      do while( ( .not.mass_flux_converged    .and.                          &
-                  .not.relaxation_stalled           .and.                          &
-                  .not.steady_gates_converged .and.                          &
+      ! A physical trajectory keeps these gate flags for their diagnostic
+      ! and staged-physics consumers. They cannot terminate its integration.
+      do while( ( (physical_trajectory.or..not.mass_flux_converged) .and.                          &
+                  (physical_trajectory.or..not.relaxation_stalled) .and.                          &
+                  (physical_trajectory.or..not.steady_gates_converged) .and.                          &
                   .not.newton_finished        .and.                          &
                   marching_step < marching_step_max ) .or. force_start )
 
@@ -2124,6 +2170,10 @@
                                                    n_dt_halve,            &
                                                    n_dt_halvings,         &
                                                    n_steps_dt_halved)
+               ! The final energy rows must describe the full pass whose
+               ! state is retained, not the second half used to estimate
+               ! its temporal error. Keep its passive verdict beside as_full.
+               as_verd_full  = as_verd
                u_err_full    = u
                f_sp_err_full = f_sp
                ! The pair operation 3 derives from the two arrays above.
@@ -2168,6 +2218,7 @@
             as_trial_op     = 0
             as_carrier_ok = .true.
             as_element_ok = .true.
+            as_element_status = element_step_accepted
 
             !--- Thermodynamic evolution ---!
 
@@ -2477,29 +2528,33 @@
             ! The ionization equilibrium below then re-solves the stages,
             ! conserving the new element amounts.  No-op unless he_diffusion
             ! is set (byte-identical when off).
-            if (species_advection_active())                           &
-               call species_advection_project(f_sp)
-            if (he_diffusion)                                         &
-               call element_diffusion_step(rho,T,f_sp,dt_loc,         &
-                                           Jface_out=J_he_face,       &
-                                           JXface_out=J_metal_face)
+            ! A REFUSED PROJECTION ENDS THE ELEMENT OPERATION: it wrote
+            ! nothing (species_advection_project), and the element step is
+            ! not called on the composition it refused.
+            call element_operation_of_the_attempt(rho, T, f_sp,      &
+                                                  dt_loc, J_he_face,  &
+                                                  J_metal_face,       &
+                                                  as_element_status)
 
-            ! A REFUSED ELEMENT STEP. The step judges
-            ! its candidate on every call and hands back the entry
-            ! composition when the candidate is not a state of the gas
-            ! (element_step_last_status names which test refused it). THE
-            ! STEP CONTROLLER OWNS THE DECISION, as for the carriers below:
-            ! in phys mode the whole attempted step is refused, restored
-            ! and retaken at half dt; in init mode the state is a numerical
-            ! iterate, the march goes on from the restored composition and
-            ! the refusal is counted for the final report.
-            if (he_diffusion .and.                                        &
-                element_step_last_status .ne. element_step_accepted) then
+            ! A REFUSED ELEMENT OPERATION. THE STEP CONTROLLER OWNS THE
+            ! DECISION (element_operation_disposition, attempted_step.f90,
+            ! states it): a failed candidate refuses the attempt in phys
+            ! mode and is counted in init mode, the valid composition the
+            ! operation received standing; an INVALID ENTRY refuses the
+            ! attempt in both modes, so that the complete checkpoint state
+            ! is restored instead of marching on from it.
+            select case (element_operation_disposition(                   &
+                         as_element_status .ne. element_step_accepted,    &
+                         as_element_status .eq. element_step_entry_invalid,&
+                         run_mode .eq. run_mode_phys))
+            case (element_disposition_accepted)
+               continue
+            case (element_disposition_refuse_attempt)
                as_element_ok = .false.
-               if (run_mode .eq. run_mode_phys) exit trial
-               as_element_ok = .true.
+               exit trial
+            case default
                n_element_refused_init = n_element_refused_init + 1
-            endif
+            end select
 
             ! THE ENTHALPY THE ELEMENT STEP MOVED, in the same step as the
             ! composition it moved.  Helium and hydrogen crossed every face
@@ -2522,7 +2577,7 @@
             ! rides with them through the formation-energy reference the
             ! coupled source step takes from this composition.
             if (interdiffusion_enthalpy_active() .and.                    &
-                element_step_last_status .eq. element_step_accepted) then
+                as_element_status .eq. element_step_accepted) then
                call interdiffusion_enthalpy_face_flux(T, f_sp, J_he_face, &
                                                       q_id_face,          &
                                                       J_metal_face)
@@ -2651,8 +2706,32 @@
                ! three conditions.
                if (do_profile) tp_a = omp_get_wtime()
                call ioniz_eq(T,rho,f_sp,heat,cool,eta,last_sweep,          &
-                             rho_recon=rho_rec_csm)
+                             rho_recon=rho_rec_csm,                      &
+                             transported_state_is_trial=.true.)
                if (do_profile) tp_ion = tp_ion + (omp_get_wtime() - tp_a)
+
+               if (last_sweep%n_invalid_imposed .gt. 0) then
+                  call report_invalid_transported_partition(            &
+                       'the attempted source step',last_sweep)
+                  as_trial_reason = as_reject_imposed_input
+                  as_trial_op = as_op_ioniz_eq
+                  exit trial
+               endif
+
+               ! A REFUSED MASS PROJECTION REFUSES THE ATTEMPT IN BOTH MODES.
+               ! The sweep handed back a composition that does not weigh the
+               ! density of the step (above the projection limit, or a
+               ! mixture mass that is not a usable number), so there is no
+               ! admitted composition for the energy update or any later
+               ! operator to read; the initialization leniency is about an
+               ! iterate that exists. The controller restores the checkpoint
+               ! (which holds f_sp and the sweep's module state) and retakes
+               ! the step at half dt.
+               if (last_sweep%n_projection_refused .gt. 0) then
+                  as_trial_reason = as_reject_mass_projection
+                  as_trial_op     = as_op_ioniz_eq
+                  exit trial
+               endif
 
                ! Evaluate partial densities, ne and n_tot (single policy point)
                call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,  &
@@ -3063,6 +3142,27 @@
                if (as_trial_reason .eq. as_reject_energy) then
                   as_verd%what   = 'the energy update found no'//          &
                                    ' temperature for at least one cell'
+               else if (as_trial_reason .eq. as_reject_mass_projection) then
+                  as_verd%jworst  = last_sweep%projection_refusal_cell
+                  as_verd%measure = last_sweep%projection_refusal_measure
+                  as_verd%tol     = ieq_mass_projection_refuse
+                  if (last_sweep%projection_cause .eq.                     &
+                      ieq_projection_cause_unusable) then
+                     as_verd%what = 'the mixture mass of a cell is not a'//&
+                                    ' usable number'
+                  else
+                     as_verd%what = 'the composition differs from the'//   &
+                                    ' density by more than the limit'
+                  endif
+               else if (as_trial_reason .eq. as_reject_imposed_input) then
+                  as_verd%what = 'invalid imposed transported fraction: '// &
+                       trim(last_sweep%invalid_imposed_species)
+                  as_verd%jworst = last_sweep%invalid_imposed_cell
+                  as_verd%kworst = 0
+                  as_verd%measure = last_sweep%invalid_imposed_excess
+                  ! The measure is already the excess ABOVE the allowed
+                  ! closure rounding, in element-nucleus fraction units.
+                  as_verd%tol = 0.0d0
                else if (as_trial_reason .eq. as_reject_conduction) then
                   call conduction_reason_text(conduction_last_reason,      &
                                               cond_reason_text)
@@ -3088,7 +3188,7 @@
                as_verd%what      = 'the element step refused its'//      &
                                    ' candidate: '//                       &
                                    trim(element_step_outcome_text(       &
-                                        element_step_last_status))
+                                        as_element_status))
             else if (.not. as_carrier_ok) then
                as_verd%accepted  = .false.
                as_verd%reason    = as_reject_carrier
@@ -3117,25 +3217,11 @@
             ! d_u_form is the formation reservoir's own change, reported
             ! beside the row and not a term of it (the heating and cooling
             ! already carry every collisional transfer).
-            if (as_verd%identity_evaluated .and.                          &
-                run_mode .eq. run_mode_phys)                              &
-               write(*,'(A,I0,A,ES12.5,A,ES12.5,A,ES12.5,A,ES12.5,'//     &
-                     'A,ES12.5)')                                         &
-                    '   energy-identity: step=', marching_step,                   &
-                    ' d_u_th=', as_verd%d_u_th,                           &
-                    ' d_u_form=', as_verd%d_u_form,                       &
-                    ' Q_ext_dt=', as_verd%q_ext_dt,                       &
-                    ' d_u_th_transport=', as_verd%d_u_th_transport,       &
-                    ' residual/scale=', as_verd%identity_residual         &
-                                        /as_verd%identity_scale
-            if (as_verd%identity_evaluated .and.                          &
-                run_mode .eq. run_mode_phys)                              &
-               write(*,'(A,I0,A,ES12.5,A,I0,A,I0,A,L1)')                  &
-                    '   hydro-time-row: step=', marching_step,                    &
-                    ' max=', as_verd%hydro_row_max,                       &
-                    ' cell=', as_verd%hydro_jworst,                       &
-                    ' row=', as_verd%hydro_kworst,                        &
-                    ' above_tol=', as_verd%hydro_row_above
+            print_energy_rows = .not.as_verd%accepted
+            if (marching_diagnostic_interval .gt. 0) &
+               print_energy_rows = print_energy_rows.or. &
+                  mod(n_steps_accepted+1,marching_diagnostic_interval).eq.0
+            if (print_energy_rows) call write_physical_energy_rows(marching_step)
 
             if (as_verd%accepted) exit outer_attempt
 
@@ -3378,6 +3464,7 @@
                ! were the measurement, not the step.
                call attempted_step_checkpoint_restore(as_full, u, f_sp,   &
                                                       heat, cool, eta)
+               as_verd = as_verd_full
                call rebuild_state_from_checkpoint
                dt = dt_macro;  dt_loc = dtloc_macro
                error_estimate_seconds = error_estimate_seconds            &
@@ -3444,6 +3531,17 @@
             
             ! Update counter
             marching_step = marching_step + 1
+            if (run_mode.eq.run_mode_phys.and.marching_snapshot_interval.gt.0) then
+               ! A cap endpoint is retained as the final triple. Its final
+               ! certificate refreshes derived heat/cool, so do not publish
+               ! a second diagnostic representation at that same clock.
+               if (marching_step.lt.marching_step_max.and. &
+                   (max_steps.le.0.or.marching_step.lt.max_steps)) then
+                  if (mod(n_steps_accepted,marching_snapshot_interval).eq.0) &
+                     call write_marching_snapshot(marching_step,n_steps_accepted, &
+                          u,f_sp,heat,cool)
+               endif
+            endif
             
             ! The convergence measure of the marching: the radial spread of
             ! the mass flux rho v r^2 over the window r >= r_esc, evaluated
@@ -3908,6 +4006,14 @@
                relaxation_stalled = .false.;  steady_gates_converged = .false.
             endif
 
+            if (physical_trajectory .and. monitor_now) then
+               if (mass_flux_converged.or.relaxation_stalled.or. &
+                   steady_gates_converged) &
+                  write(*,'(A,3(1X,L1))') ' trajectory stop diagnostics'// &
+                     ' (report only): settled stall residual', &
+                     mass_flux_converged, relaxation_stalled, steady_gates_converged
+            endif
+
             ! Staged secondary ionization ("Secondary_ionization: Staged";
             ! the default since 2026-10-09 applies the coupling from step 0,
             ! and this block is then never entered). The coupling is applied
@@ -4245,14 +4351,14 @@
          write(*,'(A,ES10.3,A,ES10.3,A)')                                     &
               '     -> converged: JFNK steady solution (||R|| <',             &
               resid_max, ' AND flux spread <', flux_spread_th, ')'
-      else if (steady_gates_converged) then
+      else if (steady_gates_converged.and..not.physical_trajectory) then
          write(*,'(A,ES10.3,A,ES10.3,A)')                                     &
               '     -> converged: both steady gates met while marching '//    &
               '(||R||=', resid_max, ' , flux spread=', fspread_gate, ')'
          write(*,'(A,ES10.3,A,ES10.3)')                                       &
               '        targets: "Resid tol"', resid_th,                       &
               ' , "Flux spread tol"', flux_spread_th
-      else if (mass_flux_converged) then
+      else if (mass_flux_converged.and..not.physical_trajectory) then
          write(*,'(A,ES10.3,A,ES10.3,A)')                                     &
               '     -> stopped: face mass flux flat over r >= r_flux '//      &
               '(spread=', fspread_gate, ' < ', march_flux_th, ')'
@@ -4260,7 +4366,7 @@
               '        and the state settled (largest relative change over ',&
               N_resid, ' steps ', chg_win, ' < ', march_change_th, ')'
          call report_marching_stop
-      else if (relaxation_stalled) then
+      else if (relaxation_stalled.and..not.physical_trajectory) then
          write(*,'(A,I0,A,ES10.3,A,ES10.3,A)') '     -> stopped: the state'// &
               ' settled for ', n_settled_windows*N_resid, ' steps (change'//  &
               ' over the window ', chg_win, ') while the face mass flux is'// &
@@ -4295,6 +4401,11 @@
            '     cell-centred mass_flux_spread (diagnostic): window cells ',  &
            j_min, '..', N, '  value=', du
 
+      ! Always report the returned final attempt. A refused attempt (or
+      ! another sampled trajectory) can have the same step index, so its
+      ! printed row cannot stand for this accepted final state. This adds
+      ! one final record when the cadence already printed that attempt.
+      call write_physical_energy_rows(marching_step-1)
       call write_run_counter_report
       ! Whether any flux assembly of this run stood on a base face state
       ! built from another composition (zero is the invariant holding).
@@ -4320,8 +4431,8 @@
       ! nothing, and the state such a run writes is a relaxation snapshot:
       ! unless it certifies it is written certified=F with that as the reason,
       ! and the run exits 0, because there was no claim to refuse.
-      call certification_note_stationarity_claim(newton_finished .or.     &
-                     steady_gates_converged)
+      call certification_note_stationarity_claim((newton_finished .or. &
+                     steady_gates_converged).and..not.physical_trajectory)
 
       ! Optional measurements separate the standing boundary, a boundary
       ! rebuilt at the held composition, and the final source reconstruction.
@@ -4345,8 +4456,9 @@
          call ghost_record_of_this_evaluation('march_rebuilt_boundary',  &
                                                u,Rres)
       endif
-      call certify_the_state_to_be_written(newton_finished .or.         &
-                        steady_gates_converged, 'final marched state')
+      call certify_the_state_to_be_written((newton_finished .or. &
+                        steady_gates_converged).and..not.physical_trajectory, &
+                        'final marched state')
       ! The molecular columns are read from the sweep arrays: refresh
       ! them from THIS state first, so one row is one state (the lower
       ! ghosts' rho moves after the sweep; see the routine).
@@ -4448,9 +4560,36 @@
       ! exits 0 by itself for a run that claimed nothing.
       if (regional_enabled.and..not.regional_passed) stop 4
       call certification_stop_uncertified
+      if (physical_trajectory.and..not.l_isnan) &
+         write(*,'(A)') ' (EXHALE_main) physical trajectory completed;'// &
+              ' stationary certification is diagnostic;'// &
+              ' acceptance requires the profile-history checker.'
 
 
       contains
+
+      subroutine write_physical_energy_rows(step)
+      ! Printing alone: identity/refusal computation remains unconditional.
+      integer, intent(in) :: step
+      if (.not.as_verd%identity_evaluated.or.run_mode.ne.run_mode_phys) return
+               write(*,'(A,I0,A,ES12.5,A,ES12.5,A,ES12.5,A,ES12.5,'//     &
+                     'A,ES12.5)')                                         &
+                    '   energy-identity: step=', step,                   &
+                    ' d_u_th=', as_verd%d_u_th,                           &
+                    ' d_u_form=', as_verd%d_u_form,                       &
+                    ' Q_ext_dt=', as_verd%q_ext_dt,                       &
+                    ' d_u_th_transport=', as_verd%d_u_th_transport,       &
+                    ' residual/scale=', as_verd%identity_residual         &
+                                        /as_verd%identity_scale
+               write(*,'(A,I0,A,ES12.5,A,I0,A,I0,A,L1)')                  &
+                    '   hydro-time-row: step=', step,                    &
+                    ' max=', as_verd%hydro_row_max,                       &
+                    ' cell=', as_verd%hydro_jworst,                       &
+                    ' row=', as_verd%hydro_kworst,                        &
+                    ' above_tol=', as_verd%hydro_row_above
+
+      end subroutine write_physical_energy_rows
+
 
       subroutine regional_state_sample(seconds)
       ! Read physical-cell state and the accepted step's RK-averaged mass flow.
@@ -5775,6 +5914,7 @@
       ! The two certifications of this route: the stored pair's, which is
       ! the verdict, and the one after a composition sweep, reported only.
       type(cert_report) :: cert_stored, cert_swept
+      logical :: swept_projection_refused
 
       write(*,'(A)') ' (EXHALE_main) Restart intent: stationary -- the'//   &
            ' loaded state is measured as it stands; no CFL step is taken.'
@@ -5962,7 +6102,8 @@
          ! REPORTED, after every product is written so that nothing written
          ! stands downstream of it.
          call composition_sweep_movement_of_the_stored_pair(u_loaded,      &
-                                         f_sp_loaded, p_loaded, cert_swept)
+                                         f_sp_loaded, p_loaded, cert_swept,&
+                                         swept_projection_refused)
          call certification_reports_side_by_side(cert_stored,              &
               'the stored pair: the verdict, and the state written',       &
               cert_swept, 'one composition sweep from it: reported only,'//&
@@ -5972,6 +6113,9 @@
          call evaluation_state_dump('loaded_kept', u_loaded, f_sp_loaded,   &
                                     p_loaded, T_loaded)
 
+         if (run_mode.eq.run_mode_phys) &
+            write(*,'(A)') ' (EXHALE_main) Marching acceptance uses retained'// &
+               ' profiles; stationary certification here is a diagnostic.'
          write(*,'(A)') ' (EXHALE_main) Restart intent: stationary'//       &
               ' evaluate -- the stored pair was measured and written, with'
          write(*,'(A)') '   the profiles derived from it; no step and no'// &
@@ -6002,53 +6146,88 @@
          stop
       endif
 
-      ! (2b) THE HYDROGEN PARTITION OF THE BASE CELLS OF AN OPEN FACE IS
-      ! THE GHOST'S. With the base face open (base_h2_composition_imposed)
-      ! the lower ghosts carry the stated partition of the matching level,
-      ! and a seed produced under another boundary (a closed-face state, a
-      ! state mapped from another grid) carries its own: n(H I)/n_tot 0.11
-      ! in cell 1 of the route B seed against 1e-5 in the ghost (MEASURED,
-      ! md/cold_base_cell_diagnosis_20261009.md). The jump drives a face-0
-      ! H2 diffusive flux whose relative-transport enthalpy is an energy
-      ! sink no stationary state carries. So the cells of the uniform base
-      ! region (1..N_low_cells, the cells the run resolves the matching
-      ! level with) take the n(H I)/n(H2) of ghost 0 as the boundary sweep of
-      ! step 2 left it, with each cell's hydrogen nuclei and mass unchanged.
-      ! f_sp is a number of particles per unit mass (the mass of a cell is
-      ! sum_i f_i A_i), so f(H I) + 2 f(H2) is held, which holds both the
-      ! hydrogen nuclei and the mass, and f(H I)/f(H2) = r_g, the
-      ! n(H I)/n(H2) of the ghost. Done here, on the stationary route only: a marching
-      ! run evolves the seed in time and relaxes the jump physically, while
-      ! the stationary alternation solves the hydrodynamic rows to a root at
-      ! frozen composition. (A carrier relaxation before the first solve was
-      ! added with this seed and removed on 2026-10-10, update log stage 3
-      ! section 127.5: it never acted.)
-      if (base_h2_composition_imposed() .and. f_sp(0,isp_H2) .gt. 0.0d0) &
-         then
+      ! (2b) THE HYDROGEN PARTITION OF THE BASE CELLS OF AN OPEN FACE RUNS
+      ! CONTINUOUSLY FROM THE GHOST'S TO THE LOADED INTERIOR'S. With the base
+      ! face open (base_h2_composition_imposed) the lower ghosts carry the
+      ! stated partition of the matching level, and a seed produced under
+      ! another boundary (a closed-face state, a state mapped from another
+      ! grid) carries its own: n(H I)/n_tot 0.11 in cell 1 of the route B
+      ! seed against 1e-5 in the ghost (MEASURED,
+      ! md/cold_base_cell_diagnosis_20261009.md).  A STEP IN THAT PARTITION,
+      ! WHEREVER IT STANDS, makes a cold cell: the H2 relative-transport
+      ! enthalpy across the step is an energy sink (or source) no
+      ! stationary composition carries, and the hydrodynamic solve at
+      ! frozen composition balances it by cooling and compressing a cell.
+      ! MEASURED both ways: with no seed rule the step is at face 0 and
+      ! cell 1 falls to 57 K (route B, section 126) or 83 K (LHS 1140 b
+      ! He/H 1.2, md/hydro_front_anomaly_codex_20261028.md); with the
+      ! ghost's ratio imposed on cells 1..N_low_cells (the rule of section
+      ! 126(a) until 2026-10-28) the step is at cells N_low/N_low+1 and cell
+      ! 51 falls to 31-55 K (9.1e-5 against 15.6 there on the He/H 1.2
+      ! state).  N_low_cells is the uniform base region of the mesh, not a
+      ! region of prescribed composition.  So the seed's ratio is a
+      ! GEOMETRIC BLEND over that region (user decision 2026-10-28):
+      !     ln r(j) = ln r_g + w_j (ln r_j - ln r_g),   w_j = j/(nb + 1),
+      ! r_g the n(H I)/n(H2) of ghost 0 as the boundary sweep of step 2 left
+      ! it, r_j the loaded cell's own, nb = min(N_low_cells, N): cell 1 is
+      ! one blend step from the ghost, cell nb one step from its loaded
+      ! value, cell nb+1 keeps its own, and neither end has a step.  Each
+      ! cell keeps its hydrogen nuclei and its mass: f_sp is a number of
+      ! particles per unit mass (the mass of a cell is sum_i f_i A_i), so
+      ! f(H I) + 2 f(H2) is held.  A cell whose loaded H I or H2 is zero
+      ! keeps its loaded values (its ratio has no logarithm).  Done here,
+      ! on the stationary route only: a marching run evolves the seed in
+      ! time and relaxes the partition physically, while the stationary
+      ! alternation solves the hydrodynamic rows to a root at frozen
+      ! composition.  Record: md/seed_partition_blend_20261028.md, update
+      ! log stage 3 sections 126 and 161.  (A carrier relaxation before the
+      ! first solve was added with the section 126 seed and removed on
+      ! 2026-10-10, section 127.5: it never acted.)
+      if (base_h2_composition_imposed() .and. f_sp(0,isp_H2) .gt. 0.0d0  &
+          .and. f_sp(0,1) .gt. 0.0d0) then
          block
-           real*8  :: r_g, x_h, x_h2_new
+           real*8  :: r_g, r_j, r_new, w, x_h, x_h2_new
+           real*8  :: r_first, r_last
            integer :: jb, nb
            r_g = f_sp(0,1)/f_sp(0,isp_H2)
            nb  = min(N_low_cells, N)
-           write(*,'(A,ES11.4,A,I0,A,ES11.4,A,ES11.4)') ' (EXHALE_main)'//  &
-                ' open base face: the base cells take the ghost''s'//     &
-                ' n(H I)/n(H2) =', r_g, ' in cells 1..', nb,              &
-                '; cell 1 had', f_sp_loaded(1,1)                          &
-                /max(f_sp_loaded(1,isp_H2), 1.0d-300), ', cell nb',       &
-                f_sp_loaded(nb,1)/max(f_sp_loaded(nb,isp_H2), 1.0d-300)
+           r_first = 0.0d0
+           r_last  = 0.0d0
            do jb = 1, nb
+              if (f_sp_loaded(jb,1) .le. 0.0d0 .or.                        &
+                  f_sp_loaded(jb,isp_H2) .le. 0.0d0) cycle
+              r_j   = f_sp_loaded(jb,1)/f_sp_loaded(jb,isp_H2)
+              w     = dble(jb)/dble(nb + 1)
+              r_new = exp(log(r_g) + w*(log(r_j) - log(r_g)))
               x_h      = f_sp_loaded(jb,1) + 2.0d0*f_sp_loaded(jb,isp_H2)
-              x_h2_new = x_h/(r_g + 2.0d0)
+              x_h2_new = x_h/(r_new + 2.0d0)
               f_sp_loaded(jb,isp_H2) = x_h2_new
-              f_sp_loaded(jb,1)      = r_g*x_h2_new
+              f_sp_loaded(jb,1)      = r_new*x_h2_new
+              if (jb .eq. 1)  r_first = r_new
+              if (jb .eq. nb) r_last  = r_new
            enddo
+           write(*,'(A,ES11.4,A,I0,A,ES11.4,A,ES11.4,A,ES11.4)')           &
+                ' (EXHALE_main) open base face: n(H I)/n(H2) blended'//   &
+                ' geometrically from the ghost''s', r_g, ' over cells 1..',&
+                nb, ': cell 1', r_first, ', cell nb', r_last,             &
+                ', cell nb+1 keeps', f_sp_loaded(min(nb+1,N),1)            &
+                /max(f_sp_loaded(min(nb+1,N),isp_H2), 1.0d-300)
          end block
       endif
 
       ! (3) THE WORK STATE THE SOLVE STARTS FROM: one composition sweep from
       ! the stored pair, with its movement and its entries reported.
       call composition_sweep_movement_of_the_stored_pair(u_loaded,         &
-                                      f_sp_loaded, p_loaded, cert_swept)
+                                      f_sp_loaded, p_loaded, cert_swept,   &
+                                      swept_projection_refused)
+      ! THE SOLVE HAS NO START where the sweep refused its projection: the
+      ! work state's composition does not weigh its density.
+      if (swept_projection_refused) then
+         write(*,'(A)') ' (EXHALE_main) stationary restart: the work'//    &
+              ' state the solve would start from is not a composition of'//&
+              ' its density (mass projection refused). Aborting.'
+         error stop 1
+      endif
       call certification_reports_side_by_side(cert_stored,                 &
            'the stored pair: the answer to the file''s claim', cert_swept, &
            'one composition sweep from it: the start of the solve')
@@ -6104,7 +6283,8 @@
 
 
       subroutine composition_sweep_movement_of_the_stored_pair(u_stored,   &
-                                          f_stored, p_stored, cert_swept)
+                                          f_stored, p_stored, cert_swept,  &
+                                          projection_refused)
       ! ONE COMPOSITION SWEEP FROM THE STORED PAIR: THE WORK STATE, HOW FAR
       ! ITS COMPOSITION MOVED, AND WHAT THE CERTIFICATION READS ON IT.
       ! REPORTED; IT NEVER SETS A VERDICT, A FILE HEADER OR AN EXIT STATUS.
@@ -6138,6 +6318,9 @@
       real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_stored
       real*8, dimension(1-Ng:N+Ng), intent(in) :: p_stored
       type(cert_report), intent(out) :: cert_swept
+      ! Whether the sweep refused its mass projection: the work state is
+      ! then reported as INVALID, and the solve route does not start.
+      logical, intent(out) :: projection_refused
       real*8, dimension(1-Ng:N+Ng) :: npart_entry, T_sweep, T_at_held_p
       real*8  :: dnp, dp_fixed_u, dT_fixed_u, dT_closure, chem_closure
       real*8  :: df_rel, df_l1, dl1
@@ -6158,6 +6341,14 @@
       T_sweep     = T
       if (use_excited_H) call excited_H_update(T,rho,f_sp,v,exc_rel)
       call ioniz_eq(T,rho,f_sp,heat,cool,eta,last_sweep)
+      projection_refused = (last_sweep%n_projection_refused .gt. 0)
+      if (projection_refused) then
+         call report_refused_mass_projection('the composition sweep from'//&
+              ' the stored pair', last_sweep)
+         write(*,'(A)') '   INVALID WORK STATE: every measure below is of'//&
+              ' a composition that does not weigh its density; it is'//    &
+              ' reported, not a state.'
+      endif
       call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,             &
                                  nheiii,nheiTR,nm,ne,n_tot)
       do jm = 1-Ng, N+Ng
@@ -6315,6 +6506,17 @@
          call comp_T_from_p(p,n_tot,ne,T)
          if (use_excited_H) call excited_H_update(T,rho,f_sp,v,exc_rel)
          call ioniz_eq(T,rho,f_sp,heat,cool,eta,last_sweep)
+         ! A refused projection hands back a composition that does not
+         ! weigh the loaded density: there is no equilibrated restart state
+         ! to hand on, and the run stops before anything is built on it.
+         if (last_sweep%n_projection_refused .gt. 0) then
+            call report_refused_mass_projection('the restart'//            &
+                 ' equilibration', last_sweep)
+            write(*,'(A,I0,A)') ' (EXHALE_main) restart equilibration'//  &
+                 ' sweep ', isw, ': no equilibrated composition of the'//  &
+                 ' loaded state exists. Aborting.'
+            error stop 1
+         endif
          call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,          &
                                     nheiii,nheiTR,nm,ne,n_tot)
          reload_eq_sweeps = isw
@@ -6370,12 +6572,15 @@
       !     two tests, a state inside the element simplex and a normalized
       !     reaction residual at or below ieq_res_tol, and classes 4 and 6
       !     are the two that are not roots -- the state accepted under the
-      !     relaxation amnesty, and the one whose candidate was above the
-      !     amnesty's residual cap so the cell kept the composition it
-      !     entered the sweep with. The amnesty is a device of
+      !     relaxation amnesty, and a state without an admissible root
+      !     candidate (above the cap, or no in-simplex candidate whose
+      !     projection is admissible and a root), where the cell kept the
+      !     composition it entered the sweep with. The amnesty is a device of
       !     initialization and has no place in a trajectory, and a kept
       !     entry composition solved an earlier cell state and not this
-      !     one. The element and charge constraints come with it:
+      !     one. A projection that cannot satisfy the element budget with
+      !     transported fractions imposed also keeps the entry state.
+      !     The element and charge constraints come with it:
       !     the simplex test IS the element budget, and the electron density
       !     is formed from the stage charges of that same composition.
       !  3. CARRIER BACKGROUNDS ESTABLISHED. Where the molecular carriers are
@@ -6388,7 +6593,7 @@
       !
       ! Steps 1 to 4 of the routine are that list in order.
       integer :: jj, n_bad_chem, j_bad, n_nonpos
-      logical :: ok
+      logical :: ok, found_bad_chem
 
       write(*,'(A)') ' (EXHALE_main) physical integration: testing the'//  &
            ' handoff state'
@@ -6413,6 +6618,16 @@
       call molecular_carrier_densities_from_state(rho,f_sp)
 
       ok = .true.
+
+      ! 0. A composition that weighs the density: the handoff sweep did not
+      !    refuse its mass projection.
+      if (last_sweep%n_projection_refused .gt. 0) then
+         ok = .false.
+         call report_refused_mass_projection('the handoff sweep',          &
+                                             last_sweep)
+         write(*,'(A)') '   REFUSED: the handoff composition does not'//   &
+              ' weigh the density of the state.'
+      endif
 
       ! 1. Admissibility.
       n_nonpos = 0
@@ -6442,26 +6657,22 @@
       n_bad_chem = n_cells_without_chemical_root(last_sweep%acc_n)
       if (n_bad_chem .gt. 0) then
          ok = .false.
-         j_bad = 0
-         if (allocated(ieq_nonroot_streak)) then
-            do jj = 1, N
-               if (ieq_nonroot_streak(jj) .gt. 0) then
-                  j_bad = jj;  exit
-               endif
-            enddo
-         endif
+         j_bad = first_cell_without_chemical_root(                    &
+              ieq_cell_acceptance_class,found_bad_chem)
          write(*,'(A,I0,A)') '   REFUSED: ', n_bad_chem, ' cell(s) of the'//&
               ' handoff sweep were accepted as class 4 or class 6, the two'
          write(*,'(A)') '     acceptance classes that are NOT roots of'//  &
               ' the chemical network (the relaxation amnesty, and the'
-         write(*,'(A)') '     non-root above its residual cap whose cell'//&
-              ' kept the composition it entered the sweep with).'
-         if (j_bad .gt. 0) then
+         write(*,'(A)') '     no admissible root candidate: residual above'// &
+              ' its cap, or no in-simplex candidate whose projection is'
+         write(*,'(A)') '     admissible and a root; the cell kept its'// &
+              ' entry state).'
+         if (found_bad_chem) then
             write(*,'(A,I0,A,F9.5,A,ES11.4)') '     first such cell: ',   &
                  j_bad, ' at r =', r(j_bad), ' R_p, T =', T(j_bad)*T0
          else
-            write(*,'(A)') '     the sweep did not leave a cell index'//  &
-                 ' with a standing non-root streak.'
+            write(*,'(A)') '     the sweep did not leave an acceptance'// &
+                 ' class index for the refused cell.'
          endif
       endif
 
@@ -6578,7 +6789,16 @@
                                     nheiii,nheiTR,nm,ne,n_tot)
          call comp_T_from_p(p,n_tot,ne,T)
          if (use_excited_H) call excited_H_update(T,rho,f_sp,v,exc_rel)
-         call ioniz_eq(T,rho,f_sp,heat,cool,eta)
+         call ioniz_eq(T,rho,f_sp,heat,cool,eta,last_sweep)
+         ! The update map is measured on a state; a sweep that refused its
+         ! projection leaves none, and the measurement stops.
+         if (last_sweep%n_projection_refused .gt. 0) then
+            call report_refused_mass_projection('the update-map'//         &
+                 ' reference state', last_sweep)
+            write(*,'(A)') ' [update map] the reference state is not a'//  &
+                 ' composition of its density. Aborting the measurement.'
+            error stop 1
+         endif
          call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,          &
                                     nheiii,nheiTR,nm,ne,n_tot)
          ! ONE COMPOSITION, ONE BOUNDARY, ONE RESIDUAL: the boundary derived
@@ -6687,7 +6907,8 @@
       write(*,'(A,A)') '   the reason: ',                        &
            trim(attempted_step_reason_text(as_verd%reason))
       write(*,'(A,A)') '   ', trim(as_verd%what)
-      if (as_verd%jworst .gt. 0)                                 &
+      if (as_verd%jworst .gt. 0 .or.                             &
+          as_verd%reason .eq. as_reject_imposed_input)            &
          write(*,'(A,I0,A,I0,A,ES12.5,A,ES12.5)')                &
               '   cell ', as_verd%jworst, ', row ',              &
               as_verd%kworst, ', measure ', as_verd%measure,     &
@@ -6890,6 +7111,114 @@
       update_map_open = .true.
       end function update_map_open
 
+      subroutine put_back_a_valid_state_after_a_state_not_finite(what,    &
+                 it_pass, update_entry_taken, u_upd, f_upd, cms_upd,      &
+                 wind_held, pass_wind, u_w, f_w, cms_w, u_c, f_c, cms_c)
+      ! THE OUTER PASS it_pass FOUND ITS STATE NOT FINITE (what names
+      ! where).  The most recent valid complete state held is put back
+      ! (nonfinite_state_restore, certification.f90 states the order):
+      ! the conserved state, the composition and the carrier module state,
+      ! and every quantity the loop reads rebuilt from them
+      ! (put_back_a_held_state_and_its_composition).  A candidate is
+      ! usable only where it was taken and its u and every species are
+      ! finite; an earlier converged wind only from a pass before this
+      ! one.  With none usable the run stops.
+      character(len=*), intent(in) :: what
+      integer,          intent(in) :: it_pass, pass_wind
+      logical,          intent(in) :: update_entry_taken, wind_held
+      real*8, allocatable, intent(in) :: u_upd(:,:), f_upd(:,:)
+      real*8, allocatable, intent(in) :: u_w(:,:), f_w(:,:)
+      real*8, allocatable, intent(in) :: u_c(:,:), f_c(:,:)
+      type(carrier_module_state), intent(in) :: cms_upd, cms_w, cms_c
+      logical :: upd_ok, wind_ok, call_ok
+      upd_ok = .false.;  wind_ok = .false.;  call_ok = .false.
+      if (update_entry_taken .and. allocated(u_upd)) upd_ok =             &
+         all(abs(u_upd) .le. huge(1.0d0)) .and. every_species_is_finite(f_upd)
+      if (wind_held .and. pass_wind .lt. it_pass .and. allocated(u_w))    &
+         wind_ok = all(abs(u_w) .le. huge(1.0d0)) .and.                   &
+                   every_species_is_finite(f_w)
+      if (allocated(u_c)) call_ok = all(abs(u_c) .le. huge(1.0d0)) .and.  &
+                                    every_species_is_finite(f_c)
+      select case (nonfinite_state_restore(upd_ok, wind_ok, call_ok))
+      case (nonfinite_restore_update_entry)
+         call put_back_a_held_state_and_its_composition(u_upd, f_upd,     &
+                                                        cms_upd)
+         write(*,'(A,I0,A,A,A)') ' (EXHALE_main) outer pass ', it_pass,  &
+              ': REFUSED -- ', what, ' is not finite; the state the'//    &
+              ' composition update of this pass was entered with is'//    &
+              ' handed back with its composition, NOT accepted.'
+      case (nonfinite_restore_earlier_wind)
+         call put_back_a_held_state_and_its_composition(u_w, f_w, cms_w)
+         write(*,'(A,I0,A,A,A,I0,A)') ' (EXHALE_main) outer pass ',      &
+              it_pass, ': REFUSED -- ', what, ' is not finite; the'//     &
+              ' wind converged on pass ', pass_wind, ' is handed back'//  &
+              ' with its composition, NOT accepted.'
+      case (nonfinite_restore_call_entry)
+         call put_back_a_held_state_and_its_composition(u_c, f_c, cms_c)
+         write(*,'(A,I0,A,A,A)') ' (EXHALE_main) outer pass ', it_pass,  &
+              ': REFUSED -- ', what, ' is not finite; the state the'//    &
+              ' stationary iteration was called with is handed back,'//   &
+              ' NOT accepted.'
+      case default
+         write(*,'(A,I0,A,A,A)') ' (EXHALE_main) outer pass ', it_pass,  &
+              ': ', what, ' is not finite and no finite state of this'//  &
+              ' iteration is held to hand back: the run stops.'
+         error stop 1
+      end select
+      end subroutine put_back_a_valid_state_after_a_state_not_finite
+
+
+      subroutine put_back_a_held_state_and_its_composition(u_entry, f_entry,  &
+                                                       cms_entry)
+      ! A STATE OF THE STATIONARY ALTERNATION THAT WAS HELD BEFORE A SWEEP
+      ! REFUSED ITS MASS PROJECTION, put back: the state a composition
+      ! update was entered with, or the state the hydrodynamic solve of a
+      ! pass was entered with.  The conserved state, the composition and
+      ! the carrier module state are restored, and every quantity the loop
+      ! reads is rebuilt from them
+      ! (sources_and_ghosts_of_the_held_composition), as for a restored
+      ! converged wind.
+      real*8, dimension(3,1-Ng:N+Ng),         intent(in) :: u_entry
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_entry
+      type(carrier_module_state),             intent(in) :: cms_entry
+      u    = u_entry
+      f_sp = f_entry
+      call restore_carrier_module_state(cms_entry)
+      call sources_and_ghosts_of_the_held_composition
+      E = u(3,:)
+      end subroutine put_back_a_held_state_and_its_composition
+
+
+      subroutine report_refused_mass_projection(where, led)
+      ! ONE LINE FOR A SWEEP THAT REFUSED ITS MASS PROJECTION, in the terms
+      ! the ledger of that call records it: where, why, the cell and |s-1|.
+      character(len=*),      intent(in) :: where
+      type(ioniz_eq_ledger), intent(in) :: led
+      character(len=48) :: why
+      if (led%projection_cause .eq. ieq_projection_cause_unusable) then
+         why = 'a mixture mass is not a usable number'
+      else
+         why = 'the mass departure is above the limit'
+      endif
+      write(*,'(A,A,A,A,A,I0,A,ES10.3,A,ES10.3)') ' (EXHALE_main) ',       &
+           trim(where), ': the sweep REFUSED its mass projection (',      &
+           trim(why), ') at cell ', led%projection_refusal_cell,          &
+           ', |s-1| =', led%projection_refusal_measure, ', limit',        &
+           ieq_mass_projection_refuse
+      end subroutine report_refused_mass_projection
+
+
+      subroutine report_invalid_transported_partition(where,led)
+      character(len=*), intent(in) :: where
+      type(ioniz_eq_ledger), intent(in) :: led
+      write(*,'(A,A,A,I0,2A,ES12.5)') ' (EXHALE_main) ',trim(where), &
+           ': INVALID IMPOSED INPUT at cell ',led%invalid_imposed_cell, &
+           ', species ',trim(led%invalid_imposed_species),              &
+           led%invalid_imposed_excess
+      write(*,'(A)') '   excess is in units of the element nuclei fraction'
+      end subroutine report_invalid_transported_partition
+
+
       subroutine report_marching_stop
       ! Report residual, face-flux, and active carrier measures on a
       ! marching stop, stall, or step cap. Recompute them on the stopping
@@ -6898,7 +7227,9 @@
       ! does not itself certify a stationary state; the enabled steady gates
       ! and certification decide that (Update_EXHALE_stage1.pdf section 145).
       real*8, dimension(3) :: rc_now
-      real*8 :: fsp_now, fmean_now
+      real*8 :: fsp_now, fmean_now, dist_c
+      type(cert_report) :: crep
+      integer :: n_cev, n_cfail, n_cunav, iw_c, ic_c
       call assemble_residual(u, n_tot + ne, f_sp, heat, cool, Rres)
       call residual_norms(Rres, u, rc_now)
       call flux_spread_of_state(u, fsp_now, fmean_now)
@@ -6928,14 +7259,56 @@
       if (transported_rows_exist()) then
          ! Measured here, on this state. The marching's carriers are moved by
          ! the operator-split transport step and are not solved for, so no
-         ! carrier residual OF A SOLVE exists for a marched state; this is the
-         ! row evaluated on the state, which is what a reader needs.
+         ! carrier residual OF A SOLVE exists for a marched state; these are
+         ! the rows evaluated on the state, in the two measures the code
+         ! has for them.
+         ! (i) THE REGIONAL-VOLUME MEASURE (carrier_steady_residual, rvol):
+         !     the larger of two regional ratios of the summed |residual|
+         !     to the summed row terms, the sums taken over the cells of a
+         !     region AND over every carrier. It is not a cell maximum nor
+         !     any one carrier's measure. Its target is the one the
+         !     stationary solver gates it against ("Carrier resid tol").
          call carrier_steady_residual(rho, v, f_sp, crc_max,              &
                                       crc_j, crc_ic, rvol=crc_vol)
-         write(*,'(A,ES10.3,A,ES10.3)')                                      &
-              '          carrier row (evaluated here)             ',         &
-              crc_vol, '   target "Carrier resid tol" ',                     &
-              carrier_resid_th
+         write(*,'(A,ES10.3,A,ES10.3,A,A)')                                  &
+              '          carrier rows, regional-volume measure     ',        &
+              crc_vol, '   target "Carrier resid tol" ', carrier_resid_th,   &
+              '  ', trim(measure_against_target_text(crc_vol,              &
+                                                    carrier_resid_th))
+         ! (ii) THE CELLWISE CARRIER CERTIFICATE: each carrier's own row,
+         !     |res|/terms in every applicable cell against the
+         !     certification tolerance, with the certificate's own
+         !     applicability and absence rules; an unavailable equation is
+         !     named, not read as a zero.
+         call carrier_certificate_of_state(rho, v, f_sp, crep)
+         call carrier_certificate_worst(crep, n_cev, n_cfail, n_cunav,     &
+                                        iw_c, dist_c)
+         if (iw_c .gt. 0) then
+            write(*,'(A,A,A,I0,A,ES10.3,A,ES10.3,A,ES10.3,A,A)')            &
+                 '          carrier certificate (cellwise), worst: ',     &
+                 trim(crep%e(iw_c)%name(17:)), ' at cell ',               &
+                 crep%e(iw_c)%jworst_gate, ', |res|/terms ',             &
+                 crep%e(iw_c)%row_max_gate, ' against ',                  &
+                 crep%e(iw_c)%tol, ' (distance ', dist_c, ')  ',          &
+                 trim(merge('MET    ', 'NOT MET',                         &
+                            crep%e(iw_c)%within_tol))
+         else
+            write(*,'(A)') '          carrier certificate (cellwise):'//  &
+                 ' no carrier row was evaluated on an applicable cell'
+         endif
+         write(*,'(A,I0,A,I0,A,I0,A,A)') '          carriers evaluated ',  &
+              n_cev, ', not within their tolerance ', n_cfail,            &
+              ', unavailable ', n_cunav, ': the certificate is ',         &
+              trim(merge('MET    ', 'NOT MET',                            &
+                         n_cev .gt. 0 .and. n_cfail .eq. 0 .and.          &
+                         n_cunav .eq. 0))
+         do ic_c = 1, crep%n
+            if (crep%e(ic_c)%name(1:16) .ne. 'carrier balance ') cycle
+            if (crep%e(ic_c)%status .ne. cert_unavailable) cycle
+            write(*,'(A,A,A,A)') '            unavailable: ',             &
+                 trim(crep%e(ic_c)%name(17:)), ' -- ',                    &
+                 trim(crep%e(ic_c)%reason)
+         enddo
       endif
       write(*,'(A)') '        (a state that has to be quoted as steady'//    &
            ' must pass all three; see Update_EXHALE_stage1.pdf section 145)'
@@ -7017,17 +7390,42 @@
       ! rows in the Newton registry, and the alternated rows stand outside it
       ! by construction.
       !
-      ! WHAT ENDS THE LOOP, and what jfnk_info then means:
-      !   the joint certification passes             -> 0, the state accepted
-      !   a row of the state is not finite           -> 1, named
-      !   the element composition update is refused  -> 1, named
-      !   the joint measure stops falling            -> 1, named
-      !   the pass budget ends uncertified           -> 1, named
+      ! WHAT ENDS THE LOOP, what jfnk_info then means, and which state
+      ! u and f_sp hold on return (each ending prints one line naming it):
+      !   the joint certification passes                    -> 0: the
+      !        refreshed state of the pass, accepted;
+      !   a row of the state, or the composition a carrier
+      !   update returned, is not finite                    -> 1: the
+      !        last valid state held, put back at once with its
+      !        composition and carrier module state, nothing evaluated on
+      !        the refused one (nonfinite_state_restore: this pass's
+      !        update entry, else an earlier pass's converged wind, else
+      !        the state the routine was called with; none valid: the run
+      !        stops);
+      !   the refresh of the state the solve returned
+      !   refused its mass projection                       -> 1: the
+      !        converged wind held with its composition, else the state
+      !        the solve of the pass was entered with;
+      !   the element relaxation found no admissible advance -> 1: the
+      !        state of the solve, the relaxation's entry composition
+      !        restored;
+      !   a composition update refused its mass projection
+      !   or its held-pressure closure                      -> 1: the
+      !        state that update was entered with;
+      !   no solve of the alternation converged             -> the solve's
+      !        flag: its last iterate;
+      !   a failed solve whose update cannot be shortened   -> the solve's
+      !        flag: the converged wind held, restored with its
+      !        composition;
+      !   the joint measure stops falling                   -> 1: the
+      !        refreshed state of the pass;
+      !   the pass budget ends uncertified                  -> 1: the
+      !        refreshed state of the last solve, or the converged wind
+      !        restored where that solve failed;
+      !   the run has already taken its EXHALE_JFNK_MAXIT solve -> 1: the
+      !        state the routine was called with, untouched.
       ! No caller separates 1 from 2, and every ending but the first is a
-      ! refusal, so one nonzero flag carries them and the line printed beside
-      ! it says which. The state handed back on a refusal is the refreshed
-      ! state of the last hydrodynamic solve: a stationary wind at a
-      ! composition whose own balance still refuses.
+      ! refusal: none of those states is accepted.
       !
       ! A nonzero hydrodynamic flag alone does not end the alternation:
       ! a valid returned wind can still support a productive composition
@@ -7125,6 +7523,12 @@
       ! restored, and no step length of the composition update it consumed
       ! can be shortened: the next pass would repeat the failed one.
       integer, parameter :: outer_failed_update_unshortenable = 7
+      ! A sweep of the composition update (after the element relaxation,
+      ! or in the chemistry closed at the held pressure) refused its mass
+      ! projection: the composition it returned does not weigh the density.
+      ! The composition, the conserved state and the carrier module state
+      ! the update was entered with are restored, and the iteration ends.
+      integer, parameter :: outer_composition_closure_refused = 8
       ! How many consecutive passes may leave the joint measure not falling
       ! before the loop ends. A single rise is the alternation's own
       ! feedback and not stagnation: MEASURED on the atomic reload the worst
@@ -7247,6 +7651,18 @@
       integer :: n_unjudged
       real*8  :: sp_worst, sp_worst_prev, sp_meas, sp_tol, trust_pass
       real*8  :: row_mass, row_mom, row_ene, t_pass0
+      ! THE COST OF ONE PASS, by part ("(pass_cost)" lines after the pass
+      ! summary): the wall clock of the hydrodynamic solve(s), of the element
+      ! relaxation and of the carrier relaxation, the work record of the
+      ! carrier composition (carrier_work_count) and that of the boundary
+      ! closure (boundary_closure_work), the latter split into the part done
+      ! inside the hydrodynamic solve(s) and the part done elsewhere in the
+      ! pass. Read for the log only; nothing decides on them.
+      real*8  :: t_part0, hydro_seconds, element_seconds, carrier_seconds
+      real*8  :: pass_seconds
+      type(boundary_closure_work) :: closure_entry, closure_in_hydro
+      type(boundary_closure_work) :: closure_pass
+      type(carrier_work_count)    :: carrier_cost
       real*8  :: ref_worst, ref_meas, ref_tol, row_here
       ! THE PROGRESS OF THE WHOLE STATE: the largest distance from its own
       ! tolerance over every active entry of the certification, each read
@@ -7262,6 +7678,27 @@
       ! pressure"): rho, v and p are what that contract holds, and E is the
       ! reference the energy it adds is measured against.
       real*8, allocatable :: W_comp_hold(:,:), E_comp_hold(:)
+      ! The state the composition update of a pass was entered with, put
+      ! back where a sweep of the update refuses its mass projection.
+      real*8, allocatable :: u_update_entry(:,:), f_sp_update_entry(:,:)
+      type(carrier_module_state) :: cms_update_entry
+      ! THE STATE THE HYDRODYNAMIC SOLVE OF A PASS WAS ENTERED WITH, while
+      ! no converged wind is held: put back where the refresh of the state
+      ! the solve returned refuses its mass projection
+      ! (returned_state_disposition, certification.f90).
+      real*8, allocatable :: u_pass_entry(:,:), f_sp_pass_entry(:,:)
+      type(carrier_module_state) :: cms_pass_entry
+      ! THE STATE THIS ROUTINE WAS CALLED WITH, and whether the composition
+      ! update of the current pass has saved its entry: the states a
+      ! pass whose state is not finite may put back
+      ! (nonfinite_state_restore, certification.f90).
+      real*8, allocatable :: u_call_entry(:,:), f_sp_call_entry(:,:)
+      type(carrier_module_state) :: cms_call_entry
+      logical :: update_entry_this_pass
+      logical :: refresh_refused
+      logical :: refresh_invalid_imposed
+      integer :: returned_disposition
+      logical :: held_closure_refused
       ! HOW FAR THE COMPOSITION STILL IS FROM THE FIXED POINT OF ITS OWN
       ! OPERATORS, over the last two updates whose measure was available,
       ! and how many of those there have been.  It is the RESIDUAL of each
@@ -7362,6 +7799,12 @@
          return
       endif
       n_stationary_solves_run = n_stationary_solves_run + 1
+      if (allocated(u_call_entry)) deallocate(u_call_entry, f_sp_call_entry)
+      allocate(u_call_entry(3,1-Ng:N+Ng), f_sp_call_entry(1-Ng:N+Ng,n_species))
+      u_call_entry    = u
+      f_sp_call_entry = f_sp
+      call save_carrier_module_state(cms_call_entry)
+      update_entry_this_pass = .false.
 
       comp_omega      = 0.5d0
       ! Diagnostic override (EXHALE_DIFF_OMEGA=<val>): pins the starting
@@ -7481,9 +7924,10 @@
       ! NO CARRIER RELAXATION BEFORE PASS 1 ON AN OPEN BASE FACE. One was
       ! added on 2026-10-09 (change 4 (b), update log stage 3 section 126)
       ! and removed on 2026-10-10 (section 127.5, user decision): it never
-      ! acted. The seed of change 4 (a) (the base cells take the ghost
-      ! hydrogen partition, which removes the cold base cell) puts all the
-      ! hydrogen of the seeded cells into H2, and a carrier relaxation at
+      ! acted. The seed of change 4 (a) as it then stood (the base cells
+      ! took the ghost hydrogen partition; since 2026-10-28 a geometric
+      ! blend from it, step (2b) of stationary_state_of_the_loaded_restart)
+      ! put all the hydrogen of the seeded cells into H2, and a carrier relaxation at
       ! FROZEN element densities then asks for up to 1.31 times a cell's
       ! hydrogen (MEASURED, route B k00), so the element limiter clipped
       ! every trial and every entry relaxation was refused; route B
@@ -7491,6 +7935,13 @@
 
       do it_diff = 1, pass_cap
          t_pass0 = omp_get_wtime()
+         update_entry_this_pass = .false.
+         hydro_seconds   = 0.0d0
+         element_seconds = 0.0d0
+         carrier_seconds = 0.0d0
+         closure_in_hydro = boundary_closure_work()
+         call boundary_closure_work_reset()
+         call carrier_work_reset()
          if (stage_export_on) then
             call write_stage_state(it_diff, 'hydro_entry', .false.)
             call write_stationary_stage_restart(it_diff, 'hydro_entry')
@@ -7518,6 +7969,16 @@
          ! open-face k00 entry, whose first solve stopped at info = 2 with
          ! the mass row of cell 1 at 7.24e-9 against its tolerance 6.8e-9.
          first_wind_solves = 0
+         refresh_refused   = .false.
+         refresh_invalid_imposed = .false.
+         if (.not. wind_conv_held) then
+            if (.not. allocated(u_pass_entry))                            &
+               allocate(u_pass_entry(3,1-Ng:N+Ng),                        &
+                        f_sp_pass_entry(1-Ng:N+Ng,n_species))
+            u_pass_entry    = u
+            f_sp_pass_entry = f_sp
+            call save_carrier_module_state(cms_pass_entry)
+         endif
          first_wind: do
          first_wind_solves = first_wind_solves + 1
          contact_solves  = 0
@@ -7549,12 +8010,30 @@
                ! is the route's own choice and nothing changes.
                call set_transported_species_rows(block_now .or.              &
                     coupled_block_jacobian_action_requested())
+               closure_entry = boundary_closure_work_count()
+               t_part0 = omp_get_wtime()
                call solve_steady_jfnk(u, f_sp, resid_max, maxit, dtau0,    &
                                       40, hydro_info)
             else
+               closure_entry = boundary_closure_work_count()
+               t_part0 = omp_get_wtime()
                call solve_steady_ptc(u, f_sp, resid_max, maxit, dtau0,     &
                                      hydro_info)
             endif
+            hydro_seconds = hydro_seconds + (omp_get_wtime() - t_part0)
+            closure_pass = boundary_closure_work_count()
+            closure_in_hydro%calls = closure_in_hydro%calls               &
+                 + (closure_pass%calls - closure_entry%calls)
+            closure_in_hydro%iterations = closure_in_hydro%iterations     &
+                 + (closure_pass%iterations - closure_entry%iterations)
+            closure_in_hydro%full_sweeps = closure_in_hydro%full_sweeps   &
+                 + (closure_pass%full_sweeps - closure_entry%full_sweeps)
+            closure_in_hydro%ghost_only_sweeps =                          &
+                 closure_in_hydro%ghost_only_sweeps                       &
+                 + (closure_pass%ghost_only_sweeps                        &
+                    - closure_entry%ghost_only_sweeps)
+            closure_in_hydro%seconds = closure_in_hydro%seconds           &
+                 + (closure_pass%seconds - closure_entry%seconds)
             call release_base_contact_direction(held_side_on,                &
                  held_side_reverse, held_side_evals, held_side_other)
             call set_transported_species_rows(.false.)
@@ -7568,7 +8047,26 @@
             rho = W(1,:);  v = W(2,:);  p = W(3,:);  E = u(3,:)
             call comp_T_from_p(p,n_tot,ne,T)
             if (use_excited_H) call excited_H_update(T,rho,f_sp,v,exc_rel)
-            call ioniz_eq(T,rho,f_sp,heat,cool,eta,last_sweep)
+            call ioniz_eq(T,rho,f_sp,heat,cool,eta,last_sweep,           &
+                          transported_state_is_trial=.true.)
+            if (last_sweep%n_invalid_imposed .gt. 0) then
+               call report_invalid_transported_partition('the refresh'// &
+                    ' of the state the stationary solve returned',last_sweep)
+               refresh_refused = .true.
+               refresh_invalid_imposed = .true.
+               exit
+            endif
+            ! THE RETURNED STATE IS NOT A STATE where the refresh refused
+            ! its projection or imposed input. The refusal leaves both loops
+            ! (refresh_refused): the contact is not re-solved from it, the
+            ! first wind is not solved again from it, and the state handed
+            ! on is not it (returned_state_disposition, below).
+            if (last_sweep%n_projection_refused .gt. 0) then
+               call report_refused_mass_projection('the refresh of the'//  &
+                    ' state the stationary solve returned', last_sweep)
+               refresh_refused = .true.
+               exit
+            endif
             call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,       &
                                        nheiii,nheiTR,nm,ne,n_tot)
             ! T IS THE TEMPERATURE OF THE COMPOSITION BESIDE IT. Without this
@@ -7610,14 +8108,28 @@
             held_side_given    = .true.
             held_given_reverse = rule_side_reverse
          enddo
-         if (hydro_info .eq. 0 .or. wind_conv_held .or.                   &
-             .not. species_alternated .or. first_wind_solves .ge. 2)     &
+         returned_disposition = returned_state_disposition(               &
+              refresh_refused .and.                                      &
+              last_sweep%n_projection_refused .gt. 0,                  &
+              hydro_info, wind_conv_held,                                &
+              species_alternated, first_wind_solves,                      &
+              refresh_refused .and.                                      &
+              last_sweep%n_invalid_imposed .gt. 0)
+         if (returned_disposition .ne. returned_state_solved_again)       &
             exit first_wind
          write(*,'(A,I0,A,I0,A)') ' (EXHALE_main) outer pass ', it_diff,  &
               ': the solve failed (info ', hydro_info, ') before any'//   &
               ' wind of this alternation converged; it is solved again'// &
               ' from its own iterate, at the same composition.'
          enddo first_wind
+         ! THE OPTIONAL STAGE EXPORT IS A DIAGNOSTIC RECORD OF THE STATE
+         ! THE SOLVE RETURNED, AND IT IS UNCERTIFIED.  It is written before
+         ! the disposition below is acted on, so it may hold a failed
+         ! iterate or a state whose refresh refused projection or input,
+         ! i.e. a state this routine then discards.  Its files say so (the
+         ! restart pair is written with certified = F and the statement
+         ! "(not certified)", write_stationary_stage_restart); a restart
+         ! taken from it is a numerical iterate, not a solution.
          if (stage_export_on) then
             call write_stage_state(it_diff, 'hydro_return', .false.)
             call write_stationary_stage_restart(it_diff, 'hydro_return')
@@ -7633,8 +8145,9 @@
          ! quantity the loop reads is rebuilt from them, and hydro_info keeps
          ! the failure.
          wind_restored = .false.
-         if (hydro_info .ne. 0 .and. wind_conv_held .and.                 &
-             species_alternated) then
+         if (returned_disposition .eq. returned_state_wind_restored .or.  &
+             returned_disposition .eq.                                    &
+             returned_state_refused_wind_restored) then
             u    = u_wind_conv
             f_sp = f_sp_wind_conv
             call restore_carrier_module_state(cms_wind_conv)
@@ -7643,11 +8156,51 @@
             call sources_and_ghosts_of_the_held_composition
             E = u(3,:)
             wind_restored = .true.
-            write(*,'(A,I0,A,I0,A,I0,A)') ' (EXHALE_main) outer pass ',    &
+            if (.not. refresh_refused)                                    &
+               write(*,'(A,I0,A,I0,A,I0,A)') ' (EXHALE_main) outer pass ', &
                  it_diff, ': the hydrodynamic solve failed (info ',        &
                  hydro_info, '); its iterate is discarded and the wind'//  &
                  ' converged on pass ', pass_wind_conv, ' is restored'//   &
                  ' WITH ITS COMPOSITION. The pass keeps the failure.'
+         endif
+         ! A REFRESH THAT REFUSED ITS MASS PROJECTION OR INVALID IMPOSED
+         ! TRANSPORT PARTITION ENDS THE ITERATION,
+         ! whatever the solve's flag and on any pass: the state it returned
+         ! is neither handed on nor solved again.  Where no converged wind
+         ! is held, the state the solve of this pass was entered with goes
+         ! back (on the first pass, the state this routine was called with),
+         ! so the caller never receives the refused composition; a held
+         ! wind was put back above.  The flag is 1, the code every caller
+         ! reads as a solve with no state to accept (a marching hand-off
+         ! marches on from the state it handed over).
+         if (refresh_refused) then
+            if (returned_disposition .eq.                                 &
+                returned_state_refused_entry_restored)                    &
+               call put_back_a_held_state_and_its_composition(            &
+                    u_pass_entry, f_sp_pass_entry, cms_pass_entry)
+            jfnk_info = 1
+            if (refresh_invalid_imposed) then
+               write(*,'(A,I0,A)') ' (EXHALE_main) outer pass ',it_diff, &
+                    ': REFUSED -- the returned state has invalid imposed'// &
+                    ' transported fractions; the prior state is restored.'
+               return
+            endif
+            if (wind_restored) then
+               write(*,'(A,I0,A,I0,A)') ' (EXHALE_main) outer pass ',     &
+                    it_diff, ': REFUSED -- the refresh of the state the'//&
+                    ' hydrodynamic solve returned refused its mass'//     &
+                    ' projection; the wind converged on pass ',           &
+                    pass_wind_conv, ' is handed back with its'//          &
+                    ' composition, NOT accepted.'
+            else
+               write(*,'(A,I0,A)') ' (EXHALE_main) outer pass ', it_diff, &
+                    ': REFUSED -- the refresh of the state the'//         &
+                    ' hydrodynamic solve returned refused its mass'//     &
+                    ' projection and no converged wind is held; the'//    &
+                    ' state the solve was entered with is handed back,'// &
+                    ' NOT accepted.'
+            endif
+            return
          endif
          ! A1: the state this pass would hand on as accepted, against the
          ! reservoirs the run resolved.
@@ -7814,6 +8367,20 @@
             outer_ending = outer_state_not_finite
          else if (hydro_info .ne. 0 .and. .not. wind_conv_held) then
             outer_ending = outer_no_converged_wind
+         endif
+         ! A STATE THAT IS NOT FINITE IS NEVER CARRIED FURTHER: nothing
+         ! more is evaluated on it, a valid state is put back and the
+         ! iteration ends refused (nonfinite_state_restore).
+         if (outer_ending .eq. outer_state_not_finite) then
+            call put_back_a_valid_state_after_a_state_not_finite(        &
+                 'a row of the refreshed state', it_diff,                  &
+                 update_entry_this_pass,                                   &
+                 u_update_entry, f_sp_update_entry, cms_update_entry,      &
+                 wind_conv_held, pass_wind_conv, u_wind_conv,              &
+                 f_sp_wind_conv, cms_wind_conv, u_call_entry,              &
+                 f_sp_call_entry, cms_call_entry)
+            jfnk_info = 1
+            return
          endif
          if (hydro_info .eq. 0) prog_worst_wind_conv = prog_worst
          if (wind_restored) write(*,'(A,ES12.5,A,I0,A,ES12.5)')            &
@@ -8164,6 +8731,13 @@
          if (outer_ending .eq. outer_running .and. it_diff .lt. pass_cap) &
              then
             update_taken = .true.
+            if (.not. allocated(u_update_entry))                          &
+               allocate(u_update_entry(3,1-Ng:N+Ng),                      &
+                        f_sp_update_entry(1-Ng:N+Ng,n_species))
+            u_update_entry    = u
+            f_sp_update_entry = f_sp
+            call save_carrier_module_state(cms_update_entry)
+            update_entry_this_pass = .true.
             ! WHAT THE UPDATE HOLDS, taken before anything moves: under
             ! "Composition update holds: pressure" the rho, v and p of the
             ! state certified above, which the rebuild after the two
@@ -8188,11 +8762,13 @@
                ! composition update at fixed u does not move.
                Frho_elem = 0.0d0
                if (thereis_He) call face_mass_flux_of_state(rho, Frho_elem)
+               t_part0 = omp_get_wtime()
                call relax_element_composition(rho,T,f_sp,Frho_elem,       &
                                               comp_omega,                 &
                                               element_map_distance,kd,    &
                                               status=elem_status,         &
                                      displacement=element_displacement_pass)
+               element_seconds = element_seconds + (omp_get_wtime() - t_part0)
                ! The ending of the element relaxation, in the same outcome
                ! table the carrier ending is read in: the fixed point of the
                ! operator, an admissible partial advance that ran out of
@@ -8227,7 +8803,25 @@
                   call get_species_densities(rho,f_sp,nhi,nhii,nhei,      &
                                        nheii,nheiii,nheiTR,nm,ne,n_tot)
                   call comp_T_from_p(p,n_tot,ne,T)
-                  call ioniz_eq(T,rho,f_sp,heat,cool,eta,last_sweep)
+                  call ioniz_eq(T,rho,f_sp,heat,cool,eta,last_sweep,     &
+                                transported_state_is_trial=.true.)
+                  if (last_sweep%n_invalid_imposed .gt. 0) then
+                     call report_invalid_transported_partition(          &
+                          'the sweep of the relaxed element composition', &
+                          last_sweep)
+                     call put_back_a_held_state_and_its_composition(     &
+                          u_update_entry,f_sp_update_entry,cms_update_entry)
+                     outer_ending = outer_composition_closure_refused
+                     element_update_ran = .false.
+                  endif
+                  if (last_sweep%n_projection_refused .gt. 0) then
+                     call report_refused_mass_projection('the sweep of'// &
+                          ' the relaxed element composition', last_sweep)
+                     call put_back_a_held_state_and_its_composition(u_update_entry,  &
+                          f_sp_update_entry, cms_update_entry)
+                     outer_ending = outer_composition_closure_refused
+                     element_update_ran = .false.
+                  endif
                endif
             endif
             ! The molecular carriers are a THIRD participant in the same
@@ -8261,11 +8855,13 @@
                call get_species_densities(u(1,:),f_sp,nhi,nhii,nhei,nheii,&
                                           nheiii,nheiTR,nm,ne,n_tot)
                update_count_move = n_tot(1:N) + ne(1:N)
+               t_part0 = omp_get_wtime()
                call relax_photochemical_composition(u,v,f_sp,p,T,         &
                                               heat,cool,eta,              &
                                               trust_pass,                 &
                                               carrier_displacement_pass,  &
                                               kc, outcome=carrier_outcome)
+               carrier_seconds = carrier_seconds + (omp_get_wtime() - t_part0)
                call U_to_W(u,W)
                rho = W(1,:);  v = W(2,:);  p = W(3,:)
                call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,   &
@@ -8325,6 +8921,16 @@
                   carrier_ending_text = 'a RETURNED COMPOSITION THAT IS'// &
                        ' NOT FINITE'
                   outer_ending = outer_state_not_finite
+                  ! Never carried further (see the certification ending).
+                  call put_back_a_valid_state_after_a_state_not_finite(     &
+                       'the composition the carrier update returned',     &
+                       it_diff, update_entry_this_pass,                   &
+                       u_update_entry, f_sp_update_entry,                 &
+                       cms_update_entry, wind_conv_held, pass_wind_conv,  &
+                       u_wind_conv, f_sp_wind_conv, cms_wind_conv,        &
+                       u_call_entry, f_sp_call_entry, cms_call_entry)
+                  jfnk_info = 1
+                  return
                endif
             endif
 
@@ -8336,9 +8942,16 @@
             ! refused element update restored the entry composition and a
             ! non-finite one is not a gas, so neither is rebuilt.
             if (composition_update_holds_pressure .and.                   &
-                outer_ending .eq. outer_running)                          &
+                outer_ending .eq. outer_running) then
                call rebuild_energy_at_held_pressure(it_diff, W_comp_hold,  &
-                                                    E_comp_hold)
+                                                    E_comp_hold,           &
+                                                    held_closure_refused)
+               if (held_closure_refused) then
+                  call put_back_a_held_state_and_its_composition(u_update_entry,  &
+                          f_sp_update_entry, cms_update_entry)
+                  outer_ending = outer_composition_closure_refused
+               endif
+            endif
 
             ! ---- THE FOUR MEASURES OF THIS PASS, ON THE STATE IT HANDS
             !      BACK ----
@@ -8538,8 +9151,9 @@
          ! about the alternation's contraction. A pass in which no half
          ! could be measured leaves them for the same reason.
          if (update_taken .and. outer_ending .ne.                         &
-             outer_element_update_refused .and. comp_measure_available)   &
-             then
+             outer_element_update_refused .and.                           &
+             outer_ending .ne. outer_composition_closure_refused .and.    &
+             comp_measure_available) then
             comp_residual_before = comp_residual_last
             comp_residual_last   = comp_residual
             n_comp_updates    = n_comp_updates + 1
@@ -8553,6 +9167,65 @@
               '), mass ', row_mass, ', momentum ', row_mom, ', energy ',  &
               row_ene, ', omega', comp_omega, ', trust', trust_pass,      &
               ',', omp_get_wtime() - t_pass0, ' s'
+         ! ---- THE COST OF THE PASS, by part (always printed) ----
+         ! Times in seconds of wall clock. The first line: the hydrodynamic
+         ! solve(s), the two relaxations, what is left of the pass, and the
+         ! work of the carrier relaxation. The second: the boundary closure
+         ! inside the hydrodynamic solve(s) and elsewhere in the pass.
+         pass_seconds = omp_get_wtime() - t_pass0
+         carrier_cost = carrier_work_of_pass()
+         closure_pass = boundary_closure_work_count()
+         write(*,'(A,I0,6(A,F0.2),18(A,I0))')                            &
+              ' (pass_cost) pass ', it_diff,                              &
+              ' hydro_s ', hydro_seconds,                                 &
+              ' element_s ', element_seconds,                             &
+              ' carrier_s ', carrier_seconds,                             &
+              ' rest_s ', pass_seconds - hydro_seconds - element_seconds  &
+                          - carrier_seconds,                              &
+              ' carrier_transport_s ', carrier_cost%transport_seconds,    &
+              ' carrier_closure_s ', carrier_cost%closure_seconds,        &
+              ' trials ', carrier_cost%trials,                            &
+              ' trials_accepted ', carrier_cost%trials_accepted,          &
+              ' refused_interval ', carrier_cost%trials_refused_interval, &
+              ' refused_chemistry ',                                      &
+              carrier_cost%trials_refused_chemistry,                      &
+              ' refused_bound ', carrier_cost%trials_refused_bound,       &
+              ' intervals ', carrier_cost%intervals,                      &
+              ' intervals_not_covered ',                                  &
+              carrier_cost%intervals_not_covered,                         &
+              ' intervals_retried ', carrier_cost%intervals_retried,      &
+              ' substeps ', carrier_cost%substeps_attempted,              &
+              ' substeps_accepted ', carrier_cost%substeps_accepted,      &
+              ' substeps_refused ', carrier_cost%substeps_refused,        &
+              ' carrier_solves ', carrier_cost%carrier_solves,            &
+              ' newton_iterations ', carrier_cost%newton_iterations,      &
+              ' damped_residuals ',                                       &
+              carrier_cost%damped_residual_evaluations,                   &
+              ' closures ', carrier_cost%closures,                        &
+              ' closures_reached ', carrier_cost%closures_reached,        &
+              ' closures_refused ', carrier_cost%closures_refused,        &
+              ' closure_cycles ', carrier_cost%closure_cycles
+         write(*,'(A,I0,4(A,I0),A,F0.2,4(A,I0),A,F0.2)')                &
+              ' (pass_cost) pass ', it_diff,                              &
+              ' boundary_in_hydro_calls ', closure_in_hydro%calls,        &
+              ' boundary_in_hydro_iterations ',                           &
+              closure_in_hydro%iterations,                                &
+              ' boundary_in_hydro_full_sweeps ',                          &
+              closure_in_hydro%full_sweeps,                               &
+              ' boundary_in_hydro_ghost_sweeps ',                         &
+              closure_in_hydro%ghost_only_sweeps,                         &
+              ' boundary_in_hydro_s ', closure_in_hydro%seconds,          &
+              ' boundary_elsewhere_calls ',                               &
+              closure_pass%calls - closure_in_hydro%calls,                &
+              ' boundary_elsewhere_iterations ',                          &
+              closure_pass%iterations - closure_in_hydro%iterations,      &
+              ' boundary_elsewhere_full_sweeps ',                         &
+              closure_pass%full_sweeps - closure_in_hydro%full_sweeps,    &
+              ' boundary_elsewhere_ghost_sweeps ',                        &
+              closure_pass%ghost_only_sweeps                              &
+              - closure_in_hydro%ghost_only_sweeps,                       &
+              ' boundary_elsewhere_s ',                                   &
+              closure_pass%seconds - closure_in_hydro%seconds
          if (update_taken .and. he_diffusion)                             &
             write(*,'(A,A,A,ES10.2,A,ES10.2,A,I0,A)') '    element'//     &
                  ' relaxation ended on ', trim(elem_text),                &
@@ -8973,12 +9646,6 @@
             call certification_report_write(cert_now,                     &
                  'accepted state of the stationary outer iteration')
             return
-         else if (outer_ending .eq. outer_state_not_finite) then
-            jfnk_info = 1
-            write(*,'(A,I0,A)') ' (EXHALE_main) outer pass ', it_diff,   &
-                 ': REFUSED -- a row of this state is not finite, so it'// &
-                 ' is not an iterate the alternation can continue from.'
-            return
          else if (outer_ending .eq. outer_element_update_refused) then
             jfnk_info = 1
             write(*,'(A,I0,A)') ' (EXHALE_main) outer pass ', it_diff,   &
@@ -8986,6 +9653,13 @@
                  ' no admissible advance and its entry composition was'//  &
                  ' restored, so no further pass could differ from this'//  &
                  ' one.'
+            return
+         else if (outer_ending .eq. outer_composition_closure_refused) then
+            jfnk_info = 1
+            write(*,'(A,I0,A)') ' (EXHALE_main) outer pass ', it_diff,   &
+                 ': REFUSED -- a sweep of the composition update refused'//&
+                 ' its mass projection; the state the update was entered'//&
+                 ' with is restored.'
             return
          else if (outer_ending .eq. outer_no_converged_wind) then
             jfnk_info = hydro_info
@@ -9114,8 +9788,10 @@
       ! PASS (EXHALE_STAGE_EXPORT=1, default off).  Four stages, in the
       ! order of a pass: hydro_entry, before the hydrodynamic solve (from the
       ! second pass on, the state the previous composition update handed
-      ! over); hydro_return, the accepted solve after the ionization sweep
-      ! that follows it; certification, the joint test, with its residual
+      ! over); hydro_return, the state the solve returned after the
+      ! ionization sweep that follows it, written before its disposition is
+      ! acted on and therefore uncertified (it may be a failed iterate or a
+      ! state whose refresh refused its mass projection); certification, the joint test, with its residual
       ! rows; composition_return, after the element and carrier updates and
       ! the rebuild of p and T at the fixed conserved state (the default),
       ! or of E and T at the held rho, v and p under "Composition update
@@ -9282,7 +9958,8 @@
       end subroutine hold_state_before_composition_update
 
 
-      subroutine rebuild_energy_at_held_pressure(pass_now, W_hold, E_hold)
+      subroutine rebuild_energy_at_held_pressure(pass_now, W_hold, E_hold, &
+                                                 refused)
       ! "Composition update holds: pressure": keep rho, rho v and p of
       ! the certified state while composition changes. Recompute
       ! T = p/(n_tot + n_e) and
@@ -9308,6 +9985,10 @@
       ! See ../EXHALE_v1.00/md/lhs1140b_composition_update_pressure_20260924.md section 1.
       integer, intent(in) :: pass_now
       real*8,  intent(in) :: W_hold(3,1-Ng:N+Ng), E_hold(1-Ng:N+Ng)
+      ! A sweep refused its mass projection or imposed input: nothing is
+      ! rebuilt, the relaxed composition is put back, and the caller
+      ! restores the state the update was entered with.
+      logical, intent(out) :: refused
       real*8  :: W_fixed_energy(3,1-Ng:N+Ng), W_after_closure(3,1-Ng:N+Ng)
       real*8  :: p_held(1-Ng:N+Ng), T_cycle(1-Ng:N+Ng)
       real*8  :: f_sp_relaxed(1-Ng:N+Ng,n_species)
@@ -9320,6 +10001,7 @@
       character(len=48) :: closure_text
       type(ioniz_eq_ledger) :: ledger_held
 
+      refused = .false.
       ! The caloric maps of the composition the relaxations returned, and
       ! the pressure the unchanged u has under them.
       rho = u(1,:)
@@ -9345,8 +10027,27 @@
       call comp_T_from_p(p_held,n_tot,ne,T)
       do kcycle = 1, chem_cycles_max
          T_cycle = T
-         call ioniz_eq(T,rho,f_sp,heat,cool,eta,ledger_held)
+         call ioniz_eq(T,rho,f_sp,heat,cool,eta,ledger_held,            &
+                       transported_state_is_trial=.true.)
          closure_cycles = kcycle
+         if (ledger_held%n_invalid_imposed .gt. 0) then
+            call report_invalid_transported_partition(                 &
+                 'the chemistry closed at the held pressure',ledger_held)
+            f_sp = f_sp_relaxed
+            call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,   &
+                                       nheiii,nheiTR,nm,ne,n_tot)
+            refused = .true.
+            return
+         endif
+         if (ledger_held%n_projection_refused .gt. 0) then
+            call report_refused_mass_projection('the chemistry closed at'// &
+                 ' the held pressure', ledger_held)
+            f_sp = f_sp_relaxed
+            call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,     &
+                                       nheiii,nheiTR,nm,ne,n_tot)
+            refused = .true.
+            return
+         endif
          if (ledger_held%n_nonfinite .gt. 0 .or.                          &
              .not. every_species_is_finite(f_sp)) then
             f_sp = f_sp_relaxed

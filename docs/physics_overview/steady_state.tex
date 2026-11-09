@@ -1,11 +1,12 @@
 \section{The stationary state}
 \label{sec:steady}
 
-Marching to a steady state is only one of the two ways EXHALE reaches one.
-The other is to solve for it directly, as the root of the stationary residual
-of the very same discrete operator.  This section states that residual, the
-measure by which a state is judged steady, and the two solvers that drive it
-to zero.
+The time-dependent marching solution is the standard result. A stationary
+residual solve is an optional calculation that seeks a root of the discrete
+equations. A marching solution can satisfy the finite-duration profile
+criterion without a stationary certificate; a JFNK solution that is not
+obtained does not by itself make that marching result fail. This section
+defines the stationary residual, its certificate, and the optional solvers.
 
 \subsection{The stationary residual}
 \label{sec:steady:residual}
@@ -40,9 +41,13 @@ and \texttt{He\_diffusion} moves the elements, a molecular carrier is
 transported, or \texttt{Ionization transport} carries the stages; the
 composition is therefore an argument of every assembly.  $dF$ and $S$ are those of \eqref{eq:dF1} to
 \eqref{eq:source}, evaluated through
-the same \texttt{reconstruction\_continuation\_rhs} the marching stages call,
-so that the fixed point of the marching and the zero of the residual are the
-same state by construction.  The lowest ghost cell has no lower face and
+the same \texttt{reconstruction\_continuation\_rhs} used for the
+hydrodynamic stages. Sharing those spatial terms does not establish a
+common fixed point of the complete split march and the stationary system:
+composition elimination, transport and boundary updates must also agree,
+and a finite time step introduces a splitting error. A stationary
+certificate and a finite-duration marching profile test therefore measure
+different properties.  The lowest ghost cell has no lower face and
 therefore no balance to state; its row is explicitly zero, so that no reader
 of $R$ finds a heating rate standing alone in a row that has no fluxes.
 
@@ -231,14 +236,13 @@ stationary restart or the direct steady route) returned info $\ne0$, its last
 iterate written with \texttt{cert\_reason=stationary\_solve\_failed}
 (\texttt{certification\_note\_stationary\_solve\_failed}; until 2026-10-10
 that iterate was written as a relaxation snapshot and the run exited 0,
-update log stage~3 section~127.5).  Since 2026-10-09 the certification is a
-diagnostic and not the acceptance of a result: a state is accepted for an
-observable when continuing the solve moves the observable by less than a
-budget set by its precision, its mass and energy budgets close over the
-region that forms it, and its profiles there are stable to 1 percent
-(\texttt{md/acceptance\_by\_observable\_precision\_20261009.md}).  Status 2 is
-therefore a flag its callers continue with; a row far above its scale is
-investigated as a possible defect first.
+update log stage~3 section~127.5).  Certification is a diagnostic beside the default physical-time
+marching profile criterion of Sec.~\ref{sec:numerics:du}. The default
+criterion in both trees adds no stationary-root, drift-trend, slow-chemistry or
+observable-change gate. A stationary route still reports its own exit
+status; it does not decide whether a separately measured marching profile
+window passes. A caller must require complete outputs and distinguish
+that route's numerical failure from a completed diagnostic record.
 
 \paragraph{A certificate belongs to the state written.}
 What a certificate measures includes quantities \emph{derived} from the
@@ -317,13 +321,11 @@ balances.  One number for the three hydrodynamic rows is not possible: on one
 converged state the three reach values seven decades apart and their one-ulp
 arithmetic floors two decades apart.
 
-Two of these are functions and not constants.  A species row is gated only in
-the wind, $r \ge 1.20\,R_p$, and reported without gating below it: the balance
-is a cancellation between terms whose ratio is set by the flow, the advective
-divergence carrying the row in the wind and the eddy and settling terms
-carrying it below the homopause, each of the latter orders of magnitude larger
-than their difference, so the precision the same equation can be resolved to is
-not one number.  And the mass row's tolerance is a function of the cell,
+The v1.10 element and carrier verdict uses $10^{-5}$ in every applicable
+physical cell, retaining each row's absence mask. The radius windows and
+former restricted-cell comparisons are diagnostic only. A prescribed
+reservoir cell with a zero element residual does not independently test
+the boundary condition. The mass row's tolerance is a function of the cell,
 %
 \begin{equation}
   \mathrm{tol}_1(j) = \max\Bigl[3\times10^{-12},\
@@ -597,7 +599,7 @@ below $10^{-10}$ (\texttt{relax\_tol}), and the steady carrier residual of the p
 measure at or below $10^{-8}$ (\texttt{carrier\_accept\_tol}).  The carriers
 span ten decades, He\,$2^3$S being $5\times10^{-11}$ of the helium nuclei at
 1.2\,$R_p$ on the LHS~1140\,b states, and against the largest fraction of all
-carriers a step that moved the level by 20 per cent of itself read
+carriers a step that moved the level by 20 percent of itself read
 $10^{-11}$ and closed the block after one step with its row at
 $9\times10^{-5}$ of its own terms; a displacement alone does not bound the
 steady residual either, an implicit step's residual being bounded only by
@@ -639,29 +641,39 @@ handed on, carried base cells at 2929, 46 and 1181\,K into the pass-4 solve,
 which evaluated the trial at $-1.4\times10^{-5}$\,K
 (\texttt{md/osc\_diagnosis\_20261008.md} sections~2 and~5).
 
-\emph{An open base face starts from a seed that agrees with its ghost.}  With
-the H$_2$ partition of the lower ghosts stated (the open face of the matching
-surface), a seed produced under another boundary carries another hydrogen
-partition in its base cells (route~B: $n({\rm H\,I})/n_{\rm tot} = 0.11$ in
-cell~1 against $10^{-5}$ in the ghost), and the jump drives a face-0 H$_2$
-diffusive flux whose relative-transport enthalpy is an energy sink of cell~1
-that no stationary composition carries; a hydrodynamic solve at that frozen
-composition balances it by cooling and compressing the cell until three-body
-H$_2$ formation heat cancels it (MEASURED: 57\,K, sink 19.67 and heat 19.31
-code units; \texttt{md/cold\_base\_cell\_diagnosis\_20261009.md}).  One rule
-follows, (a) of that note.  On the stationary restart route the cells of the uniform base
-region ($1..N_{\rm low}$) take the $n({\rm H\,I})/n({\rm H}_2)$ of ghost~0,
-each cell keeping its hydrogen nuclei and its mass ($f({\rm H\,I}) +
-2f({\rm H}_2)$ held, $f$ a number per unit mass); a marching run is not
-changed, since it evolves the seed in time.  MEASURED (update log stage~3
-section~126): (a) removes the cold cell~1 (route~B 57\,K $\to$ 335\,K, sink
-$19.67\to-9\times10^{-4}$); the jump moves to the top of the base region at
-pass~1 (cell~51 at 55\,K) and leaves the grid in the following passes, route~B
-converging 49 solves in a row.  A carrier relaxation before the first solve,
-added with (a), was removed (section~127.5): the seed puts all the hydrogen of
-the seeded cells into H$_2$, so a carrier relaxation at frozen element
-densities asks for up to 1.31 times a cell's hydrogen and the element limiter
-refused every entry.
+\emph{An open base face starts from a seed that runs continuously from its
+ghost.}  With the H$_2$ partition of the lower ghosts stated (the open face of
+the matching surface), a seed produced under another boundary carries another
+hydrogen partition in its base cells (route~B: $n({\rm H\,I})/n_{\rm tot} =
+0.11$ in cell~1 against $10^{-5}$ in the ghost).  A step in the partition,
+wherever it stands, drives an H$_2$ diffusive flux whose relative-transport
+enthalpy is an energy sink no stationary composition carries, and a
+hydrodynamic solve at that frozen composition balances it by cooling and
+compressing a cell.  MEASURED both ways: with no seed rule the step is at
+face~0 and cell~1 falls to 57\,K (route~B, sink 19.67 and heat 19.31 code
+units; \texttt{md/cold\_base\_cell\_diagnosis\_20261009.md}) or 83\,K
+(LHS\,1140\,b He/H 1.2); with the ghost's ratio given to the whole uniform base
+region ($1..N_{\rm low}$, the rule of update log stage~3 section~126 until
+2026-10-28) the step is at cells $N_{\rm low}/N_{\rm low}+1$ and cell~51 falls
+to 20--55\,K.  So on the stationary restart route the seed's ratio is a
+geometric blend over the base region (section~161):
+\[
+\ln r_j^{\rm seed} = \ln r_g + w_j\,(\ln r_j^{\rm loaded} - \ln r_g), \qquad w_j =
+\frac{j}{N_{\rm low}+1},
+\]
+$r_g$ the $n({\rm H\,I})/n({\rm H}_2)$ of ghost~0, each cell keeping its
+hydrogen nuclei and its mass ($f({\rm H\,I}) + 2f({\rm H}_2)$ held, $f$ a
+number per unit mass); a cell with no H\,I or no H$_2$ keeps its loaded
+values, and a marching run is not changed, since it evolves the seed in time.
+MEASURED (section~161): the cold cell at the top of the base region is gone
+(pass~1: route~B 20.2\,K $\to$ 207.5\,K, He/H 1.2 29.6\,K $\to$ 229.9\,K), but
+a broad cool layer remains below it (He/H 1.2 final state 360--400\,K over
+cells 45--56, against a seed whose coolest cell is 501\,K), because the blend
+still changes the ratio by many decades over the 50 cells.  A carrier
+relaxation before the first solve, added with the section~126 seed, was removed
+(section~127.5): that seed put all the hydrogen of the seeded cells into
+H$_2$, so a carrier relaxation at frozen element densities asked for up to 1.31
+times a cell's hydrogen and the element limiter refused every entry.
 
 \paragraph{The progress control.}
 A pass makes progress when the joint distance of the state to the
@@ -756,7 +768,7 @@ not fallen in three consecutive passes AND the carrier relaxation of this pass
 and of the two before it ended on the movement bound.  What is known about the
 two routes where they have been compared: on a certified molecular state the
 alternation certifies at outer pass 12 while the block moves its residual by
-0.6 per cent in the same wall clock, every one of its linear solves ending with
+0.6 percent in the same wall clock, every one of its linear solves ending with
 the Krylov subspace exhausted, so the block as it stands is limited by its
 preconditioner and not by the species box.
 

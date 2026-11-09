@@ -103,6 +103,44 @@
       real(dp), parameter, public :: inventory_feasible_slack              &
                                    = 8.0d0*epsilon(1.0d0)
 
+      ! THE SIGNED INVENTORY OF A STATE: the status, and for a refusal the
+      ! first refused quantity, its cell, its signed value and the magnitude
+      ! its rounding allowance is relative to, in the caller's density unit.
+      !   element_total_negative, element_total_not_finite: an element
+      !      total or the inventory a step can move (carrier_element_totals,
+      !      element_inventory_of_cell); `element` names it, `species` is 0.
+      !   species_density_negative, species_density_not_finite: the
+      !      density of one species a carrier operator solves
+      !      (carrier_state); `species` is its f_sp column, `element` is 0.
+      !   background_density_negative, background_density_not_finite: the
+      !      density of one species a carrier operator does NOT solve but
+      !      reads into its rates as frozen background (carrier_state);
+      !      `species` is its f_sp column, `element` is 0.
+      !   helium_singlet_negative: the stored He I ground singlet
+      !      n(He I) - n(He 2^3S) of a composition that tracks the level,
+      !      negative beyond the rounding of the two densities
+      !      (carrier_state); `species` is the He I column, `element` is
+      !      ien_He, `total` the signed difference, `magnitude` n(He I).
+      !   A count of nuclei per unit mass (element_nucleus_counts,
+      !   binary_element_diffusion) uses the two element statuses with
+      !   `element` ien_H or ien_He, in its own unit.
+      integer, parameter, public :: element_total_ok              = 0
+      integer, parameter, public :: element_total_negative        = 1
+      integer, parameter, public :: element_total_not_finite      = 2
+      integer, parameter, public :: species_density_negative      = 3
+      integer, parameter, public :: species_density_not_finite    = 4
+      integer, parameter, public :: background_density_negative   = 5
+      integer, parameter, public :: background_density_not_finite = 6
+      integer, parameter, public :: helium_singlet_negative       = 7
+      type, public :: signed_element_total
+         integer  :: status    = element_total_ok
+         integer  :: element   = 0
+         integer  :: species   = 0
+         integer  :: cell      = 0
+         real(dp) :: total     = 0.0d0
+         real(dp) :: magnitude = 0.0d0
+      end type signed_element_total
+
       type, public :: element_inventory_cell
          ! (a) Every nucleus of the element in the cell [cm^-3].
          real(dp) :: n_total(n_inv_element)    = 0.0d0
@@ -148,6 +186,13 @@
          ! A zero-density transported species still activates its element
          ! constraint and its budget derivative.
          logical :: element_is_carried(n_inv_element) = .false.
+         ! WHETHER THE INVENTORY IS ONE.  An element total, or the element
+         ! a step can move, below zero beyond the rounding of its sum, or
+         ! not a finite number, is refused here with its element (cell left
+         ! zero: the map is about one cell and its caller names it).  The
+         ! budgets of a refused element measure nothing, so its breach and
+         ! occupancy are huge(1) and inventory_is_feasible refuses the cell.
+         type(signed_element_total) :: validity
       end type element_inventory_cell
 
       public :: element_inventory_of_cell, element_inventory_of_candidate
@@ -160,8 +205,164 @@
       public :: helium_to_hydrogen, ratio_departure_from_the_base
       public :: element_ratio_may_depart
       public :: element_constraint_derivatives
+      public :: element_closure_completion, element_completion_text
+      public :: signed_element_total_text
+
+      ! ---- THE COMPLETION OF ONE ELEMENT OF ONE CELL ----
+      !
+      ! A step that writes some species of an element (the held set H:
+      ! transported carriers, every species holding nuclei of two elements,
+      ! and a carried excited level) leaves the remainder
+      !
+      !     R_e = n_e(total) - sum_{s in H} nu_{e,s} n_s
+      !
+      ! to the closure species C_e of that element, the species holding
+      ! nuclei of e alone that the step does not write.  With
+      ! S_e = sum_{s in C_e} nu_{e,s} n_s the closure nuclei the cell held,
+      ! the completion is
+      !
+      !   S_e > 0, R_e >= 0:   n_s -> n_s R_e/S_e for every s in C_e, so
+      !                        sum_{s in C_e} nu_{e,s} n_s = R_e exactly in
+      !                        exact arithmetic and the ionization split of
+      !                        the closure species is kept;
+      !   S_e = 0, one closure species s:  n_s = R_e/nu_{e,s}, the one
+      !                        partition that exists;
+      !   S_e = 0, |R_e| within the representability allowance: nothing is
+      !                        written (there are no nuclei to place);
+      !   otherwise:           REFUSED with a status.  R_e < 0 beyond the
+      !                        allowance is a held set holding more nuclei
+      !                        than the cell has; S_e = 0 with R_e > 0 and
+      !                        more than one closure species has no
+      !                        partition the cell's own data define, and
+      !                        none is invented (no neutral seed, no
+      !                        reservoir abundance).
+      !
+      ! The allowance is inventory_feasible_slack times the magnitude of the
+      ! sums R_e is formed from, the rounding two summation orders of the
+      ! same nuclei can leave; it is not a tolerance chosen to admit states.
+      ! A remainder inside it below zero empties the closure species
+      ! (scale 0): the cell is then short by at most that rounding.
+      ! closure_left_empty (S_e = 0, |R_e| within the allowance) WRITES
+      ! NOTHING in either caller: the closure species keep the zero they
+      ! hold, and a positive R_e of that size is the rounding of the sums,
+      ! not nuclei to be placed.
+      !
+      ! FINITE INPUTS DO NOT MAKE A FINITE COMPLETION: R_e/S_e overflows
+      ! when S_e is far below R_e.  The factor is checked here
+      ! (completion_unrepresentable), and each caller checks every density
+      ! it forms before it commits the transaction, so no completed state
+      ! holds a number that is not finite.
+      !
+      ! This function decides; it writes nothing.  Each caller applies the
+      ! decision in its own units (a write-back of f_sp columns, a write
+      ! map of a stationary trial) and keeps the entry composition until
+      ! every element of every cell it writes has been decided, so a refusal
+      ! leaves no partially completed cell behind.
+      integer, parameter, public :: completion_ok                 = 0
+      integer, parameter, public :: completion_not_finite         = 1
+      integer, parameter, public :: completion_held_exceeds_total = 2
+      integer, parameter, public :: completion_empty_support      = 3
+      integer, parameter, public :: completion_negative_closure   = 4
+      ! The factor R_e/S_e, or a completed density a caller formed from
+      ! it, is not a representable number although every sum it came from
+      ! is finite (S_e far below R_e: a closure holding a subnormal share
+      ! of the nuclei it would have to take).  Refused rather than written:
+      ! an overflowed density is not a composition.
+      integer, parameter, public :: completion_unrepresentable    = 5
+      ! How an admitted completion is applied.
+      integer, parameter, public :: closure_by_proportion  = 1
+      integer, parameter, public :: closure_unique_species = 2
+      integer, parameter, public :: closure_left_empty     = 3
+
+      type, public :: element_completion
+         integer  :: status  = completion_ok
+         integer  :: mode    = closure_left_empty
+         ! The element (ien_*) and the cell the decision is about; the
+         ! caller fills them, the decision does not know them.
+         integer  :: element = 0
+         integer  :: cell    = 0
+         ! R_e, the magnitude of the sums it is formed from, and S_e, all
+         ! in the caller's density unit; the factor R_e/S_e (zero for a
+         ! remainder inside the allowance below zero).
+         real(dp) :: remainder = 0.0d0
+         real(dp) :: magnitude = 0.0d0
+         real(dp) :: closure   = 0.0d0
+         real(dp) :: scale     = 0.0d0
+      end type element_completion
 
       contains
+
+
+      ! THE DECISION OF THE COMPLETION RULE ABOVE for one element of one
+      ! cell.  remainder is R_e, magnitude the sum of the magnitudes R_e
+      ! was formed from (the allowance is relative to it), closure S_e and
+      ! n_closure_species the number of species in C_e.
+      pure function element_closure_completion(remainder, magnitude,      &
+                                               closure, n_closure_species) &
+                                               result(c)
+      real(dp), intent(in) :: remainder, magnitude, closure
+      integer,  intent(in) :: n_closure_species
+      type(element_completion) :: c
+      real(dp) :: allowance
+      c%remainder = remainder
+      c%magnitude = magnitude
+      c%closure   = closure
+      c%scale     = 0.0d0
+      c%mode      = closure_left_empty
+      c%status    = completion_ok
+      if (.not. (abs(remainder) .le. huge(1.0d0)) .or.                   &
+          .not. (abs(magnitude) .le. huge(1.0d0)) .or.                   &
+          .not. (abs(closure)   .le. huge(1.0d0))) then
+         c%status = completion_not_finite
+         return
+      endif
+      if (closure .lt. 0.0d0) then
+         c%status = completion_negative_closure
+         return
+      endif
+      allowance = inventory_feasible_slack*abs(magnitude)
+      if (remainder .lt. -allowance) then
+         c%status = completion_held_exceeds_total
+         return
+      endif
+      if (closure .gt. 0.0d0) then
+         c%mode  = closure_by_proportion
+         c%scale = max(remainder, 0.0d0)/closure
+         if (.not. (c%scale .le. huge(1.0d0))) then
+            c%scale  = 0.0d0
+            c%status = completion_unrepresentable
+         endif
+      else if (remainder .le. allowance) then
+         c%mode  = closure_left_empty
+      else if (n_closure_species .eq. 1) then
+         c%mode  = closure_unique_species
+      else
+         c%status = completion_empty_support
+      endif
+      end function element_closure_completion
+
+
+      ! One line for a completion status, for a refusal message.
+      function element_completion_text(status) result(txt)
+      integer, intent(in) :: status
+      character(len=72) :: txt
+      select case (status)
+      case (completion_ok)
+         txt = 'the element was completed'
+      case (completion_not_finite)
+         txt = 'an element sum is not a finite number'
+      case (completion_held_exceeds_total)
+         txt = 'the held species hold more nuclei than the cell has'
+      case (completion_empty_support)
+         txt = 'no closure species holds the element to take the remainder'
+      case (completion_negative_closure)
+         txt = 'the closure species hold a negative number of nuclei'
+      case (completion_unrepresentable)
+         txt = 'the completed closure density is not a representable number'
+      case default
+         txt = 'unknown completion status'
+      end select
+      end function element_completion_text
 
 
       ! NUCLEI OF ELEMENT ie CARRIED BY ONE PARTICLE OF f_sp SPECIES isp.
@@ -267,7 +468,8 @@
       real(dp), intent(in)  :: f_cell(n_species)
       logical,  intent(in)  :: carried(n_species)
       type(element_inventory_cell), intent(out) :: inv
-      real(dp) :: c, free(n_inv_element)
+      real(dp) :: c, free(n_inv_element), mag(n_inv_element)
+      real(dp) :: total_judged
       integer  :: ib, im, ie, isp
 
       inv = element_inventory_cell()
@@ -310,16 +512,57 @@
          endif
       endif
 
+      ! The magnitudes the rounding allowance of each element is relative
+      ! to: the same contributions summed in absolute value, in a pass of
+      ! their own so that the sums above keep their arithmetic.
+      mag = 0.0d0
+      do ib = 1, n_bsp
+         if (bsp_is_excited_level(ib)) cycle
+         c = abs(f_cell(bsp_fsp(ib))*nd)
+         if (bsp_nH(ib) .gt. 0)                                          &
+            mag(ien_H) = mag(ien_H) + dble(bsp_nH(ib))*c
+         if (bsp_nHe(ib) .gt. 0)                                         &
+            mag(ien_He) = mag(ien_He) + dble(bsp_nHe(ib))*c
+         if (bsp_nO(ib) .gt. 0)                                          &
+            mag(ien_O) = mag(ien_O) + dble(bsp_nO(ib))*c
+         if (bsp_nC(ib) .gt. 0)                                          &
+            mag(ien_C) = mag(ien_C) + dble(bsp_nC(ib))*c
+      enddo
+      do im = 1, n_mion
+         c = abs(f_cell(mion_fsp(im))*nd)
+         if (mion_elem(im) .eq. iel_O) mag(ien_O) = mag(ien_O) + c
+         if (mion_elem(im) .eq. iel_C) mag(ien_C) = mag(ien_C) + c
+      enddo
+
       ! ---- (b) the budgets and (c) the breach --------------------------
       ! The element a step can move at all.  Hydrogen loses the nucleus
       ! locked in HeH+ only when that ion is not transported. Oxygen and
       ! carbon lose nothing because their stages are rescaled onto the
       ! remainder. Helium uses the total, including carried HeH+.
+      !
+      ! IT IS A SIGNED, MEASURED INVENTORY, judged as the totals of
+      ! carrier_element_totals are (judge_signed_total): the element total
+      ! first, then the part a step can move, against the magnitude of the
+      ! contributions they were summed from (the locked nuclei counted once
+      ! more for the subtraction).  A cancellation inside the allowance is
+      ! the zero it rounds to; a resolved negative, or a number that is not
+      ! finite, is refused in inv%validity and kept signed.  A zero demand
+      ! does not make a negative inventory feasible.  The nonnegative
+      ! headroom of budgets_and_breach is formed only from this judged
+      ! number.
       do ie = 1, n_inv_element
-         free(ie) = max(inv%n_total(ie) - inv%n_locked(ie), 0.0d0)
+         free(ie) = inv%n_total(ie) - inv%n_locked(ie)
       enddo
       if (.not. inv%element_is_carried(ien_He))                         &
          free(ien_He) = inv%n_total(ien_He)
+      do ie = 1, n_inv_element
+         total_judged = inv%n_total(ie)
+         call judge_signed_total(total_judged, mag(ie), ie, 0,            &
+                                 inv%validity)
+         call judge_signed_total(free(ie),                                &
+                                 mag(ie) + abs(inv%n_locked(ie)), ie, 0,  &
+                                 inv%validity)
+      enddo
       call budgets_and_breach(inv, free)
 
       end subroutine element_inventory_of_cell
@@ -345,7 +588,25 @@
       logical,  intent(in) :: carried(n_species)
       real(dp), intent(in) :: element_free_frozen(n_inv_element)
       type(element_inventory_cell), intent(out) :: inv
+      integer :: ie
       call element_inventory_of_cell(nd, f_cell, carried, inv)
+      ! The frozen budget is a judged inventory of the state it was frozen
+      ! at (carrier_element_totals writes a cancellation inside its
+      ! allowance as zero), so a negative or nonfinite one is no budget and
+      ! is refused here with no further allowance.
+      do ie = 1, n_inv_element
+         if (inv%validity%status .ne. element_total_ok) exit
+         if (.not. (abs(element_free_frozen(ie)) .le. huge(1.0d0))) then
+            inv%validity%status = element_total_not_finite
+         else if (element_free_frozen(ie) .lt. 0.0d0) then
+            inv%validity%status = element_total_negative
+         else
+            cycle
+         endif
+         inv%validity%element   = ie
+         inv%validity%total     = element_free_frozen(ie)
+         inv%validity%magnitude = abs(element_free_frozen(ie))
+      enddo
       call budgets_and_breach(inv, element_free_frozen)
       end subroutine element_inventory_of_candidate
 
@@ -395,6 +656,19 @@
                               inv%violation_less_reserved(ie),           &
                               occ_less_reserved)
       enddo
+      ! A REFUSED INVENTORY HAS NO BREACH TO MEASURE.  Its element is
+      ! marked inadmissible by size, so a consumer that reads the breach
+      ! (inventory_worst_violation, the report, a candidate screen) cannot
+      ! read a negative or nonfinite inventory with no demand on it as a
+      ! feasible one.
+      if (inv%validity%status .ne. element_total_ok) then
+         ie = inv%validity%element
+         if (ie .ge. 1 .and. ie .le. n_inv_element) then
+            inv%violation(ie)               = huge(1.0d0)
+            inv%violation_less_reserved(ie) = huge(1.0d0)
+            inv%occupancy(ie)               = huge(1.0d0)
+         endif
+      endif
       end subroutine budgets_and_breach
 
 
@@ -483,20 +757,41 @@
       ! the cell whatever species carries them.  The multiplicities are the
       ! species table's, so these are the map's element_free evaluated over
       ! the grid and the two entry points return the same numbers.
+      !
+      ! A MEASURED INVENTORY IS SIGNED.  For nonnegative species fractions
+      ! and a positive density every total is a sum of nonnegative nucleus
+      ! contributions (the locked HeH+ hydrogen removed from a sum that
+      ! contains it), so a total below zero is an invalid input and not a
+      ! small inventory.  The raw sum is kept beside the sum of the
+      ! magnitudes of its contributions, and
+      !   |total| <= inventory_feasible_slack * magnitude: the cancellation
+      !        of the summation, the total is zero (written as zero);
+      !   total below minus that allowance, or not a finite number:
+      !        REFUSED.  The first such cell (cells in index order, elements
+      !        H, O, C, He) is returned in `refusal`, and the refused total
+      !        is left signed in its array, never written as a zero
+      !        inventory.  The caller refuses through its own rollback or
+      !        termination contract (carrier_state and its callers).
+      ! The helium total is formed and judged on every call; nHe_total only
+      ! hands it to a caller that asks for it.
       subroutine carrier_element_totals(nd, f_sp, nH_free, nO_free,       &
-                                        nC_free, nHe_total, hehp_carried)
+                                        nC_free, refusal, nHe_total,      &
+                                        hehp_carried)
       real(dp), dimension(1-Ng:N+Ng),           intent(in)  :: nd
       real(dp), dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
       real(dp), dimension(1-Ng:N+Ng),           intent(out) :: nH_free
       real(dp), dimension(1-Ng:N+Ng),           intent(out) :: nO_free
       real(dp), dimension(1-Ng:N+Ng),           intent(out) :: nC_free
+      type(signed_element_total),               intent(out) :: refusal
       real(dp), dimension(1-Ng:N+Ng), optional, intent(out) :: nHe_total
       logical, optional, intent(in) :: hehp_carried
-      integer :: ib, i0, k
+      real(dp), dimension(1-Ng:N+Ng) :: mH, mO, mC, mHe, nHe
+      integer :: ib, i0, k, j
+      logical :: lock_hehp
+      refusal = signed_element_total()
       nH_free = 0.0d0
       nO_free = 0.0d0
       nC_free = 0.0d0
-      if (present(nHe_total)) nHe_total = 0.0d0
       do ib = 1, n_bsp
          if (bsp_is_excited_level(ib)) cycle
          if (bsp_nH(ib) .gt. 0)                                          &
@@ -505,11 +800,18 @@
             nO_free = nO_free + dble(bsp_nO(ib))*f_sp(:,bsp_fsp(ib))*nd
          if (bsp_nC(ib) .gt. 0)                                          &
             nC_free = nC_free + dble(bsp_nC(ib))*f_sp(:,bsp_fsp(ib))*nd
-         if (present(nHe_total)) then
-            if (bsp_nHe(ib) .gt. 0)                                      &
-               nHe_total = nHe_total + dble(bsp_nHe(ib))                 &
-                                       *f_sp(:,bsp_fsp(ib))*nd
-         endif
+      enddo
+      ! THE HELIUM TOTAL IS JUDGED WHETHER OR NOT A CALLER ASKS FOR IT:
+      ! the carrier operator normalizes the helium stages by the helium
+      ! nuclei of the same composition (carrier_state), so a negative or
+      ! nonfinite helium total is refused with the other three.  Summed in
+      ! a pass of its own, so that the three sums above keep their
+      ! arithmetic.
+      nHe = 0.0d0
+      do ib = 1, n_bsp
+         if (bsp_is_excited_level(ib)) cycle
+         if (bsp_nHe(ib) .gt. 0)                                         &
+            nHe = nHe + dble(bsp_nHe(ib))*f_sp(:,bsp_fsp(ib))*nd
       enddo
       ! The metal ion stages hold the rest of the oxygen and the carbon.
       i0 = melem_i0(iel_O)
@@ -520,18 +822,96 @@
       do k = 0, melem_top(iel_C)
          nC_free = nC_free + f_sp(:,mion_fsp(i0+k))*nd
       enddo
-      if (present(hehp_carried)) then
-         if (.not. hehp_carried) nH_free = nH_free-f_sp(:,isp_HeHp)*nd
-      else
-         nH_free = nH_free-f_sp(:,isp_HeHp)*nd
-      endif
-      where (nH_free .lt. 0.0d0) nH_free = 0.0d0
-      where (nO_free .lt. 0.0d0) nO_free = 0.0d0
-      where (nC_free .lt. 0.0d0) nC_free = 0.0d0
-      if (present(nHe_total)) then
-         where (nHe_total .lt. 0.0d0) nHe_total = 0.0d0
-      endif
+      lock_hehp = .true.
+      if (present(hehp_carried)) lock_hehp = .not. hehp_carried
+      if (lock_hehp) nH_free = nH_free-f_sp(:,isp_HeHp)*nd
+      ! The magnitudes the allowance of each total is relative to: the
+      ! same contributions, summed in absolute value.
+      mH = 0.0d0;  mO = 0.0d0;  mC = 0.0d0;  mHe = 0.0d0
+      do ib = 1, n_bsp
+         if (bsp_is_excited_level(ib)) cycle
+         if (bsp_nH(ib) .gt. 0)                                          &
+            mH = mH + abs(dble(bsp_nH(ib))*f_sp(:,bsp_fsp(ib))*nd)
+         if (bsp_nO(ib) .gt. 0)                                          &
+            mO = mO + abs(dble(bsp_nO(ib))*f_sp(:,bsp_fsp(ib))*nd)
+         if (bsp_nC(ib) .gt. 0)                                          &
+            mC = mC + abs(dble(bsp_nC(ib))*f_sp(:,bsp_fsp(ib))*nd)
+         if (bsp_nHe(ib) .gt. 0)                                         &
+            mHe = mHe + abs(dble(bsp_nHe(ib))*f_sp(:,bsp_fsp(ib))*nd)
+      enddo
+      i0 = melem_i0(iel_O)
+      do k = 0, melem_top(iel_O)
+         mO = mO + abs(f_sp(:,mion_fsp(i0+k))*nd)
+      enddo
+      i0 = melem_i0(iel_C)
+      do k = 0, melem_top(iel_C)
+         mC = mC + abs(f_sp(:,mion_fsp(i0+k))*nd)
+      enddo
+      if (lock_hehp) mH = mH + abs(f_sp(:,isp_HeHp)*nd)
+      do j = 1-Ng, N+Ng
+         call judge_signed_total(nH_free(j), mH(j), ien_H, j, refusal)
+         call judge_signed_total(nO_free(j), mO(j), ien_O, j, refusal)
+         call judge_signed_total(nC_free(j), mC(j), ien_C, j, refusal)
+         call judge_signed_total(nHe(j), mHe(j), ien_He, j, refusal)
+      enddo
+      if (present(nHe_total)) nHe_total = nHe
       end subroutine carrier_element_totals
+
+
+      ! ONE SIGNED TOTAL OF ONE CELL, judged as carrier_element_totals
+      ! states: a cancellation inside the allowance is the zero it rounds
+      ! to; a resolved negative or a nonfinite total is kept as it is and
+      ! recorded, the first one only.
+      subroutine judge_signed_total(total, magnitude, ie, j, refusal)
+      real(dp), intent(inout) :: total
+      real(dp), intent(in)    :: magnitude
+      integer,  intent(in)    :: ie, j
+      type(signed_element_total), intent(inout) :: refusal
+      integer :: status
+      status = element_total_ok
+      if (.not. (abs(total) .le. huge(1.0d0)) .or.                       &
+          .not. (abs(magnitude) .le. huge(1.0d0))) then
+         status = element_total_not_finite
+      else if (total .lt. -inventory_feasible_slack*magnitude) then
+         status = element_total_negative
+      else if (total .lt. 0.0d0) then
+         total = 0.0d0
+      endif
+      if (status .eq. element_total_ok) return
+      if (refusal%status .ne. element_total_ok) return
+      refusal%status    = status
+      refusal%element   = ie
+      refusal%cell      = j
+      refusal%total     = total
+      refusal%magnitude = magnitude
+      end subroutine judge_signed_total
+
+
+      ! One line for a signed-total status, for a refusal message.
+      function signed_element_total_text(status) result(txt)
+      integer, intent(in) :: status
+      character(len=72) :: txt
+      select case (status)
+      case (element_total_ok)
+         txt = 'every element total is a nonnegative finite number'
+      case (element_total_negative)
+         txt = 'an element total is negative beyond its rounding'
+      case (element_total_not_finite)
+         txt = 'an element total is not a finite number'
+      case (species_density_negative)
+         txt = 'a solved species density is negative beyond its rounding'
+      case (species_density_not_finite)
+         txt = 'a solved species density is not a finite number'
+      case (background_density_negative)
+         txt = 'a frozen background density read by the rates is negative'
+      case (background_density_not_finite)
+         txt = 'a frozen background density read by the rates is not finite'
+      case (helium_singlet_negative)
+         txt = 'the stored He I ground singlet is negative beyond its rounding'
+      case default
+         txt = 'unknown element-total status'
+      end select
+      end function signed_element_total_text
 
 
       ! THE HYDROGEN NUCLEI THE TRANSPORTED CARRIERS OF A CELL MAY HOLD
@@ -568,6 +948,10 @@
       else
          nH = nH - 3.0d0*n_h3p
       endif
+      ! HEADROOM, NOT AN INVENTORY: what the carriers may still take is
+      ! never below zero (frozen stages holding the whole free hydrogen
+      ! leave the carriers none).  The inventory nH_free it is formed from
+      ! is the signed, judged total of carrier_element_totals.
       nH = max(nH, 0.0d0)
       end function carrier_hydrogen_budget
 
@@ -716,6 +1100,11 @@
       type(element_inventory_cell), intent(in) :: inv
       integer  :: ie
       real(dp) :: worst
+      ! A refused inventory is no state to measure a breach on.
+      if (inv%validity%status .ne. element_total_ok) then
+         ok = .false.
+         return
+      endif
       if (inventory_judges_the_shared_constraint()) then
          ok = (inventory_worst_violation(inv, ie) .le.                    &
                inventory_feasible_slack)
@@ -838,11 +1227,18 @@
       real(dp) :: yhe(N), dhe
       integer  :: jv(n_inv_element), nbad(n_inv_element)
       integer  :: j, ie, jhe
+      type(signed_element_total) :: first_refused
       if (.not. element_inventory_report_on()) return
       vmax = 0.0d0;  omax = 0.0d0;  vres = 0.0d0
       jv   = 0;      nbad = 0
+      first_refused = signed_element_total()
       do j = 1, N
          call element_inventory_of_cell(rho(j)*n0, f_sp(j,:), carried, inv)
+         if (inv%validity%status .ne. element_total_ok .and.              &
+             first_refused%status .eq. element_total_ok) then
+            first_refused      = inv%validity
+            first_refused%cell = j
+         endif
          yhe(j) = helium_to_hydrogen(inv)
          do ie = 1, n_inv_element
             if (inv%violation(ie) .gt. vmax(ie)) then
@@ -866,6 +1262,12 @@
             '       breach against the budget less the frozen stages ',   &
             vres(ie), ', cells breaching ', nbad(ie)
       enddo
+      if (first_refused%status .ne. element_total_ok)                     &
+         write(*,'(a,a,a,a,a,i0,a,es10.3,a,es10.3)') '   REFUSED: ',      &
+            trim(signed_element_total_text(first_refused%status)), ' (',  &
+            trim(inv_element_name(first_refused%element)), ') at cell ',  &
+            first_refused%cell, ': signed ', first_refused%total,          &
+            ', magnitude ', first_refused%magnitude
       ! THE RATIO OF TWO ELEMENTS AGAINST THE RESERVOIR IT IS PINNED TO.
       ! It is a different constraint from the carrier budgets above: those
       ! bound the partition of ONE element among its species, and this one

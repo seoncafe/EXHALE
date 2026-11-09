@@ -200,11 +200,11 @@
    !                     Compared within heh_dev_tol, the same round-off
    !                     allowance the He/H check uses: the file's value is
    !                     the printed decimal of the input's.
-   !   grid, constants   compared EXACTLY, as the text of the field. A cell
-   !                     center from one construction and a face from another
-   !                     do not belong to one discretization, and a changed
-   !                     Jupiter radius is a changed physical grid; a
-   !                     conservative remap is a separate workflow.
+   !   grid              exact labels, construction, and integer counts;
+   !                     positive finite numerical fields within 8 binary64
+   !                     epsilons relative. All physical centers are also
+   !                     checked independently by verify_restart_radii.
+   !   constants         compared EXACTLY as text, including the set name.
    !   options           compared EXACTLY, token by token
    !                     (compare_options_field). The tokens are the
    !                     switches that decide WHICH EQUATIONS the state
@@ -409,6 +409,9 @@
    ! state produced by the block after a handover does not record itself as
    ! a state of the alternation.
    logical :: carrier_rows_entered_newton = .false.
+
+      private :: compare_restart_grid, parse_restart_grid
+      private :: grid_decimal_token, refuse_restart_grid
 
       contains
 
@@ -1387,9 +1390,8 @@
 
       ! The physical grid: the cell count, the length scale the radii are in
       ! units of, the first and last physical cell center, and the
-      ! construction. Compared exactly, because centers from one
-      ! construction and faces, widths and window indices from another are
-      ! not one discretization.
+      ! construction. Semantic comparison allows only numerical rounding;
+      ! centers, faces, widths, and window indices must describe one grid.
       write(blk(imeta_grid),'(A,I0,A)') trim(meta_tag(imeta_grid))//' N ', &
            N, ' R0[cm] '//trim(meta_num(R0))//                                   &
            ' r_min[Rp] '//trim(meta_num(r(1)))//                                 &
@@ -1727,7 +1729,7 @@
       t = adjustl(line)
       if (len_trim(t) .eq. 0) return
       if (t(1:1) .eq. '#') t = adjustl(t(2:))
-      pos = index(trim(t), ' ')
+      pos = scan(trim(t), ' '//achar(9))
       if (pos .le. 1) then
          tok = trim(t)
       else
@@ -1744,6 +1746,8 @@
                     meta_len, ' are compared.'
                error stop 1
             endif
+            if (i .eq. imeta_grid .and. len_trim(blk(i)) .gt. 0) &
+                call refuse_restart_grid('duplicate field', trim(t))
             blk(i) = trim(t)
             return
          endif
@@ -1794,6 +1798,11 @@
       endif
 
       do i = 1, n_meta
+         if (i .eq. imeta_grid) then
+            call compare_restart_grid(meta_h(i), meta_i(i),               &
+                 'Hydro_ioniz_IC.txt', 'Ion_species_IC.txt')
+            cycle
+         endif
          if (trim(meta_h(i)) .ne. trim(meta_i(i))) then
             write(*,'(A)') ' (load_IC) ERROR: the two restart files'//     &
                  ' disagree in the metadata field "'//trim(meta_tag(i))//  &
@@ -1822,7 +1831,8 @@
 
       call compare_reservoir_field(meta_h(imeta_reservoir),                &
                                    blk(imeta_reservoir))
-      call refuse_unequal_field(imeta_grid,    meta_h, blk)
+      call compare_restart_grid(meta_h(imeta_grid), blk(imeta_grid),      &
+                                'restart files', 'this run')
       call refuse_unequal_field(imeta_const,   meta_h, blk)
       ! The options field is compared TOKEN BY TOKEN, so that the tokens
       ! the input named as allowed to differ can differ and every other
@@ -1870,10 +1880,177 @@
       end subroutine verify_restart_metadata
 
 
+      subroutine compare_restart_grid(file_grid, run_grid, file_label, run_label)
+      ! Only numerical representation is relaxed. Eight binary64 epsilons
+      ! allow decimal round trips and a few rounding operations in the grid
+      ! construction (including compiler reassociation). This is not a grid
+      ! remapping allowance. The complete cell-center checks remain required.
+      character(len=*), intent(in) :: file_grid, run_grid
+      character(len=*), intent(in) :: file_label, run_label
+      character(len=meta_len) :: ft(15), rt(15)
+      real*8 :: fv(4), rv(4)
+      integer :: fi(2), ri(2), fn, rn, k
+      call parse_restart_grid(file_grid, ft, fn, fi, fv)
+      call parse_restart_grid(run_grid, rt, rn, ri, rv)
+      if (fn .ne. rn) call refuse_restart_grid('outer-shell presence differs', &
+             file_grid, file_label, run_grid, run_label)
+      if (any(fi .ne. ri)) call refuse_restart_grid('cell or shell count differs', &
+             file_grid, file_label, run_grid, run_label)
+      if (ft(11) .ne. rt(11)) call refuse_restart_grid('construction differs', &
+             file_grid, file_label, run_grid, run_label)
+      do k = 1, 3
+         if (abs(fv(k)-rv(k)) .gt. 8.0d0*epsilon(1.0d0)* &
+             max(abs(fv(k)),abs(rv(k)))) &
+             call refuse_restart_grid('scale or cell-center metadata differs', &
+             file_grid, file_label, run_grid, run_label)
+      enddo
+      if (fn .eq. 15) then
+         if (abs(fv(4)-rv(4)) .gt. 8.0d0*epsilon(1.0d0)* &
+             max(abs(fv(4)),abs(rv(4)))) &
+             call refuse_restart_grid('outer-shell face differs', &
+             file_grid, file_label, run_grid, run_label)
+      endif
+      end subroutine compare_restart_grid
+
+      subroutine parse_restart_grid(line, tokens, nt, counts, values)
+      use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
+      character(len=*), intent(in) :: line
+      character(len=meta_len), intent(out) :: tokens(15)
+      integer, intent(out) :: nt, counts(2)
+      real*8, intent(out) :: values(4)
+      integer :: p, q, last, k, ios, nv
+      integer, parameter :: vp(4) = [5,7,9,15]
+      tokens = ''
+      counts = 0
+      values = 0.0d0
+      nt = 0
+      p = 1
+      last = len_trim(line)
+      do while (p .le. last)
+         if (line(p:p) .eq. ' ' .or. line(p:p) .eq. achar(9)) then
+            p = p+1
+            cycle
+         endif
+         q = p
+         do while (q .le. last)
+            if (line(q:q) .eq. ' ' .or. line(q:q) .eq. achar(9)) exit
+            q = q+1
+         enddo
+         nt = nt+1
+         if (nt .gt. 15) call refuse_restart_grid('extra tokens', line)
+         tokens(nt) = line(p:q-1)
+         p = q
+      enddo
+      if (nt .ne. 11 .and. nt .ne. 15) &
+          call refuse_restart_grid('missing or extra tokens', line)
+      if (tokens(1) .ne. 'grid' .or. tokens(2) .ne. 'N' .or. &
+          tokens(4) .ne. 'R0[cm]' .or. tokens(6) .ne. 'r_min[Rp]' .or. &
+          tokens(8) .ne. 'r_max[Rp]' .or. tokens(10) .ne. 'mode') &
+          call refuse_restart_grid('invalid labels or order', line)
+      ! Read only lexically complete decimal tokens: list-directed READ
+      ! alone would accept commas, repetition counts, or a slash terminator.
+      if (.not. grid_decimal_token(trim(tokens(3)), .true.)) &
+          call refuse_restart_grid('invalid cell count', line)
+      read(tokens(3),*,iostat=ios) counts(1)
+      if (ios .ne. 0) call refuse_restart_grid('cell count overflow', line)
+      if (counts(1) .le. 0) call refuse_restart_grid('nonpositive cell count', line)
+      nv = 3
+      if (nt .eq. 15) then
+         if (tokens(12) .ne. 'outer_shells' .or. tokens(14) .ne. 'r_face[Rp]') &
+             call refuse_restart_grid('invalid outer-shell labels', line)
+         if (.not. grid_decimal_token(trim(tokens(13)), .true.)) &
+             call refuse_restart_grid('invalid shell count', line)
+         read(tokens(13),*,iostat=ios) counts(2)
+         if (ios .ne. 0) call refuse_restart_grid('shell count overflow', line)
+         if (counts(2) .le. 0 .or. counts(2) .ge. counts(1)) &
+             call refuse_restart_grid('invalid shell count range', line)
+         nv = 4
+      endif
+      do k = 1, nv
+         if (.not. grid_decimal_token(trim(tokens(vp(k))), .false.)) &
+             call refuse_restart_grid('invalid real token', line)
+         read(tokens(vp(k)),*,iostat=ios) values(k)
+         if (ios .ne. 0) call refuse_restart_grid('real conversion failed', line)
+         if (.not. ieee_is_finite(values(k))) &
+             call refuse_restart_grid('nonfinite value', line)
+         if (values(k) .le. 0.0d0) call refuse_restart_grid('nonpositive value', line)
+      enddo
+      if (values(2) .gt. values(3)) &
+          call refuse_restart_grid('reversed cell centers', line)
+      if (nt .eq. 15) then
+         if (values(4) .le. values(3)) &
+             call refuse_restart_grid('outer face is inside the last center', line)
+      endif
+      end subroutine parse_restart_grid
+
+      logical function grid_decimal_token(token, integer_only) result(valid)
+      character(len=*), intent(in) :: token
+      logical, intent(in) :: integer_only
+      integer :: p, n, digits, exponent_digits
+      valid = .false.
+      n = len_trim(token)
+      if (n .eq. 0) return
+      p = 1
+      if (token(p:p) .eq. '+' .or. token(p:p) .eq. '-') p = p+1
+      digits = 0
+      do while (p .le. n)
+         if (token(p:p) .lt. '0' .or. token(p:p) .gt. '9') exit
+         digits = digits+1
+         p = p+1
+      enddo
+      if (.not. integer_only .and. p .le. n) then
+         if (token(p:p) .eq. '.') then
+            p = p+1
+            do while (p .le. n)
+               if (token(p:p) .lt. '0' .or. token(p:p) .gt. '9') exit
+               digits = digits+1
+               p = p+1
+            enddo
+         endif
+      endif
+      if (digits .eq. 0) return
+      if (.not. integer_only .and. p .le. n) then
+         if (index('eEdD',token(p:p)) .gt. 0) then
+            p = p+1
+            if (p .le. n) then
+               if (token(p:p) .eq. '+' .or. token(p:p) .eq. '-') p = p+1
+            endif
+            exponent_digits = 0
+            do while (p .le. n)
+               if (token(p:p) .lt. '0' .or. token(p:p) .gt. '9') exit
+               exponent_digits = exponent_digits+1
+               p = p+1
+            enddo
+            if (exponent_digits .eq. 0) return
+         endif
+      endif
+      valid = (p .eq. n+1)
+      end function grid_decimal_token
+
+      subroutine refuse_restart_grid(reason, line_a, label_a, line_b,    &
+                                     label_b)
+      ! A parse refusal names the offending field text (line_a alone); a
+      ! comparison refusal prints both compared fields with their sources.
+      character(len=*), intent(in) :: reason
+      character(len=*), intent(in), optional :: line_a, label_a
+      character(len=*), intent(in), optional :: line_b, label_b
+      write(*,'(A)') ' (load_IC) ERROR: metadata field "grid": '//trim(reason)
+      if (present(line_a)) then
+         if (present(label_a)) then
+            write(*,'(A)') '   '//trim(label_a)//': '//trim(line_a)
+         else
+            write(*,'(A)') '   field: '//trim(line_a)
+         endif
+      endif
+      if (present(line_b) .and. present(label_b))                         &
+           write(*,'(A)') '   '//trim(label_b)//': '//trim(line_b)
+      error stop 1
+      end subroutine refuse_restart_grid
+
       subroutine refuse_unequal_field(ifield, meta_file, meta_run)
       ! A field whose comparison is EXACT: the text of the field is the
       ! statement, and two different statements are two different problems.
-      ! The grid and the constant set are compared this way; the options
+      ! The constant set is compared this way; the options
       ! field has its own token-by-token comparison, because a named token
       ! may differ there.
       integer, intent(in) :: ifield

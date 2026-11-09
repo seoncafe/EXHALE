@@ -37,6 +37,41 @@
       ! the original Roe arithmetic is unchanged.
       logical :: low_mach_velocity_jump = .false.
 
+      ! THE CONTACT SIDE OF AN HLLC FACE FLUX.  The HLLC flux selects one side
+      ! K of the contact by the sign of S_star and returns either that
+      ! side's physical flux F_K (star = .false.: the outer wave speed S_K
+      ! is zero, the face is supersonic or sonic on side K) or
+      ! F_K + S_K (U*_K - U_K) with S_K nonzero (star = .true.), whose mass
+      ! component is rho*_K S_star and whose energy component is
+      ! (E*_K + p*) S_star (Toro 2009, Riemann Solvers and Numerical Methods
+      ! for Fluid Dynamics, 3rd ed., chapter 10).  The record states which side it was and that
+      ! side's reconstructed state, the data in which the energy flux of the
+      ! face is the enthalpy of cell K's composition at the pressure and
+      ! density of side K plus pressure work.  valid = .false. wherever no
+      ! such side exists: the Roe flux (and its HLLE substitute) and the
+      ! Lax-Friedrichs flux are not the flux of one side, so their energy
+      ! flux carries no one-sided composition.  A caller that changes the
+      ! returned flux afterwards (a dissipation added, a first-order
+      ! substitute, a blend of two evaluations) must mark the record invalid
+      ! at that face.  wb says that S_star was formed from the
+      ! well-balanced pressure jump.  The record is written only; it enters
+      ! no flux.
+      integer, parameter :: hllc_side_none = 0, hllc_side_left = -1,      &
+                            hllc_side_right = 1
+      type :: hllc_contact_side
+         logical :: valid  = .false.
+         integer :: side   = hllc_side_none
+         integer :: jK     = 0
+         logical :: star   = .false.
+         logical :: wb     = .false.
+         real*8  :: rho_K  = 0.0d0
+         real*8  :: v_K    = 0.0d0
+         real*8  :: p_K    = 0.0d0
+         real*8  :: S_K    = 0.0d0
+         real*8  :: S_star = 0.0d0
+         real*8  :: rho_star_K = 0.0d0
+      end type hllc_contact_side
+
       contains
       
       !
@@ -62,21 +97,26 @@
       ! side's own equilibrium, q_up = p_out - P_up(jL) and
       ! q_dn = p_out - P_dn(jR), which is how RK_rhs forms the pressure force
       ! without ever subtracting two O(1) numbers.
+      ! CONTACT SIDE.  The optional contact_side returns the side K the HLLC
+      ! flux took and its state (type hllc_contact_side); it is invalid for
+      ! the Roe and Lax-Friedrichs fluxes.  Only assignments of values the
+      ! flux already formed: the flux is the same with or without it.
       subroutine Num_flux(WL,WR,NF,p_out,jL,jR,                          &
-                          dev_L,dev_R,dp_eq,q_up,q_dn)
+                          dev_L,dev_R,dp_eq,q_up,q_dn,contact_side)
 
       real*8,intent(in) :: WL(3),WR(3)
       integer,intent(in) :: jL,jR
       real*8, intent(in),  optional :: dev_L,dev_R,dp_eq
       real*8, intent(out), optional :: q_up,q_dn
-      logical :: wb, hllc_left
+      type(hllc_contact_side), intent(out), optional :: contact_side
+      logical :: wb, hllc_left, hlle_face
       real*8  :: dp_wb
       real*8 :: gam_L,gam_R,gam_face
       real*8 :: uL(3),uR(3)
       real*8 :: FL(3),FR(3)
       real*8 :: rhoL,vL,pL,aL,EL,HL,SL,phiL
       real*8 :: rhoR,vR,pR,aR,ER,HR,SR,phiR
-      real*8 :: S_star
+      real*8 :: S_star, dp_face
       real*8 :: usL(3),usR(3)
       real*8 :: s,rho_avg,v_avg,H_avg,a_avg          
       real*8 :: l1,l2,l3
@@ -91,6 +131,7 @@
       
       wb = present(dev_L) .and. present(dev_R) .and. present(dp_eq)
       hllc_left = .true.
+      hlle_face = .false.
       dp_wb = 0.0d0
       if (wb) dp_wb = dp_eq + dev_R - dev_L
 
@@ -116,6 +157,8 @@
       case ('LLF') ! Local Lax Friedrichs
 
          call lax_friedrichs_flux(WL,WR,NF,p_out,jL,jR)
+         ! No contact side (see hllc_contact_side).
+         if (present(contact_side)) contact_side%valid = .false.
 
          ! p_out is the average of the two face pressures
          if (wb) then
@@ -180,21 +223,71 @@
                
          endif
 
-         ! p_out is one side's own face pressure here, so the departure it
-         ! carries is that side's.  hllc_left says which side the branch
-         ! above took.
-         if (wb) then
+         ! The side the branch above took, and its state.
+         if (present(contact_side)) then
+            contact_side%valid  = .true.
+            contact_side%wb     = wb
+            contact_side%S_star = S_star
             if (hllc_left) then
-               q_up = dev_L
-               q_dn = dev_L - dp_eq
+               contact_side%side  = hllc_side_left
+               contact_side%jK    = jL
+               contact_side%star  = (SL .lt. 0.0)
+               contact_side%rho_K = rhoL
+               contact_side%v_K   = vL
+               contact_side%p_K   = pL
+               contact_side%S_K   = SL
+               contact_side%rho_star_K = usL(1)
             else
-               q_dn = dev_R
-               q_up = dev_R + dp_eq
+               contact_side%side  = hllc_side_right
+               contact_side%jK    = jR
+               contact_side%star  = (SR .gt. 0.0)
+               contact_side%rho_K = rhoR
+               contact_side%v_K   = vR
+               contact_side%p_K   = pR
+               contact_side%S_K   = SR
+               contact_side%rho_star_K = usR(1)
             endif
          endif
 
-      
+         ! Effective numerical pressure for the spherical momentum split:
+         ! P = p_K + S_K rho*_K (S* - v_K), H - P = mass_flux * v_K,
+         ! where H is the complete Cartesian HLLC momentum flux. P is not
+         ! the usual HLLC contact pressure. The paired subtraction preserves
+         ! H, makes the split continuous at S*=0 and the sonic clamps, and
+         ! retains the upstream pressure at a supersonic face. See
+         ! EXHALE_v1.10/md/hllc_spherical_pressure_split_fix_20261105.md.
+         if (SL .ge. 0.0d0 .or. SR .le. 0.0d0) then
+            dp_face = 0.0d0
+         else if (hllc_left) then
+            dp_face = SL*usL(1)*(S_star - vL)
+         else
+            dp_face = SR*usR(1)*(S_star - vR)
+         endif
+         if (hllc_left) then
+            p_out = pL + dp_face
+         else
+            p_out = pR + dp_face
+         endif
+         ! Ordinary PLM already carries the complete pressure in NF(2).
+         if (.not. (use_plm .and. .not. well_balanced)) &
+            NF(2) = NF(2) - dp_face
+         ! Apply the same pressure increment to the equilibrium departures;
+         ! never recover a small departure by subtracting two O(1) pressures.
+         if (wb) then
+            if (hllc_left) then
+               q_up = dev_L + dp_face
+               q_dn = q_up - dp_eq
+            else
+               q_dn = dev_R + dp_face
+               q_up = q_dn + dp_eq
+            endif
+         endif
+
       case ('ROE')
+
+         ! No contact side, on the Roe branch and on its HLLE substitute
+         ! alike (see hllc_contact_side).
+         if (present(contact_side)) contact_side%valid = .false.
       
          
          s = sqrt(rhoL)/(sqrt(rhoL)+sqrt(rhoR))
@@ -239,6 +332,7 @@
             call Phys_flux(WL,FL,jL)
             call Phys_flux(WR,FR,jR)
             call hlle_flux(WL,WR,FL,FR,SL,SR,jL,jR,NF)
+            hlle_face = .true.
 
             !$omp atomic
             n_faces_roe_hlle = n_faces_roe_hlle + 1
@@ -314,13 +408,27 @@
 
          endif
 
-         p_out = 0.5*(pR + pL)
-
-         ! p_out is the average of the two face pressures, on the Roe branch
-         ! and on the HLLE fallback alike
-         if (wb) then
-            q_up = 0.5d0*(dev_L + dev_R + dp_eq)
-            q_dn = q_up - dp_eq
+         ! The HLLE substitute has a wave-weighted pressure contribution.
+         ! Returning the Roe arithmetic mean would not restore its complete
+         ! momentum flux, even in Cartesian geometry for asymmetric bounds.
+         if (hlle_face) then
+            if (SL .ge. 0.0d0) then
+               p_out = pL
+               if (wb) q_up = dev_L
+            else if (SR .le. 0.0d0) then
+               p_out = pR
+               if (wb) q_up = dev_R + dp_eq
+            else
+               p_out = (SR*pL - SL*pR)/(SR - SL)
+               if (wb) q_up = (SR*dev_L - SL*(dev_R + dp_eq))/(SR - SL)
+            endif
+            if (wb) q_dn = q_up - dp_eq
+         else
+            p_out = 0.5*(pR + pL)
+            if (wb) then
+               q_up = 0.5d0*(dev_L + dev_R + dp_eq)
+               q_dn = q_up - dp_eq
+            endif
          endif
 
       case default

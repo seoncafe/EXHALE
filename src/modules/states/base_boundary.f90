@@ -182,10 +182,11 @@
    ! hydrostatic equilibrium at the face, and the two ghost cells continue
    ! that discrete equilibrium below the level (see "ONE DISCRETE
    ! EQUILIBRIUM" at base_ghost_averages), where v4 continued cell 1 and the
-   ! ghosts along hydrostatic isentropes. A run without the well-balanced
-   ! reconstruction builds the v4 boundary unchanged and states the v4
-   ! identity, so a restart is told of a change exactly where the boundary
-   ! changed. base_boundary_model_id returns the identity of this run.
+   ! ghosts along hydrostatic isentropes. The current model without the
+   ! well-balanced reconstruction uses the v6 thermochemical closure; the
+   ! discrete-equilibrium counterpart is v7. Chemistry closes at the density
+   ! and temperature produced by the boundary. base_boundary_model_id
+   ! returns the identity of this run.
    character(len=*), parameter :: base_boundary_model_id_isentropic =     &
         'characteristic_face_ps_reservoir_C_minus_contact_upwind'//       &
         '_ghost_thermochemical_fixed_point_reservoir_seed_face_at_level_v6'

@@ -661,7 +661,13 @@ def solve_conducted_response(geom, F, T_bottom, T_guess, face_coefficient,
 
     Residual of node i = 1..M (node 0 is held at T_bottom): `balance_terms`,
     with A_{M+1/2} q_{M+1/2} := A_M F (total flux) at the top.  Converged
-    when max |R_i| is below tol times `balance_scale` at the initial T.
+    when max |R_i| is below tol times `balance_scale` at the initial T, or
+    at the rounding floor of the residual: the last Newton correction below
+    1e-12 of every node temperature with max |R_i|/scale below 1e-6. The
+    residual is a sum of terms that cancel, so its floor can lie above tol:
+    on LHS 1140 b (He/H 100, 2026-10-28) it cycled between 2.2e-10 and
+    4.8e-10 from the fifth iteration on while the corrections were 3e-15 of
+    T, and the solve was refused after 200 iterations.
     Returns T and the TOTAL face fluxes; raises RuntimeError if Newton does
     not converge.
     """
@@ -682,11 +688,14 @@ def solve_conducted_response(geom, F, T_bottom, T_guess, face_coefficient,
             print('    newton %d  max|R|/scale = %.3e' % (it, res))
         if res < tol:
             return T, q, it
+        if it > 0 and step_rel < 1e-12 and res < 1e-6:
+            return T, q, it
         dx = solve_banded((1, 1), ab, -R[1:])
         # damping: no node moves by more than 30 per cent of its temperature
         lim = np.max(np.abs(dx)/(0.3*T[1:]))
         if lim > 1.0:
             dx /= lim
+        step_rel = float(np.max(np.abs(dx)/T[1:]))
         T[1:] += dx
         if np.any(~np.isfinite(T)) or np.any(T[1:] <= 0.0):
             raise RuntimeError('the column solve left the physical range')

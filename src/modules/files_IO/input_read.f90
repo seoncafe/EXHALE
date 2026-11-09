@@ -211,7 +211,8 @@
       'Regional transition mass flow limit', &
       'Regional upper mass flow limit', &
       'Regional profile interval', &
-      'Regional minimum samples' ]
+      'Regional minimum samples', &
+      'Marching snapshot interval', 'Marching diagnostic interval' ]
 
    ! ----- Read planetary parameters from input file ----- !
 
@@ -1171,6 +1172,26 @@
 				endif
 			else if (lbl_match(line, 'Base ghost temperature')) then
 				call retired_base_key('Base ghost temperature')
+            else if (lbl_match(line, 'Marching snapshot interval')) then
+               str = get_word(line, 4)
+               if (len_trim(str).eq.0.or.verify(trim(str),'0123456789').ne.0) &
+                  error stop 'Marching snapshot interval takes one nonnegative integer'
+               read(str,*,iostat=ios) marching_snapshot_interval
+               if (ios .ne. 0) error stop 'invalid Marching snapshot interval'
+               if (marching_snapshot_interval .lt. 0) &
+                  error stop 'Marching snapshot interval must be nonnegative'
+               if (len_trim(get_word(line,5)) .gt. 0) &
+                  error stop 'Marching snapshot interval takes one integer'
+            else if (lbl_match(line, 'Marching diagnostic interval')) then
+               str = get_word(line, 4)
+               if (len_trim(str).eq.0.or.verify(trim(str),'0123456789').ne.0) &
+                  error stop 'Marching diagnostic interval takes one nonnegative integer'
+               read(str,*,iostat=ios) marching_diagnostic_interval
+               if (ios .ne. 0) error stop 'invalid Marching diagnostic interval'
+               if (marching_diagnostic_interval .lt. 0) &
+                  error stop 'Marching diagnostic interval must be nonnegative'
+               if (len_trim(get_word(line,5)) .gt. 0) &
+                  error stop 'Marching diagnostic interval takes one integer'
 			else if (lbl_match(line, 'Max steps')) then
 				! "Max steps: <N>" overrides the hard cap on marching
 				! iterations (default 1000000).
@@ -2681,13 +2702,12 @@
 
    ! THE RUN MODE, AND WHY ITS DEFAULT IS init.
    !
-   ! The ordinary use of this code is a stationary solution: march until the
-   ! flux functional is flat, finish with a stationary solve, certify the
-   ! state. Every step of that is a relaxation iterate and none of it is a
-   ! trajectory, so in the contract's own terms the ordinary run is
-   ! initialization / continuation. A physical time integration is the
-   ! exception and is asked for; nothing is inferred, and a run that says
-   ! nothing claims no elapsed time.
+   ! Marching profile convergence is the default scientific result. A
+   ! stationary solve is optional and its absence is not a marching failure.
+   ! The input default remains init for initialization / continuation:
+   ! those iterates claim no elapsed physical time. Select Run mode: phys
+   ! for a trajectory and assess its retained profiles over the default
+   ! crossing-time window; the initialization stop does not apply that test.
    !
    ! A physical integration additionally needs one global dt per step,
    ! because cells advanced by different intervals do not form one
@@ -2745,8 +2765,9 @@
       write(*,*) '  "Restart intent: relaxation". Aborting.'
       error stop 1
    endif
-   if (restart_intent .eq. restart_intent_stationary .and.                 &
-       .not. use_newton_solver) then
+   ! A no-step evaluation has no stationary solver to enter.
+   if (restart_intent .eq. restart_intent_stationary .and. &
+       .not.stationary_evaluate_only.and..not.use_newton_solver) then
       write(*,*) '(input_read) ERROR: "Restart intent: stationary" needs'
       write(*,*) '  "Solver: Newton". The intent evaluates the stationary'
       write(*,*) '  residual of the loaded state and then enters the'

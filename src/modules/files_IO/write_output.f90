@@ -300,6 +300,12 @@
             integer(c_int), value :: dir_mode
             integer(c_int) :: rc
          end function posix_mkdir
+         function posix_access(entry_path, mode) bind(C, name='access') result(rc)
+            import :: c_char, c_int
+            character(kind=c_char), dimension(*), intent(in) :: entry_path
+            integer(c_int), value :: mode
+            integer(c_int) :: rc
+         end function posix_access
          function posix_remove(entry_path) bind(C, name='remove')          &
                   result(rc)
             import :: c_char, c_int
@@ -307,7 +313,7 @@
             integer(c_int) :: rc
          end function posix_remove
       end interface
-      private :: posix_mkdir, posix_remove
+      private :: posix_mkdir, posix_remove, posix_access
       private :: pass_state_safe_name, pass_state_generation_name_valid,  &
                  pass_state_current_generation,                           &
                  pass_state_previous_generation,                          &
@@ -946,6 +952,101 @@
       close(unit_i)
       end subroutine write_species_state_file
 
+
+      subroutine write_marching_snapshot(step, accepted, u, f_sp, heat, cool)
+      ! A synchronous immutable state: publish the directory only after the
+      ! pair, exact state and completion record have all closed. The clock's
+      ! binary64 bits and step identify it without rounding time to a name.
+      ! Only local output arrays are reconstructed; every temporary change
+      ! to the caloric mixture, first-cell count and molecular output arrays
+      ! is restored before the next physical operation.
+      use, intrinsic :: iso_fortran_env, only: int64
+      use caloric_eos, only: caloric_mixture_record, hold_caloric_mixture, &
+                            restore_caloric_mixture
+      use composition, only: get_species_densities, comp_T_from_p
+      use Conversion, only: U_to_W
+      integer, intent(in) :: step, accepted
+      real*8, intent(in) :: u(3,1-Ng:N+Ng), f_sp(1-Ng:N+Ng,n_species)
+      real*8, intent(in) :: heat(1-Ng:N+Ng), cool(1-Ng:N+Ng)
+      type(caloric_mixture_record) :: mixture_kept
+      real*8 :: w(3,1-Ng:N+Ng), temp(1-Ng:N+Ng), zero(1-Ng:N+Ng)
+      real*8 :: hi(1-Ng:N+Ng), hp(1-Ng:N+Ng), he(1-Ng:N+Ng)
+      real*8 :: hep(1-Ng:N+Ng), hepp(1-Ng:N+Ng), hetr(1-Ng:N+Ng)
+      real*8 :: metals(1-Ng:N+Ng,n_mion), electrons(1-Ng:N+Ng)
+      real*8 :: particles(1-Ng:N+Ng), part_kept
+      real*8 :: mol_kept(1-Ng:N+Ng,4), oxy_kept(1-Ng:N+Ng,3)
+      logical :: cert_kept, exact_written
+      character(len=len(state_certification_reason)) :: reason_kept
+      character(len=128) :: name, reason
+      character(len=8192) :: root, temporary, published
+      integer :: ih, ii, im, ios, k
+      integer(c_int) :: rc
+
+      root = trim(output_dir)//'snapshots'
+      write(name,'(A,Z16.16,A,I0)') 't', transfer(t_phys,0_int64), '_s',step
+      do k=1,len_trim(name)
+         if (name(k:k).ge.'A'.and.name(k:k).le.'F') &
+            name(k:k)=achar(iachar(name(k:k))+32)
+      enddo
+      temporary = trim(root)//'/.'//trim(name)//'.part'
+      published = trim(root)//'/'//trim(name)
+      ! INQUIRE on a directory is compiler-dependent. mkdir may report an
+      ! existing root; the exclusive child mkdir below checks its usability.
+      rc = posix_mkdir(trim(root)//c_null_char,int(o'755',c_int))
+      rc = posix_access(trim(published)//c_null_char,0_c_int)
+      if (rc.eq.0) error stop 'marching snapshot already exists; nothing overwritten'
+      rc = posix_mkdir(trim(temporary)//c_null_char,int(o'755',c_int))
+      if (rc.ne.0) error stop 'marching snapshot partial directory exists or cannot be created'
+
+      call hold_caloric_mixture(mixture_kept)
+      if (.not.mixture_kept%held) &
+         error stop 'marching snapshot requires initialized caloric state'
+      part_kept = n_part_cell1
+      cert_kept = state_is_certified
+      reason_kept = state_certification_reason
+      if (thereis_mol) mol_kept = nmol_eq
+      if (thereis_oxychem) oxy_kept = nox_eq
+      he=0d0; hep=0d0; hepp=0d0; hetr=0d0; zero=0d0
+      call get_species_densities(u(1,:),f_sp,hi,hp,he,hep,hepp,hetr, &
+                                 metals,electrons,particles)
+      call U_to_W(u,w)
+      call comp_T_from_p(w(3,:),particles,electrons,temp)
+      call molecular_carrier_densities_from_state(u(1,:),f_sp)
+      write(reason,'(A,I0)') 'marching_snapshot_s',step
+      call set_state_certified(.false.,trim(reason))
+      call write_hydro_state_file(trim(temporary)//'/Hydro_ioniz.txt','eq', &
+           w(1,:),w(2,:),w(3,:),temp,heat,cool,zero,ios_open=ih, &
+           pass_statement='accepted physical marching snapshot',state_id=trim(name))
+      call write_species_state_file(trim(temporary)//'/Ion_species.txt','eq', &
+           hi,hp,he,hep,hepp,hetr,metals,ios_open=ii, &
+           pass_statement='accepted physical marching snapshot',state_id=trim(name))
+      exact_written=.false.
+      if (ih.eq.0.and.ii.eq.0) &
+         call write_conserved_state(trim(temporary)//'/conserved_state.txt', &
+              trim(temporary)//'/Hydro_ioniz.txt', &
+              trim(temporary)//'/Ion_species.txt',u,f_sp,exact_written)
+      if (thereis_mol) nmol_eq=mol_kept
+      if (thereis_oxychem) nox_eq=oxy_kept
+      call restore_caloric_mixture(mixture_kept)
+      n_part_cell1=part_kept
+      call set_state_certified(cert_kept,trim(reason_kept))
+      if (ih.ne.0.or.ii.ne.0.or..not.exact_written) &
+         error stop 'marching snapshot incomplete; partial directory preserved'
+      open(newunit=im,file=trim(temporary)//'/snapshot.txt',status='new', &
+           action='write',iostat=ios)
+      if (ios.ne.0) error stop 'cannot write marching snapshot completion record'
+      write(im,'(A)') 'EXHALE_MARCHING_SNAPSHOT 1'
+      write(im,'(A,ES25.17E3)') 't_phys[s] ',t_phys
+      write(im,'(A,I0)') 'step ',step
+      write(im,'(A,I0)') 'accepted_steps_in_run ',accepted
+      write(im,'(A)') 'files Hydro_ioniz.txt Ion_species.txt conserved_state.txt'
+      write(im,'(A)') 'COMPLETE'
+      close(im,iostat=ios)
+      if (ios.ne.0) error stop 'marching snapshot completion record did not close'
+      rc = posix_rename(trim(temporary)//c_null_char,trim(published)//c_null_char)
+      if (rc.ne.0) error stop 'cannot publish marching snapshot; partial directory preserved'
+      write(*,'(A,A)') ' (marching snapshot) published ',trim(published)
+      end subroutine write_marching_snapshot
 
       subroutine publish_pass_state_generation(pass_now, pass_statement, &
                                        rho, v, p, T, heat, cool, nhi,     &

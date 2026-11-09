@@ -57,6 +57,9 @@
       ! judged against cannot state different stoichiometry.
       use element_inventory, only: nuclei_per_particle,                    &
                                   carrier_element_totals,                  &
+                                  signed_element_total,                    &
+                                  signed_element_total_text,               &
+                                  element_total_ok, inv_element_name,      &
                                   ien_H, ien_O, ien_C
       ! The fraction of that largest density at which two states stop being
       ! distinguishable, from the module that owns the element bookkeeping
@@ -165,6 +168,16 @@
       ! moving); this one says that the pair that WAS found does not satisfy
       ! the energy row summed over the grid.
       integer, parameter, public :: as_reject_source_energy = 14
+      ! 15: the ionization sweep refused its mass projection: the
+      ! composition it returned does not weigh the density of the step
+      ! (above the projection limit, or a mixture mass that is not a usable
+      ! number). There is no admitted composition to continue from, so it
+      ! refuses the attempt in both run modes.
+      integer, parameter, public :: as_reject_mass_projection = 15
+      ! The imposed transport partition has no admissible element budget;
+      ! no chemical solve was attempted on this step's trial state.
+      integer, parameter, public :: as_reject_imposed_input = 16
+      integer, parameter, public :: as_reject_last = as_reject_imposed_input
 
       ! Checkpoint an item only if a step operation writes it and a later
       ! read precedes its next write. The conserved u and fractions f_sp
@@ -340,7 +353,7 @@
       integer, save, public :: n_steps_with_rejection = 0
       integer, save, public :: n_step_exhaustions = 0
       ! Rejections by reason, indexed by the as_reject_* codes.
-      integer, save, public :: n_reject_by_reason(0:as_reject_source_energy) = 0
+      integer, save, public :: n_reject_by_reason(0:as_reject_last) = 0
       ! Rejections by the operation that produced the refused state.
       integer, save, public :: n_reject_by_operation(0:as_op_last) = 0
 
@@ -582,6 +595,12 @@
       public :: attempted_step_thermal_energy_before_sources
       public :: attempted_step_thermal_energy_after_sources
       public :: attempted_step_energy_identity
+      public :: element_operation_disposition
+      ! WHAT THE STEP CONTROLLER DOES WITH THE OUTCOME OF THE ELEMENT
+      ! OPERATION OF AN ATTEMPT (element_operation_disposition).
+      integer, parameter, public :: element_disposition_accepted       = 0
+      integer, parameter, public :: element_disposition_refuse_attempt = 1
+      integer, parameter, public :: element_disposition_count_continue = 2
 
       contains
 
@@ -1193,6 +1212,43 @@
 
       ! 3. THE REJECTION POLICY, THE COUNTERS AND THE PROBES
 
+      pure integer function element_operation_disposition(refused,         &
+                            entry_invalid, phys_mode) result(d)
+      ! THE ELEMENT OPERATION OF AN ATTEMPT (the projection of the
+      ! advected element rows, then the element diffusion step) has three
+      ! kinds of outcome, and the controller treats them differently:
+      !   accepted                            -> accepted;
+      !   a FAILED CANDIDATE (the operation's own update refused, the
+      !   valid composition it received returned: diffusion outcomes 1-4
+      !   and 6, a refused advected target)
+      !        phys mode: the attempted step is refused, the checkpoint is
+      !             restored and the step retaken at a shorter dt;
+      !        init mode: the state is a numerical iterate; the march goes
+      !             on from the valid composition handed back, and the
+      !             refusal is counted for the final report;
+      !   an INVALID ENTRY (the composition the operation received has a
+      !   refused nucleus count; what it hands back is that same invalid
+      !   composition)
+      !        both modes: the attempted step is refused and the complete
+      !             state of the checkpoint the attempt was taken from
+      !             (validated at the attempt's entry,
+      !             species_advection_begin_step) is restored, and the step
+      !             retaken at a shorter dt.  In init mode too: a numerical
+      !             iterate is no license to evaluate rates on negative or
+      !             nonfinite populations.  An entry that stays invalid at
+      !             every shorter dt ends in the retry-budget stop
+      !             (stop_on_exhausted_retry_budget, both modes).
+      logical, intent(in) :: refused, entry_invalid, phys_mode
+      if (.not. refused) then
+         d = element_disposition_accepted
+      else if (entry_invalid .or. phys_mode) then
+         d = element_disposition_refuse_attempt
+      else
+         d = element_disposition_count_continue
+      endif
+      end function element_operation_disposition
+
+
       real*8 function attempted_step_reduced_dt(dt_in, reason) result(dt_o)
       ! The factor a rejection applies. 0.5 on an admissibility or a
       ! returned-state refusal, matching the nested positivity path so the
@@ -1246,7 +1302,7 @@
       type(attempted_step_verdict), intent(in) :: verd
       n_step_rejections = n_step_rejections + 1
       if (verd%reason .ge. 0 .and.                                         &
-          verd%reason .le. as_reject_source_energy)                        &
+          verd%reason .le. as_reject_last)                                 &
          n_reject_by_reason(verd%reason) =                                 &
             n_reject_by_reason(verd%reason) + 1
       if (verd%operation .ge. 0 .and. verd%operation .le. as_op_last)      &
@@ -1282,6 +1338,7 @@
       real*8  :: d, sc, budget, inner, cand
       real*8, dimension(1-Ng:N+Ng) :: nd_h, nH_h, nO_h, nC_h
       real*8, allocatable :: Y_full(:,:), Y_half(:,:)
+      type(signed_element_total) :: inv_h
 
       est%e = 0.0d0;  est%e_resolved = 0.0d0
       est%worst_class = 0;  est%jworst = 0;  est%kworst = 0
@@ -1310,7 +1367,20 @@
       ! From the one stoichiometric map, on the HALF-step state, which is
       ! also the state the relative part of every scale is taken on.
       nd_h = u_half(1,:)*n0
-      call carrier_element_totals(nd_h, f_sp_half, nH_h, nO_h, nC_h)
+      call carrier_element_totals(nd_h, f_sp_half, nH_h, nO_h, nC_h, inv_h)
+      ! The half-step state passed every check of its attempts, so a
+      ! negative or nonfinite element total here is a broken invariant and
+      ! not a scale: it stops the run with the cell named.
+      if (inv_h%status .ne. element_total_ok) then
+         write(*,'(A,A,A,I0,A,A,A,ES12.4,A,ES12.4)')                       &
+              ' (attempted_step_error_estimate) REFUSED: the ',            &
+              trim(inv_element_name(max(inv_h%element,1))),               &
+              ' total at cell ', inv_h%cell, ': ',                         &
+              trim(signed_element_total_text(inv_h%status)),               &
+              ', signed total ', inv_h%total, ', magnitude ',             &
+              inv_h%magnitude
+         error stop 1
+      endif
 
       ! ---- class 2: the transported species fractions ----------------- !
       call attempted_step_species_rows(rows, nrow)
@@ -1668,7 +1738,7 @@
          ! refusals of the coupled source step, so the operation alone does
          ! not say which one a run met.
          write(*,'(a)') '     refusals by reason:'
-         do i = 0, as_reject_source_energy
+         do i = 0, as_reject_last
             if (n_reject_by_reason(i) .gt. 0)                              &
                write(*,'(a,a,a,i0)') '       ',                            &
                     trim(attempted_step_reason_text(i)), ': ',             &
@@ -1728,6 +1798,10 @@
               'the coupled source step did not reach its fixed point'
          case (as_reject_source_energy); s =                               &
               'the source step did not close its thermal energy'
+         case (as_reject_mass_projection); s =                             &
+              'the sweep refused its mass projection'
+         case (as_reject_imposed_input); s =                              &
+              'invalid imposed transported fractions'
          case (as_reject_hydro_stage);s =                                  &
               'a Runge-Kutta stage left the admissible set'
          case default;  s = cert_step_reason_text(reason)

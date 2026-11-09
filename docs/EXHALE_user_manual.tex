@@ -206,8 +206,9 @@ carry no column (update log stage~3 section~138). The tidal singularity of the $
 star ($r=\tilde a\gg10$), so a $10\,R_p$ domain is numerically safe.
 
 \paragraph{Full 3-D form (transmission post-processing).}
-The 3-D Roche-equipotential reconstruction in \texttt{EXHALE\_transit.py} /
-\texttt{roche\_recon.py} (\S\ref{sec:tpm}) needs the potential off-axis as well.
+The transmission calculation reconstructs three-dimensional Roche
+equipotentials with \texttt{EXHALE\_transit.py} and
+\texttt{roche\_recon.py} (\S\ref{sec:tpm}). It needs the off-axis potential.
 With the substellar direction $\hat x$ pointing toward the star and $(y,z)$ the
 sky plane,
 \[
@@ -243,6 +244,15 @@ also supported), \texttt{make}, and (for the GUI and analysis) Python~3 with
 \texttt{tkinter}, \texttt{numpy}, \texttt{scipy}, \texttt{matplotlib}, and
 \texttt{astropy} (the last is used by \texttt{EXHALE\_transit.py} for
 \texttt{astropy.convolution}).
+For the installed Intel build, source
+\path{/data/opt/oneapi_2026.1.1/setvars.sh}, then put
+\path{/data/opt/oneapi_2026.1.1/compiler/2026.1/bin} and
+\path{/opt/miniconda3/bin} first on \texttt{PATH}. Verify ifx 2026.1.1
+and the conda-forge GCC link driver; ordinary login shells can select ifx
+2026.1.0 instead. Set \texttt{MKLROOT} to
+\path{/data/opt/oneapi_2026.1.1/mkl/2026.1}.
+The Makefile derives library paths from the selected compiler and supplies
+an explicit runtime \texttt{rpath-link} for its Intel dependencies.
 
 \subsection{Build}
 \texttt{EXHALE} uses an incremental \texttt{Makefile}; module dependencies
@@ -266,9 +276,13 @@ standing rule it encodes: a refactor with no intended physics change must be
 byte-identical, and a new optional physics term defaults to off unless physical
 necessity requires it. The harness and
 its reference outputs live in \texttt{backup/regression/}; the target reports
-that it found no harness, without failing, in a checkout that does not carry
+a missing harness and exits nonzero in a checkout that does not carry
 it. \texttt{make wind\_ae\_ic} builds the out-of-process IC generator described
 in \S\ref{sec:windae}.
+The Makefile lists Wind-AE source files explicitly, checks the list against
+the source directory, and uses the resulting ordered objects for linking.
+The production executable links the explicit \texttt{OBJ} list, so stale
+\texttt{build/*.o} files are not a reliable list of linked objects.
 
 \paragraph{Thread count.} The cell sweeps (ionization equilibrium, radiation
 field, rate coefficients, carrier operator) are OpenMP loops over cells, each
@@ -322,7 +336,70 @@ monitor step prints a \texttt{[stop]} line with the two numbers the marching
 stop reads (\S\ref{sec:convctl}).
 
 \subsection{Convergence control}\label{sec:convctl}
-\paragraph{The marching stop (since 2026-10-09).} The marching loop stops when
+\paragraph{Physical acceptance of a marching state.}
+Marching is the default solution route. Its default acceptance criterion
+in v1.00 and v1.10 checks the retained physical-time profiles with
+\path{EXHALE_v1.10/LHS1140b/tools/marching_acceptance.py}. Over all selected snapshots
+of the final $K=3$ flow-crossing times, every cell must have a full
+$\log_{10}T$ and $\log_{10}\rho$ range no greater than 0.004~dex.
+The velocity range must be at most 0.01 times the smallest $|v|$ over the
+selected snapshots in a flow cell. A flow cell keeps one velocity sign and
+has Mach number at least 0.01 in every selected snapshot. For all other
+cells, including sign changes, the range must be at most 0.01 times the
+largest $|v|$ among those cells and snapshots. The checker requires a
+snapshot at or before the start of the final window, at least ten snapshots
+per crossing time on average, and no selected gap longer than one tenth of
+a crossing time. The crossing time is the larger of the outer-flow
+$\int dr/|v|$ and full-domain acoustic $\int dr/(c_s+|v|)$ times computed
+from the final snapshot. The flow integral starts at the innermost cell of
+the contiguous outer region whose Mach number is at least 0.01; without
+such a region the state is not accepted. When species profiles are missing,
+the checker uses both $\gamma=5/3$ and $7/5$ and requires the velocity band
+to pass under both classifications. It reports the measured maximum bands.
+This profile test makes no stationary-root claim. JFNK is optional, and its
+failure to find a root does not invalidate a marching state that passes the
+profile test. No drift-trend or slow-chemistry-time gate is used.
+
+\paragraph{Time-step and output cadence.}
+For each evolved cell, \texttt{eval\_dt} uses the spherical finite-volume
+limit $\Delta t_j=\mathrm{CFL}\,V_j/
+\max(A_{j-1/2}S_{j-1/2},A_{j+1/2}S_{j+1/2})$, where
+$V_j=(r_{j+1/2}^3-r_{j-1/2}^3)/3$, $A=r^2$, and each face signal speed
+$S$ is the larger adjacent $|v|+c_s$. Global stepping takes the smallest
+$\Delta t_j$; \texttt{Time stepping: Local} uses individual cell intervals
+only for \texttt{Run mode: init} and is refused for a physical trajectory.
+In physical mode a full step is compared with two half steps every 20
+accepted steps by default. The comparison can refuse and retry a step;
+it is distinct from the profile acceptance test.
+\texttt{Marching snapshot interval:} and
+\texttt{Marching diagnostic interval:} each take one nonnegative integer.
+Their defaults are 0 and 1 accepted step, respectively. Zero disables the separate periodic state archive; the current output
+files can still be updated by the legacy writer, and a cap endpoint is
+retained as the final state. Zero diagnostic interval leaves refusal and final diagnostics.
+The resolved values are recorded as \texttt{marching\_snapshot\_interval}
+and \texttt{marching\_diagnostic\_interval} in
+\path{output/EXHALE_resolved.out}; the parse dump records them too.
+The solver also writes physical-trajectory stop flags as report-only
+diagnostics: a settled profile, stall, or stationary residual does not end
+a physical trajectory.
+\paragraph{Refusal and retry.}
+Malformed input or a failed startup admission stops before an accepted
+physical step. An invalid imposed transported fraction found during a step
+is reported separately as reason 16, with species, cell and excess; it does not count as a chemical root. During a step, an invalid advected
+element target is recorded as \texttt{element\_step\_target\_refused}.
+Negative element targets, a helium target greater than one, or a negative
+hydrogen-component remainder are refused without clipping or normalization.
+The projection leaves the received composition untouched. A failed candidate
+refuses a physical attempt; in initialization it is counted while retaining
+the valid received composition. An invalid entry refuses the attempt in
+both modes. The controller restores its checkpoint and retries at a shorter
+interval, allowing eight outer reductions. Exhaustion restores the last
+accepted state and stops nonzero with the refusal history. In a
+sampled error comparison, refusal of either full or half step discards
+the entire comparison and restarts it from the same initial state with
+a shorter full interval.
+
+\paragraph{The marching stop (since 2026-10-09).} For initialization and relaxation runs, the marching loop stops when
 the \emph{numerical} face mass flux is flat \emph{and} the state has stopped
 changing, both judged at a monitor step (every \texttt{N\_resid}~$=500$
 steps), out of the PLM stage of a two-stage run (defaults in
@@ -368,9 +445,11 @@ change alone).
 $1.9\times10^{-5}$ (27\,500 further steps) changed $\rho$ by at most
 $1.45\times10^{-3}$, $v$ by $1.24\times10^{-3}$, $T$ by $3.3\times10^{-4}$ and
 $\log_{10}\dot M$ by less than 0.005, below the 1\% profile budget of the
-acceptance by observable precision (\S\ref{sec:newton}). A marching state
+physical-time profile criterion (\S\ref{sec:convctl}). A marching state
 stopped this way is a relaxation snapshot at that precision, not a solution of
-the stationary equations; a quantitative $\dot M$ comes from the Newton finish.
+the stationary equations. A quantitative $\dot M$ may be measured from an
+accepted marching profile; a Newton finish supplies a separate stationary
+solution when it succeeds.
 The stop therefore makes no stationarity claim: the state is certified as
 written, and when the certification refuses it the file carries
 \texttt{certified=F cert\_reason=no\_stationary\_claim} and the run exits~0
@@ -519,8 +598,8 @@ is deliberately not used: the caloric equation of state gives every cell its
 own $\gamma_{\rm eff}(x_{\rm H_2},T)$, and that invariant assumes one constant
 $\gamma$.
 
-\textbf{With \texttt{Well balanced: True}} (boundary model v5,
-\texttt{face\_at\_level\_discrete\_equilibrium\_v5}) cell~1 is carried to the
+\textbf{With \texttt{Well balanced: True}} (boundary model v7,
+\path{face_at_level_discrete_equilibrium_v7}) cell~1 is carried to the
 face by its own constant-density hydrostatic equilibrium,
 $p_i = p_1 + \rho_1[\Phi(r_1) - \Phi(r_{\rm edg}(0))]$, $\rho_i = \rho_1$, the
 pressure the well-balanced reconstruction extrapolates cell~1 to at the same
@@ -543,7 +622,7 @@ that wind to $2\times10^{-3}$ (\texttt{src/tests/grid\_and\_gates},
 seed mapped from another grid or model is not in this discrete equilibrium,
 and its lower layer is not at rest until it is projected onto it.
 
-\textbf{Without it} (boundary model v4) cell~1 is carried to the face along
+\textbf{Without it} (boundary model v6) cell~1 is carried to the face along
 its own hydrostatic isentrope, and the ghost cells are the volume averages of
 the reservoir's hydrostatic isentrope through the face state continued
 \emph{below} the face, i.e.\ below the level. In both models the velocity
@@ -677,7 +756,7 @@ spent $>$3\,h without converging.
 
 Two ways to use it:
 \begin{itemize}
-\item \textbf{Production}: add \texttt{Solver: Newton} to \texttt{input.inp}. The
+\item \textbf{Optional stationary finish}: add \texttt{Solver: Newton} to \texttt{input.inp}. The
   run marches (including the two-stage PLM$\to$WENO3 when
   \texttt{Reconstruction scheme: PLM+WENO3} is set) until the \emph{face}
   mass-flux spread over $r\ge r_{\rm flux}$ (\S\ref{sec:convctl}) drops below
@@ -727,8 +806,8 @@ iterate seen, aborts once the line search has failed to find any acceptable
 step in 12 consecutive outer iterations, and on failure the run prints
 \texttt{JFNK failed}, keeps the best
 iterate, and falls back to plain time-marching with the marching stop
-re-armed: an unconverged Newton state is never accepted as the final
-answer. The associated diagnostic hooks (\texttt{EXHALE\_RESIDUAL},
+re-enabled: an unconverged Newton iterate is not a stationary
+solution. The subsequent marching profile requires its own acceptance check. The associated diagnostic hooks (\texttt{EXHALE\_RESIDUAL},
 \texttt{EXHALE\_JAC\_TEST}, \texttt{EXHALE\_NEWTON\_TEST}, \ldots) are environment
 variables, collected in \S\ref{sec:envvars} (Table~\ref{tab:env}). Full
 development record and validation: \texttt{steady\_solver\_memo.pdf}.
@@ -759,19 +838,15 @@ are certified by the same numbers. The tolerances are
 $3\times10^{-12}$ for the mass row, $10^{-8}$ for momentum and $10^{-6}$ for
 energy, the level balances and the eliminated-species closures.
 
-\emph{The species rows are gated by regime.} An element row and a carrier row
-are judged against $10^{-5}$ for cells at $r \ge 1.20\,R_{\rm p}$ only; below
-that radius the row is measured and printed and does \emph{not} gate. The
-gate is anchored on the element operator's own stated floor and sits a decade
-above the discretization error a smooth manufactured column shows at the
-production spacing ($1.5\times10^{-6}$); the layer is excluded because its
-element fluxes are not conserved there at all (their radial spread over
-$r < 1.10$ is $9.8$ times the median), so no threshold means anything against
-them yet. The band $1.10 \le r < 1.20$ is likewise reported and does not
-gate. A state that passes with species rows present reports that it is
-certified \emph{in the wind}, and its state file records
-\texttt{cert\_reason=certified\_in\_wind}. The two radii are properties of
-the flow and are constants of \texttt{certification.f90}, not input keys.
+\emph{The v1.10 species verdict covers every applicable physical cell.}
+Element and carrier rows use $10^{-5}$ throughout the column, with the
+row's existing absence mask. A row with no applicable physical cell is
+unavailable rather than passed. The element operator prescribes its first
+cell, so its zero residual there is not an independent boundary test.
+The layer, transition and wind windows are diagnostic summaries; they do
+not excuse a failing lower cell. A historical v1.00
+\texttt{certified\_in\_wind} label describes that older limited scope,
+not the v1.10 full-column verdict.
 
 \emph{Exit statuses.}
 \begin{center}\small
@@ -801,26 +876,22 @@ Status & Meaning \\
 \bottomrule
 \end{tabular}
 \end{center}
-The regression harness never tests the status. The closure driver
-(\texttt{element\_flux\_closure.py}), \path{LHS1140b/models/run_case.sh} and
-\texttt{ew\_of\_state.sh} read 0 and 2 as written states (2 carried as
-uncertified), stop on 3, and treat a 2 without the closing line as fatal.
+A driver must distinguish an optional stationary route's completed
+uncertified output from a runtime failure. The closure adapter defaults to
+its marching route, which requires the driver's accepted status and a
+bound profile-checker verdict. Its optional JFNK route handles completed
+stationary diagnostic outputs separately; numerical output alone is not
+a marching acceptance record.
 
-\paragraph{Acceptance by the precision of the observable; the certification
-is a diagnostic.} Since 2026-10-09 (user decision;
-\texttt{md/acceptance\_by\_observable\_precision\_20261009.md}) a state is
-accepted as a result for an observable $O$ when (A1) continuing the solve
-(more outer passes, a tighter tolerance, more marching) changes $O$ by less
-than its budget, a third of its target precision (proposed: 0.3\% in $\dot M$;
-0.002\,\%\AA{} in the width-matched He\,10830 EW of LHS\,1140\,b against an
-observed $\sigma$ of 0.0289\,\%\AA); (A2) the mass and energy budgets close
-over the region that forms $O$ (proposed: 1\% of the heating); and (A3) $T$,
-$v$, $n_e$ and the absorber density change by less than 1\% there under the
-same continuation, shown as overlaid profiles. The certification above is
-still computed and reported for every state; a failure no longer refuses a
-result but is carried as ``not certified, $O$ stable to $X$'', and a row far
-above its scale (a factor 100 is proposed) is first investigated as a
-possible defect.
+\paragraph{Marching acceptance and stationary diagnostics.}
+The default scientific result is a physical-time marching solution whose
+complete profiles satisfy the final-window criterion in
+\S\ref{sec:convctl}. The default in both trees uses $K=3$, temperature and
+density ranges at most 0.004~dex, and its stated 1\% velocity rules.
+It adds no drift-trend, slow-chemistry or observable-change requirement.
+Report those measured bands separately from the stationary certificate.
+An optional JFNK calculation can fail its stationary claim without showing
+that an independently accepted marching trajectory fails the profile test.
 
 \paragraph{The outer face and the Mach number reported with $\dot M$.} Every
 run prints, with its $\dot M$, \texttt{---> Mach number of the outermost cell
@@ -953,8 +1024,8 @@ Left: maximum steady residual $\max\|R\|_\infty$ over the mass, momentum, and
 energy equations during the two-stage (\texttt{Reconstruction scheme:
 PLM+WENO3}) marching warm-up; the dashed line is the
 legacy residual hand-off threshold $R_{\rm switch}=5\times10^{-2}$ used when this
-figure was produced (the current default keys the hand-off on $du<10^{-2}$
-instead, at a comparable point on the warm-up). Right: residual vs.\ JFNK outer
+figure was produced. The present default switches on a numerical face
+mass-flux spread below 0.1 after the hand-off has been armed. Right: residual vs.\ JFNK outer
 iteration during the Newton finish, down to \texttt{Resid tol} ($10^{-5}$).}
 \label{fig:newton}
 \end{figure}
@@ -1339,8 +1410,9 @@ whole input\,$\to$\,Wind-AE solve\,$\to$\,IC\,$\to$\,run sequence is one
 \texttt{./run\_EXHALE.sh} (one \texttt{EXHALE.x}) invocation. This is a
 \emph{warm start}: EXHALE re-solves the ionization (and any metals) from
 the first step, so the Wind-AE IC need not be exactly self-consistent.
-Always finish with \texttt{Solver: Newton} for a quantitative $\dot M$
-(\S\ref{sec:newton}). The shipped seed and spectrum live in
+Assess the resulting physical trajectory with the profile criterion in
+\S\ref{sec:convctl}; \texttt{Solver: Newton} is an optional stationary
+finish. The shipped seed and spectrum live in
 \texttt{inputdata/windae\_seed.csv} and
 \texttt{inputdata/windae\_spectrum.inp}.
 
@@ -1366,10 +1438,11 @@ tripped a false convergence stop within a few steps. Both the $du$ stop and the
 JFNK hand-off now require $du$ to have been seen at or above their own
 threshold first, so only a descending crossing counts (\S\ref{sec:convctl}).
 Measured on \texttt{examples/12\_windae\_ic\_hd209} (2026-08-15): $du$ at step 2
-is $1.43\times10^{-4}$, neither trigger fires, and the two arm at steps 23 and
+is $1.43\times10^{-4}$, neither trigger fires, and the two triggers activate at steps 23 and
 222 on the first ascending crossing. The false stop is structurally gone for
 this IC mode; an $\dot M$ read off a $du$ stop still carries its usual
-path-dependent spread, so the Newton finish remains the prescription.
+path-dependent spread; the marching profile band must be checked before
+acceptance, while a Newton finish can be used to seek a stationary root.
 
 \paragraph{Standalone generator: \texttt{wind\_ae\_ic.x}.}
 The same solver builds an IC out of process:
@@ -1656,7 +1729,9 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   inert on species the run does not carry. Used together with
   \texttt{Base IR field}: on its own the new bands emit into vacuum, which
   deepens the collapse of the molecular layer instead of holding it, and
-  \texttt{input\_read} warns. Writes three net columns
+  \texttt{input\_read} warns.
+  \\
+  & &  Writes three net columns
   (\texttt{H2\_IR}, \texttt{H2O\_IR}, \texttt{CO\_IR}, negative where the band
   heats) and the Planck-mean optical depths of the H$_2$O and CO columns to
   \texttt{output/Cooling\_breakdown.txt}, and a column-integrated infrared
@@ -1721,7 +1796,9 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   continuum of the same interval, and it is averaged over each cell between
   its two faces rather than taken at one of them (the cross section falls by
   four decades across the self-shielding transition). Plus $0.4$\,eV of
-  heating per dissociation (Black \& Dalgarno 1977). The band
+  heating per dissociation (Black \& Dalgarno 1977).
+  \\
+  & &  The band
   is a separate input because the photon grid need not carry it: the grid
   floor is the lowest ionization threshold of an \emph{active} absorber
   (\S\ref{sec:metalsed}), so a molecular run with no metastable, no low-IP
@@ -1737,7 +1814,9 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   could supply it (the comparison with a model that has no H$_2$
   photodissociation). A file that does not reach both edges of the band
   stops the run and asks for the key: a positive field is never turned into
-  zero silently. Without a spectrum file, 0 (default) = no photodissociation. The
+  zero silently. Without a spectrum file, 0 (default) = no photodissociation.
+  \\
+  & &  The
   key is inert without \texttt{Molecular chemistry: True}. Writes
   \texttt{output/Lyman\_Werner.txt}
   (\path{md/lower_atmosphere_coupling.md}). With
@@ -1876,9 +1955,10 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   is below this tolerance AND the residual is below \texttt{Resid tol}.
   Defaults $2\times10^{-5}$ (\texttt{flux\_spread\_th\_default}) and
   $r_{\rm flux}=1.2\,R_p$; $\le0$ disables it. \\
-\texttt{Resid tol:} & real & Residual-based convergence: stop when the steady
-  residual falls below the value (monitored every 500 steps),
-  \emph{replacing} the $du$ test ($\le0$ = off, default; the JFNK finish then
+\texttt{Resid tol:} & real & Optional stationary residual gate,
+  monitored every 500 steps. It can stop initialization or relaxation;
+  with \texttt{Run mode: phys} and \texttt{Restart intent: trajectory}
+  it is report-only ($\le0$ = off, default; the JFNK finish then
   uses the code's own $10^{-5}$). The number compared against it is
   $\max_k \max_j |R_{j,k}|/s_{j,k}$, each row divided by a bound on the
   largest term that row itself contains: mass
@@ -1891,12 +1971,22 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   decides acceptance. $du$ alone is blind to the energy imbalance
   (\S\ref{sec:newton}); the scales and the reason for each are in
   \texttt{md/input\_schema.md} K35. \\
-\texttt{Time stepping:} & \texttt{Local} & Pseudo-time steps in each cell
-  (steady-state acceleration; not time-accurate). Reaches the deep state fast but
-  leaves residuals in each cell; pair with a Newton finish. \\
+\texttt{Marching snapshot interval:} & integer $\geq0$ (def.\ 0)
+  & Archive an accepted physical state at this accepted-step cadence.
+  Zero disables the separate archive. A cap endpoint is the final triple;
+  legacy current-file writes remain independent. The resolved key is
+  \texttt{marching\_snapshot\_interval}. \\
+\texttt{Marching diagnostic interval:} & integer $\geq0$ (def.\ 1)
+  & Cadence of accepted-step energy-identity and hydro-time-row logs.
+  Zero leaves refusal and final records. The resolved key is
+  \texttt{marching\_diagnostic\_interval}. \\
+\texttt{Time stepping:} & \texttt{Local} (optional) & Cell-dependent
+  pseudo-time intervals for initialization; physical trajectories use one
+  global interval. The source default is global stepping. \\
 \texttt{Energy solver:} & \texttt{Explicit} & Revert to the original
   forward-Euler source update (solver-isolation tests). \\
-\texttt{Solver:} & \texttt{Newton} [real] & Production steady-state solve:
+\texttt{Solver:} & \texttt{Newton} [real] & Optional stationary solve,
+  refused for a physical trajectory:
   marching warm-up until the FACE mass-flux spread over $r\ge r_{\rm flux}$
   drops below the optional value \texttt{newton\_flux\_switch} (default
   $0.1$; a $du$ threshold with default $10^{-2}$ until 2026-10-10, so a value
@@ -1925,35 +2015,17 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
 \texttt{Restart intent:} & \texttt{trajectory} $|$
   \texttt{relaxation} $|$ \texttt{stationary} [\texttt{evaluate} $|$
   \texttt{equilibrate}] (def.\ \texttt{trajectory} with
-  \texttt{Run mode: phys}, else \texttt{relaxation}) & What a loaded state is
-  continued as. \texttt{trajectory}: the physical clock continues from the
-  \texttt{t\_phys} the state file records. \texttt{relaxation}: march toward
-  stationarity and then hand off to the solver, which is what every restart
-  did before this key existed. \texttt{stationary}: rebuild the derived
-  quantities of the loaded state without taking a step, measure the stationary
-  residual and the certification of the \emph{stored pair} (the conserved
-  state and the composition exactly as loaded, with the heating and cooling
-  of that composition in the field it attenuates), then take one composition
-  sweep from it, report how far the composition moved and what the
-  certification reads after the sweep (reported only, never the verdict), and
-  enter the stationary solve from the swept state. The second word
-  \texttt{evaluate} stops instead of solving, and \texttt{equilibrate} puts
-  the loaded composition on its own fixed point before the measurement (a
-  change of the state, reported when taken). This is the route that certifies
-  a written state without the two CFL steps a marching hand-off takes first.
-  On an open base face (the H$_2$ partition of the lower ghosts stated by a
-  lower-atmosphere handoff, \texttt{base.inp}'s \texttt{q\_H2\_base} or a
-  profile, with \texttt{Molecular chemistry: True}) the stationary route first gives the cells of the
-  uniform base region the $n({\rm H\,I})/n({\rm H}_2)$ of ghost~0, each cell
-  keeping its hydrogen nuclei and its mass, so that the seed agrees with its
-  ghost (since 2026-10-09, update log stage~3 section~126; it removed a 57\,K
-  base cell on the LHS~1140\,b route~B entry). If the solve then fails
-  (\texttt{info}~$\ne0$) the run exits~3 (\S\ref{sec:newton}).
-  What \texttt{evaluate} writes and which verdict it returns:
-  \S\ref{sec:evaluate}.
-  Refused: the key with \texttt{Load IC?\ False}, \texttt{trajectory} with
-  \texttt{Run mode: init}, \texttt{stationary} without \texttt{Solver:
-  Newton}. \\
+  \texttt{Run mode: phys}, else \texttt{relaxation}) & What a loaded state
+  continues. \texttt{trajectory} continues a stored physical clock; an
+  admitted initialization seed starts at zero. \texttt{relaxation}
+  continues numerical relaxation, with a stationary finish only if requested.
+  \texttt{stationary} measures the stored state and enters the optional
+  stationary solve. \texttt{evaluate} measures without solving;
+  \texttt{equilibrate} deliberately changes the composition before
+  measuring it. The written state and the stationary verdict retain that
+  distinction (\S\ref{sec:evaluate}). Requires \texttt{Load IC? True}.
+  A trajectory requires \texttt{Run mode: phys}. A stationary solve requires
+  \texttt{Solver: Newton}; evaluation alone does not. \\
 \texttt{Restart option change:} & token list, separated by commas or blanks
   (def.: no option may differ) & Which switches of the state file's
   \texttt{\# options} line are \emph{allowed} to differ between the loaded
@@ -1967,6 +2039,8 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   token (\texttt{sec\_ion}, \texttt{He23S}, \texttt{mol\_heat},
   \texttt{base\_ir}, \texttt{cond}, \texttt{interdiff\_enth}, \dots) permits exactly that token to
   differ; every other difference still refuses the load and names the token.
+  \\
+  & & 
   The loaded state is then a solution of the \emph{former} option set and a
   starting point for this one, so the change is written into the state this run
   produces as a \texttt{\# option\_change} line and inherited by the rungs
@@ -2016,7 +2090,9 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   algebra rather than in floating point, and a discrete hydrostatic
   equilibrium is preserved to rounding (K\"appeli \& Mishra 2016, A\&A 587,
   A94; the face-pressure-difference form of the source is K\"appeli \& Mishra
-  2014, J.\ Comput.\ Phys.\ 259, 199). Exact preservation also needs a
+  2014, J.\ Comput.\ Phys.\ 259, 199).
+  \\
+  & &  Exact preservation also needs a
   numerical flux that resolves a stationary contact, so it holds with
   \texttt{Numerical flux: ROE} and \texttt{HLLC} but \emph{not} with
   \texttt{LLF}, and not at a face the positivity repair has replaced with a
@@ -2060,7 +2136,9 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   here (case~B where the Lyman continuum is optically thick, the escaping
   ground captures added where it is thin; \texttt{H\_rec\_escape},
   \texttt{He\_rec\_coupling}), so the key exists to reproduce their choice and
-  not to replace ours. It swaps \emph{rate} coefficients only, and the recombination cooling
+  not to replace ours.
+  \\
+  & &  It swaps \emph{rate} coefficients only, and the recombination cooling
   follows them: every recombination cooling term is
   $k_BT\,\alpha\,(3/2+{\rm d}\ln\alpha/{\rm d}\ln T)$ on the coefficient the
   balance uses, so the electrons removed and the energy removed come from one
@@ -2100,7 +2178,9 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   in cells with no H$_2$ (no source covers H$_2$ at 10--30\,eV); the
   advection-corrected post-process, whose own gas carries no H$_2$, takes the
   H$_2$ of the solved state for that test, so both products apply it in the
-  same cells. The gate is any $n({\rm H_2})>0$, so the deposition changes
+  same cells.
+  \\
+  & &  The gate is any $n({\rm H_2})>0$, so the deposition changes
   discontinuously between a cell without H$_2$ and one with a trace of it
   (an open item, \texttt{md/TO\_BE\_DONE.md} (AJ)). The heat share is that of a primordial gas and is not corrected
   for a helium-rich one. Option token \texttt{lowE\_partition} of the
@@ -2123,7 +2203,9 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   case-B capture are $z=0.966$ as $n_e\to0$ and 0.660 at
   $n_e=10^8$\,cm$^{-3}$, at $10^4$\,K in a cell without He\,I, as the physics
   probe \texttt{recombination\_radiation\_on\_the\_spot} measures them;
-  He\,I scattering of the 584\,\AA\ line lowers $z$). He\,III: the ground
+  He\,I scattering of the 584\,\AA\ line lowers $z$).
+  \\
+  & &  He\,III: the ground
   capture, the direct capture into $n=2$, He\,II Ly$\alpha$ and the $2s$
   two-photon continuum (Nussbaumer \& Schmutz 1984), with the $2s$--$2p$
   mixing of He\,II by ion impact. The photoelectrons are partitioned as the
@@ -2213,7 +2295,9 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   advection-corrected column alike (\S\ref{sec:hediff}). It acts with
   \texttt{He\_diffusion: True} and helium in the gas, or with
   \texttt{Molecular carrier transport: True}; otherwise the key is inert, bit
-  for bit. A restart from a state written without the carrier term names the
+  for bit.
+  \\
+  & &  A restart from a state written without the carrier term names the
   token \texttt{carrier\_enth}, and one written without the stage term the
   token \texttt{stage\_enth}, on a \texttt{Restart option change:} line. \textbf{On by default, because the term belongs to the
   energy equation of any mixture whose components move relative to one
@@ -2307,7 +2391,9 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   layer the sweep cannot return a content at all: the fast chemistry cycles
   H$_2 \to$ H$_2^+ \to$ H$_3^+ \to$ H$_2$ without changing the number of
   H$_2$ nuclei, so the local balance rows fix the partition among the
-  molecular species and leave their sum where the seed put it. The stationary
+  molecular species and leave their sum where the seed put it.
+  \\
+  & &  The stationary
   residual is then not a function of its unknowns (measured seed dependence
   $3.2\times10^5$ times \texttt{Resid tol} per unit relative seed change,
   against $9.7\times10^{-10}$ with the H$_2$ row carried), so it has no root.
@@ -2365,7 +2451,9 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   enters the energy row; the certification prints its size against the energy
   row as a reported-only line. Certification entry \texttt{carrier balance
   He2\^{}3S} (gated at $10^{-5}$ in the wind); \texttt{level balance He 2\^{}3S}
-  is then not applicable. \textbf{Requires \texttt{Include He23S: True} and
+  is then not applicable.
+  \\
+  & &  \textbf{Requires \texttt{Include He23S: True} and
   \texttt{Ionization transport: True}}; each is a fatal refusal at startup.
   Recorded in \texttt{EXHALE\_resolved.out} as \texttt{he23s\_transport}
   (written only when on), in a restart file's \texttt{\# coupling:} line as
@@ -2447,7 +2535,7 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   (Banks \& Kockarts 1973 as Salz et al.\ 2015 and Sutton et al.\ 2015 state
   it; $k_{\rm H_2}$ an Eucken-form fit to Incropera et al.\ 2007 Table A.4,
   valid 200--2000 K; $n$ all particles). Off $=$ byte-identical. The base
-  boundary condition is a heat bath at the base ghost centre $r(0)$
+  boundary condition is a heat bath at the base ghost center $r(0)$
   (\texttt{conduction\_base\_level\_T}, \path{viscous_conduction.f90}): the
   temperature of the lower-atmosphere profile at that radius when a profile
   is in use (\S\ref{sec:lowerprofile}), otherwise the reservoir's hydrostatic
@@ -2639,7 +2727,7 @@ pressure-broadened (Robinson \& Catling $f(p)=1+a\,(p/p_0)^n$ via
 \texttt{OPA\_FILE\_HI} etc.). Missing keys keep their defaults, so an absent
 \texttt{opacity.inp} is equivalent to model A.
 
-\subsection{Excited hydrogen and the Ly$\alpha$ pumping field}\label{sec:excitedH}
+\subsection{Excited hydrogen and the \texorpdfstring{Ly$\alpha$}{Ly-alpha} pumping field}\label{sec:excitedH}
 \label{sec:jlya}
 The non-LTE H($n{=}2$) model (the metastable $2s$ + resonance $2p$ levels in
 the level balance of Christie et al.\ 2013, with the rate coefficients listed in
@@ -2652,7 +2740,7 @@ photoionization adds a Balmer proton source and photoelectric heating to the
 energy/ionization balance; in \texttt{EXHALE\_transit.py} the $n{=}2$ population sets the
 H$\alpha$/H$\beta$ transmission. The model is \emph{off by default}; it switches
 on only when both \texttt{Stellar Teff} and \texttt{Stellar radius} are given, so
-the standard run is unchanged. Those two keys \emph{arm} the coupling; the
+the standard run is unchanged. Those two keys \emph{enable} the coupling; the
 Balmer continuum that ionizes and heats $n{=}2$ is then the run's own spectrum
 over $[e_{\rm th,HI}/4,\,13.598]$\,eV (the power law for a
 \texttt{Power-law} run, the photospheric blackbody for \texttt{Planck}, the
@@ -2777,7 +2865,7 @@ that does not reach it stops the run.} The floor
 every \emph{active} absorber: the He\,$2\,^3$S metastable when the triplet is
 included, the neutral stage of every element \texttt{metals.inp} gives a
 nonzero abundance, and H($n{=}2$) when \texttt{Stellar Teff} and
-\texttt{Stellar radius} arm the excited-hydrogen coupling. With none of them
+\texttt{Stellar radius} enable the excited-hydrogen coupling. With none of them
 active the floor is the H\,\textsc{i} edge. The two analytic types are
 evaluated down to it, and a loaded table is read down to it.
 
@@ -2789,7 +2877,7 @@ uncovered band in eV and in \AA, every absorber whose threshold lies below
 that lowest photon (H($n{=}2$), the metastable, each active neutral metal),
 and the remedies: turn the absorber off (\texttt{Include He23S? False}; remove
 the element from \texttt{metals.inp}; remove \texttt{Stellar Teff} and
-\texttt{Stellar radius}, which is what arms the excited-hydrogen coupling), or
+\texttt{Stellar radius}, which enables the excited-hydrogen coupling), or
 supply an SED that reaches the stated wavelength.
 
 \paragraph{How the grid is partitioned (analytic types).} For
@@ -3019,8 +3107,7 @@ On hot Jupiters the result is a thin molecular base under a sharp
 H$_2\to$H front with an atomic wind above: the atomic assumption becomes a
 result rather than an input.
 
-\textbf{Converging a molecular run takes three keys an atomic run does not
-need:} \texttt{Solver: Newton}, \texttt{Resid tol: 1.0e-7} and
+\textbf{The historical stationary molecular example used three keys:} \texttt{Solver: Newton}, \texttt{Resid tol: 1.0e-7} and
 \texttt{Max steps: 150000}. (Until 2026-10-10 the first read
 \texttt{Solver: Newton 5.0e-2}, a $du$ hand-off threshold raised because the
 $du$ descent of a molecular run is not monotonic; the value is now a face
@@ -3028,9 +3115,10 @@ spread, and the face-spread hand-off has not been re-measured on a molecular
 run.) And $\|R\|$ is set by the two or three cells just above the base,
 so a run stopped at the default \texttt{Resid tol: 1.0e-5} leaves the molecular
 layer still cooling (its energy residual there is still $0.7\times$ the local
-H$_3^+$ cooling rate). Marching alone never reaches that layer (its H$_3^+$
-cooling time is ${\sim}10^{7}$ CFL steps), so the Newton finish is not
-optional. The converged layer is much colder than the relaxation snapshot
+H$_3^+$ cooling rate). The historical marching test did not reach that layer (its H$_3^+$
+cooling time was estimated as ${\sim}10^{7}$ CFL steps in this
+historical example). A Newton finish can supply a stationary root, but it
+is optional under the marching profile criterion. The stationary layer is much colder than the relaxation snapshot
 (${\sim}400$\,K on HD\,209458\,b, 190--300\,K on a hot Uranus) and, without
 \texttt{Base IR field}, that collapse is the model's own steady state rather
 than a prediction; see \path{docs/lower_atmosphere_coupling.pdf} \S7--\S9
@@ -3581,10 +3669,12 @@ column), and iterates it with the chemistry
   inflow of atoms deposits its recombination heat, $D_0/2$ per atom, in the
   column with the shape of the column's H\,+\,H\,(+M) rate
   (\texttt{recombination\_heat\_flux\_cgs} in the header).
-\item \texttt{-{}-climate-t-deep-guess} (default 400\,K): only the starting
-  value of the climate root solve for the deep temperature, raised where the
-  default does not bracket the root (a warm deep column); the root does not
-  depend on it.
+\item \texttt{-{}-climate-t-deep-guess} (default 400\,K): only the start of
+  the bracket of the deep-temperature fixed point (the climate's deep
+  temperature with the deep composition in chemical equilibrium at that
+  temperature, update log stage~3 section~162); the bracket is extended
+  outward from it, so the root does not depend on it (LHS~1140\,b at deep
+  He/H 0.65: 1200.515\,K from 400 and from 1100\,K).
 \item \texttt{-{}-face-geometry} \texttt{wind}$|$\texttt{per\_model} (default
   \texttt{wind}, update log stage~3 section~129): with \texttt{wind} the
   chemistry and the climate column take the stellar energy the wind's input
@@ -3656,8 +3746,8 @@ runtime error) or any other status stops it before anything is measured
 solve of the closure is seeded by \path{src/utils/map_state_to_grid.py}
 \texttt{-{}-ic}, which carries the previous state onto the new reservoir and
 radius: the output is an initialization seed (\texttt{certified=F
-cert\_reason=mapped\_seed}); a target cell centred between the base face and
-the source's first cell centre takes that cell's values and is never
+cert\_reason=mapped\_seed}); a target cell centered between the base face and
+the source's first cell center takes that cell's values and is never
 interpolated against the reservoir ghost row; \texttt{-{}-reservoir El/H v}
 rescales an element's stages (for helium HeH$^+$ as well, the hydrogen it
 holds taken back from the hydrogen-only species so that $n_{\rm H}$ of every
@@ -4094,8 +4184,8 @@ operator in force, which is not \texttt{rec\_method} alone while the
 PLM\,$\to$\,WENO3 continuation is armed; whether the state passed the
 stationary certification, with \texttt{cert\_reason=} beside it whenever the
 verdict is qualified (\texttt{no\_stationary\_claim} for a run that ended on
-a cap, \texttt{certified\_in\_wind} for a state whose species rows were gated
-at $r\ge1.20$ only; the states written \texttt{certified=F} on purpose name
+a cap; a historical \texttt{certified\_in\_wind} label for an older
+state whose species rows were gated at $r\ge1.20$ only; the states written \texttt{certified=F} on purpose name
 what they are: \texttt{marching\_snapshot\_s<step>} for the periodic write of
 a marching run, measured by nothing at that step, \texttt{pass\_snapshot\_p<k>}
 for a pass state, \texttt{projected\_seed}, \texttt{option\_change\_seed} after
@@ -4148,21 +4238,16 @@ the acceptance gates used, and the grid size.
 later has to say which boundary it is a solution of:
 
 \begin{quote}\ttfamily\small
-\# boundary\_model characteristic\_face\_ps\_reservoir\_C\_minus\_contact\_upwind\_\\\hspace*{2em}ghost\_fixed\_point\_seed\_reservoir\_row\_face\_at\_level\_\\\hspace*{2em}discrete\_equilibrium\_v5\\
+\# boundary\_model characteristic\_face\_ps\_reservoir\_C\_minus\_contact\_upwind\_\\\hspace*{2em}ghost\_thermochemical\_fixed\_point\_reservoir\_seed\_\\\hspace*{2em}face\_at\_level\_discrete\_equilibrium\_v7\\
 \# boundary\_reservoir version 1 p[p0] T[T0] nhat[n0/rho0] r\_level[Rp] \ldots
 \end{quote}
 
 \noindent (each is one line in the file). The first names the model that built the face state
-(\S\ref{sec:basebc}); the identity changes when the model does, v2 being the
-contact upwind without a stated ghost composition, v3 adding the ghost
-seed and the fixed point the ghost composition is held to, v4
-(2026-09-27) putting the lower face on the base level, so that the reservoir
-is the face state it owns with no transport along an isentrope, and v5
-(\texttt{\ldots\_face\_at\_level\_discrete\_equilibrium\_v5}, 2026-09-29) building the
-interior pressure at the face and the ghost cells from the well-balanced
-reconstruction's own discrete equilibrium.  A run with \texttt{Well balanced:
-True} states v5; a run without it builds the v4 boundary unchanged and states
-v4.  The second states
+(\S\ref{sec:basebc}). The current v1.10 identities end in v7 for
+\texttt{Well balanced: True} and v6 otherwise. Both close chemistry at the density and temperature produced by the
+boundary. Version v7
+uses the discrete mechanical equilibrium reconstruction at the face;
+v6 uses the corresponding isentropic reconstruction. The second states
 the prescribed reservoir with the version of its prescription: the pressure
 and temperature at the base level, the particles per unit mass of the
 reservoir gas and the radius the three are stated at, each written at
@@ -4176,7 +4261,7 @@ column and this run's reservoir.  A restart written under an older boundary
 model is reported, not refused on that account: the loader names both models
 and says that the state's residual is not the residual it was written with.
 A v3 or older state, however, was written on a grid whose cell centers lie
-lower (by half a cell on the \texttt{Mixed} grid), so the grid check refuses it; it reaches a v4 run only as a
+lower (by half a cell on the \texttt{Mixed} grid), so the grid check refuses it; it reaches the current grid only as a
 seed mapped with \path{src/utils/map_state_to_grid.py}~\texttt{--ic}
 (\S\ref{sec:basebc}).  Both
 lines are \texttt{\#} comments, so no numeric parse and no regression
@@ -4629,7 +4714,7 @@ exists, then \texttt{measured}), \texttt{base\_conductive\_flux\_cgs}
 [erg\,cm$^{-2}$\,s$^{-1}$], $q=\kappa_{1/2}(T_1-T_{\rm bath})/(r_1-r_0)$,
 \emph{positive for heat leaving the wind into the lower atmosphere}, and the
 two temperatures of that face formula, \texttt{base\_conduction\_T\_bath\_K}
-(the bath at the ghost centre $r(0)$) and
+(the bath at the ghost center $r(0)$) and
 \texttt{base\_conduction\_T\_cell1\_K}; the energy coupling of the
 elemental-flux closure reads the flux from here. Where the carrier operator
 transports H$_2$ against a stated base partition (\texttt{Molecular carrier
@@ -4735,18 +4820,18 @@ temperature field is not zero or whose composition field is \texttt{failed};
 a refused row enters the spectrum with the run's own numbers, and the share of
 the line-center depth it carries is printed as a contribution, not an error
 bar. An equivalent width integrated from these curves, excess absorption in
-per cent over wavelength in \AA\ (as \path{LHS1140b/he10830_equivalent_width.py}
-does), is in per cent\,\AA, not m\AA. The solution selection carries no such record and
+percent over wavelength in \AA\ (as \path{LHS1140b/he10830_equivalent_width.py}
+does), is in percent\,\AA, not m\AA. The solution selection carries no such record and
 is not tested against one.
 
 On a marching case that carries both states the choice is small but not
 negligible.  MEASURED on the \texttt{wasp\_full} configuration (before the
 atomic-data corrections of 2026-09-24 to 09-26 and the solver's rates in the
 transit tool's $n{=}2$ model; not re-measured since), as the peak
-transit depth relative to itself: He\,{\sc i} 10830 $-0.64$ per cent,
+transit depth relative to itself: He\,{\sc i} 10830 $-0.64$ percent,
 H$\alpha$ $-1.28$, H$\beta$ $-3.48$, Ly$\alpha$ unchanged at its saturated
 ceiling, and the optically thin metal lines $+0.1$ to $+0.8$.  The metastable
-helium column is 12 per cent \emph{larger} in the solved state while its line
+helium column is 12 percent \emph{larger} in the solved state while its line
 is shallower, because the advection correction moves that column outward
 (column-weighted mean radius $1.2941$ against $1.3112\,R_p$) and a saturated
 line's disk-averaged depth follows how far the absorbing shell reaches;
@@ -5043,7 +5128,7 @@ comparisons of \S\ref{sec:examples}, and
 \texttt{examples/make\_figures.py} (which generates every figure in this
 manual) is a further worked example.
 
-\subsection{\texttt{exhale\_to\_lart.py}: LaRT Ly$\alpha$ input from an EXHALE
+\subsection{\texttt{exhale\_to\_lart.py}: LaRT \texorpdfstring{Ly$\alpha$}{Ly-alpha} input from an EXHALE
 run}\label{sec:exhale2lart}
 \texttt{EXHALE\_transit.py} estimates the Ly$\alpha$ mean intensity $\bar J_{\rm Ly\alpha}$ with
 the simple Huang et al.\ (2017) prescription (\S\ref{sec:excitedH}). For a proper
@@ -5095,7 +5180,7 @@ e2l.build(run\_dir, outdir, m\_kms=74, s\_kms=49, geometry\_jpa=2, \dots)}.
 \section{Worked examples}\label{sec:examples}
 % ===================================================================== %
 
-\subsection{A first run: a generic hot Jupiter}
+\subsection{A hot Jupiter with an optional stationary finish}
 The directory \texttt{examples/tutorial/} contains a minimal, self-contained
 model of a generic HD\,209458b-like hot Jupiter: a spherical domain out to
 $10\,R_p$, solar metals, EUV+X-ray power-law SED. The full \texttt{input.inp} is:
@@ -5176,7 +5261,7 @@ The ``Added / changed lines'' column of Table~\ref{tab:exinputs} is relative
 to each example's natural base: the legacy
 \texttt{01\_legacy\_marching/input.inp} for the solver examples
 \texttt{02}--\texttt{04} (and Wind-AE \texttt{11}/\texttt{12}), and the
-recommended-solver \texttt{03\_newton/input.inp} (two-stage
+optional stationary example \texttt{03\_newton/input.inp} (two-stage
 \texttt{PLM+WENO3}\,$+$\,\texttt{Solver: Newton}) for the physics examples
 \texttt{05}--\texttt{10}, which all inherit that solver and add only their
 signature option on top. A \texttt{diff} against the appropriate base shows
@@ -5228,7 +5313,7 @@ included: that is what \texttt{16\_molecular\_metals} is.}
 \texttt{02\_two\_stage} & two-stage PLM$\to$WENO3 marching
   (\S\ref{sec:convctl}) & \texttt{Reconstruction scheme: PLM+WENO3},
   \texttt{du\_th [PLM,WENO3]: 0.5 1.0e-3} \\
-\texttt{03\_newton} & \textbf{recommended default}: two-stage warm-up $+$
+\texttt{03\_newton} & Optional stationary finish: two-stage warm-up $+$
   Newton finish (\S\ref{sec:newton}) & $+$ \texttt{Solver: Newton} \\
 \texttt{04\_newton\_from\_state} & Newton re-convergence of an existing state
   (no marching; needs \texttt{output/*\_IC.txt}, see the folder

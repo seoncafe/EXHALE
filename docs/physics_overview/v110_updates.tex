@@ -2,11 +2,9 @@
 \section{v1.10 regional stabilization and stationary closure}
 \label{sec:v110-physics}
 
-The preceding physical equations and algorithms were copied from the v1.00
-document. Numerical examples in those inherited sections describe v1.00
-calculations unless explicitly remeasured. The v1.10 additions below describe
-the current source. They separate a finite-duration atmospheric stability
-condition from a stationary residual condition.
+This section describes the regional diagnostic and the lower-boundary
+thermochemical closure in v1.10. The regional diagnostic, the physical-time
+profile criterion, and stationary certification answer separate questions.
 
 \subsection{Finite-duration regional condition}
 
@@ -46,7 +44,7 @@ checked, while its instantaneous range is recorded but not used as a stop
 condition. A zero reference flow uses an acoustic-flow scale at machine
 precision to keep the denominator nonzero.
 
-The proposed defaults are $D_j\leq0.01$ and $A_j\leq0.05$ for upper cell
+The optional regional diagnostic uses $D_j\leq0.01$ and $A_j\leq0.05$ for upper cell
 quantities, and $D_j\leq0.10$, $A_j\leq0.20$ for lower and transition cell
 quantities. Both inventory measures and mass-flow means have limits of 0.01
 above the upper cut and 0.05 below it. Every active condition must hold for
@@ -67,7 +65,8 @@ atmosphere changed by less than the stated limits while lower-atmosphere
 variations remained within their stated limits over the tested duration. It
 does not prove stationarity, infinite-time boundedness, or observational
 accuracy. A separate stationary residual calculation is required for a
-stationary claim.
+stationary claim. The regional thresholds are not the default marching
+profile criterion of Sec.~\ref{sec:numerics:du}.
 
 \subsection{Lower-boundary thermochemical closure in the stationary problem}
 

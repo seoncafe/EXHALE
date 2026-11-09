@@ -335,6 +335,14 @@
                                melem_name, iel_C, iel_O
       use composition,   only: mass_per_H_nucleus_without_He,            &
                                gas_particle_density
+      ! The signed-inventory record and the summation allowance every
+      ! element count of the code is judged with (element_inventory).
+      use element_inventory, only: signed_element_total, element_total_ok, &
+                               element_total_negative,                    &
+                               element_total_not_finite,                  &
+                               signed_element_total_text,                 &
+                               inventory_feasible_slack, ien_H, ien_He,   &
+                               inv_element_name
       ! The rovibrational energy of H2 of the caloric equation of state, the
       ! one internal energy the sensible enthalpy of the components adds to
       ! (5/2) kT per particle (component_specific_enthalpies).
@@ -368,13 +376,14 @@
       ! carriers alike.
       public :: species_advection_active, species_advection_begin_step
       public :: species_advection_stage, species_advection_project
+      public :: element_operation_of_the_attempt
       ! The molecular and proton carriers of the photochemical transport
       ! operator ride on the same face mass fluxes as the elements.  That
       ! operator declares them here once the input keys are parsed, and reads
       ! their advected fractions back as the state one transport step starts
       ! from.
       public :: advected_carrier_reset, advected_carrier_register
-      public :: advected_carrier_count
+      public :: advected_carrier_count, advected_carrier_species
       public :: advected_carrier_fractions, advected_carrier_state_ready
       public :: advected_carrier_state_consumed
       ! The mass fractions the faces carry, and the mixture mass they are
@@ -385,6 +394,10 @@
       public :: project_element_mass_fractions
       public :: mixture_mass_sum
       public :: element_transport_residual
+      ! The advective element mass fluxes the Runge-Kutta stages of one
+      ! marching step applied, with the step's SSP-RK3 weights (declaration
+      ! of Fel_adv_step).
+      public :: step_element_advective_mass_flux
       ! THE ELEMENT NUCLEUS FLUX THROUGH THE FACES, the single object the
       ! element row is the divergence of: the advective face element mass
       ! flux, the diffusive face flux, and the face element nucleus density
@@ -575,9 +588,52 @@
       integer, parameter :: element_step_nonfinite           = 2
       integer, parameter :: element_step_out_of_bounds       = 3
       integer, parameter :: element_step_mass_closure_failed = 4
+      ! THE COMPOSITION HANDED IN IS NOT A STATE OF THE GAS: a hydrogen or
+      ! helium nucleus count of the composition an element operation
+      ! received is negative beyond its summation allowance or not finite
+      ! (element_nucleus_counts).  Nothing is formed from it; the
+      ! operation returns the composition it received, which is itself
+      ! invalid, so a caller must not adopt it (an INVALID ENTRY, not a
+      ! failed candidate).
+      integer, parameter :: element_step_entry_invalid       = 5
+      ! A CANDIDATE whose nucleus count is refused: the operation's own
+      ! update produced it, and the valid entry composition is restored.
+      integer, parameter :: element_step_candidate_count_refused = 6
+      ! AN ADVECTED ELEMENT TARGET that is not a mass fraction of the
+      ! mixture (species_advection_project, element_target_validity):
+      ! nothing is written, the received composition stands.  A failed
+      ! candidate, like outcomes 1-4 and 6.
+      integer, parameter :: element_step_target_refused      = 7
       public :: element_step_accepted, element_step_solve_failed
       public :: element_step_nonfinite, element_step_out_of_bounds
       public :: element_step_mass_closure_failed
+      public :: element_step_entry_invalid
+      public :: element_step_candidate_count_refused
+      public :: element_step_target_refused
+      ! THE ADVECTED ELEMENT TARGET LAST REFUSED by the projection of the
+      ! advective stages (element_target_validity): the reason (1 not
+      ! finite, 2 below zero, 3 helium above one, 4 the remaining
+      ! component negative), the column (1 helium, 1+im the metal element
+      ! im, 0 the remaining component), the cell and the raw target mass
+      ! fraction (the remaining component itself for reason 4).
+      integer, parameter, public :: target_not_finite        = 1
+      integer, parameter, public :: target_below_zero        = 2
+      integer, parameter, public :: target_above_one         = 3
+      integer, parameter, public :: target_remainder_negative = 4
+      type, public :: element_target_record
+         integer :: status    = 0
+         integer :: column    = 0
+         integer :: cell      = 0
+         real*8  :: target    = 0.0d0
+      end type element_target_record
+      type(element_target_record), protected :: element_target_refusal
+      public :: element_target_refusal
+      public :: element_target_validity
+      ! The count an element operation last refused: element, cell, the
+      ! signed count and the magnitude of its contributions, per unit of
+      ! the hydrodynamic density (f_sp units).
+      type(signed_element_total), protected :: element_count_refusal
+      public :: element_count_refusal
       ! THE OUTCOME OF THE MOST RECENT CALL, whether or not that call asked
       ! for status.  The candidate a step produces is judged against the
       ! same four tests every time: acceptance of a numerical update cannot
@@ -664,6 +720,27 @@
       real*8, allocatable :: Frho_step(:)
       logical :: step_flux_ready = .false.
 
+      ! THE ADVECTIVE ELEMENT MASS FLUXES OF ONE MARCHING STEP, with the
+      ! weights of Frho_step:
+      !
+      !    Fel_adv_step(f,q) = F_q^(0)(f)/6 + F_q^(1)(f)/6 + 2 F_q^(2)(f)/3 ,
+      !    F_q^(k)(f)        = F_rho^(k)(f) Y_q^face,(k)(f) ,
+      !
+      ! the face flux of the element mass fraction q (helium in column 1, a
+      ! trace metal with its own row in column 1+im) that the element rows
+      ! of stage k were advanced with, in the code units of F_rho.  Its
+      ! divergence is the advective change of the element mass of the step
+      ! in the same way that the divergence of Frho_step is the change of
+      ! the density.  It is a copy of the fluxes species_advective_update
+      ! formed, so no face fraction is evaluated a second time and no
+      ! limiter count or bound record moves.  It exists only where the
+      ! element rows are advected, from the third stage of an attempt on;
+      ! species_advection_begin_step clears el_adv_flux_ready, so no
+      ! attempt and no step-doubling half step reads another's record.  No
+      ! operator reads it yet.
+      real*8, allocatable :: Fel_adv_step(:,:)
+      logical :: el_adv_flux_ready = .false.
+
       ! WHETHER THE TERMS OF A TRACE-ELEMENT ROW ARE PRINTED, and the first
       ! cell they are printed from (trace_composition_residual).  Read only
       ! by a print; the row and its boundary are the same either way.
@@ -704,7 +781,7 @@
 
       ! Species masses in the m_H units the code counts f_sp in, READ FROM
       ! THE SPECIES TABLE rather than restated, because the two-component
-      ! closure below (msum = rho_1 + m_He_amu*nucHe = rho/(n0 mu)) is exact
+      ! closure below (msum = rho_1 + m_He_amu*nucHe = M/(n0 mu rho)) is exact
       ! only while this helium mass is the one calc_rho weighs helium with.
       ! Indexing note: bsp_mass is indexed by bsp POSITION and bsp_fsp(1:6)
       ! = 1..6, so isp_HI/isp_HeI are also the positions of the two atomic
@@ -882,6 +959,7 @@
       real*8 :: dJl, dJr, closure
       integer :: j, jlo, im, i0m, top, k, n_vanished, outcome
       logical :: shut_base, advect, solved
+      type(signed_element_total) :: count_validity
 
       if (present(status)) status = element_step_accepted
       element_step_last_status = element_step_accepted
@@ -903,8 +981,21 @@
 
       m_1 = mass_per_H_nucleus_without_He()
 
-      ! --- element nucleus counts per unit mass, and the helium mass fraction
-      call mixture_mass_split(f_sp, nucH, nucHe, mass1, msum)
+      ! --- element nucleus counts per unit mass, and the helium mass
+      ! fraction.  The counts are judged before anything is formed from
+      ! them: a composition with a negative or nonfinite count is refused
+      ! with the entry composition, which is the composition handed in.
+      call mixture_mass_split(f_sp, nucH, nucHe, mass1, msum,             &
+                              validity = count_validity)
+      if (count_validity%status .ne. element_total_ok) then
+         call record_count_refusal(count_validity,                        &
+                                   'element_diffusion_step (entry)')
+         element_step_last_status = element_step_entry_invalid
+         if (present(status)) status = element_step_entry_invalid
+         element_mass_closure_departure = -1.0d0     ! no candidate to weigh
+         deallocate(f_entry)
+         return
+      endif
       Xhe  = m_He_amu*nucHe/msum
       Xold = Xhe
 
@@ -929,8 +1020,10 @@
       !     Runge-Kutta stages already carried it.  cadvf converts the code
       !     divergence of the helium mass flux into the [g cm^-3 s^-1] the
       !     row is written in: a code density times a code velocity over a
-      !     code length is a rate in units of v0/R0, and n0 mu msum is the
-      !     mass one unit of the code density carries.
+      !     code length is a rate in units of v0/R0, and n0 mu msum converts
+      !     it to the row's own variable, the species mass density
+      !     rho_phys = rho n0 mu msum (the hydrodynamic density's unit is
+      !     n0 mu; the two agree on a closed composition, msum = 1).
       advect = present(Frho_in)
       if (advect) then
          Frho = Frho_in
@@ -1049,7 +1142,7 @@
       element_base_flux%advective_base_face   = 0.0d0
       element_base_flux%advective_solved_face = 0.0d0
       if (have_face_flux) then
-         call face_mass_flux_cgs(Frho_eval, msum, Frho_face)
+         call face_mass_flux_cgs(Frho_eval, Frho_face)
          sv_faces_bounded  = n_species_faces_bounded
          sv_face_excursion = species_face_excursion
          call species_face_fraction(Xhe, Frho_face, Yface)
@@ -1074,7 +1167,18 @@
       ! above rather than HI+HII.  Default OFF.
       if (he_metal_diffusion .and. thereis_metals) then
          trace_ratio_under_zero = -1.0d0
-         call element_nucleus_counts(f_sp, nucH, nucHe)
+         ! The candidate of the projection above: a refused count is a
+         ! failed candidate, the entry composition stands.
+         call element_nucleus_counts(f_sp, nucH, nucHe, count_validity)
+         if (count_validity%status .ne. element_total_ok) then
+            call record_count_refusal(count_validity,                     &
+                                'element_diffusion_step (trace metals)')
+            f_sp = f_entry
+            element_step_last_status = element_step_candidate_count_refused
+            if (present(status)) status = element_step_candidate_count_refused
+            deallocate(f_entry)
+            return
+         endif
          nH_phys = nucH*rho*n0
          where (nH_phys .lt. 1.0d-30) nH_phys = 1.0d-30
          call carrier_counts(f_sp, carH, carHe, mcarH)
@@ -1164,12 +1268,17 @@
       ! that would be handed back, together with the two tests that finite
       ! and bounded populations make, and the update stands or the entry
       ! composition does.
-      call mixture_mass_split(f_sp, nucH, nucHe, mass1, msum_out)
+      call mixture_mass_split(f_sp, nucH, nucHe, mass1, msum_out,         &
+                              validity = count_validity)
       closure = maxval(abs(msum_out(1:N) - 1.0d0))
       element_mass_closure_departure = closure
       outcome = element_step_accepted
       if (.not. every_species_is_finite(f_sp)) then
          outcome = element_step_nonfinite
+      else if (count_validity%status .ne. element_total_ok) then
+         outcome = element_step_candidate_count_refused
+         call record_count_refusal(count_validity,                        &
+                                   'element_diffusion_step (candidate)')
       else if (max(Xover, Xunder) .gt. element_fraction_bound_tol) then
          outcome = element_step_out_of_bounds
       else if (closure - maxval(abs(msum(1:N) - 1.0d0))                   &
@@ -1274,6 +1383,12 @@
          text = 'helium fraction left [0,1]'
       case (element_step_mass_closure_failed)
          text = 'mass closure worsened'
+      case (element_step_entry_invalid)
+         text = 'entry nucleus count invalid'
+      case (element_step_candidate_count_refused)
+         text = 'candidate nucleus count invalid'
+      case (element_step_target_refused)
+         text = 'advected element target invalid'
       case default
          text = 'unrecognized outcome'
       end select
@@ -1512,9 +1627,12 @@
       ! scale below.  It is read from the same flux the operator advects on
       ! and not from the cell velocity, so the step is measured against the
       ! transport that is actually applied.
+      ! The hydrodynamic mass flux over the hydrodynamic density, both in
+      ! physical units (the mass unit n0 mu cancels), with the physical
+      ! density floor 1e-30 g cm^-3.
       do j = 1, N
-         vadv(j) = 0.5d0*(abs(Frho(j)) + abs(Frho(j-1)))                   &
-                   *n0*mu*msum(j)*v0/max(rho_phys(j), 1.0d-30)
+         vadv(j) = 0.5d0*(abs(Frho(j)) + abs(Frho(j-1)))*n0*mu*v0          &
+                   /max(rho(j)*n0*mu, 1.0d-30)
       enddo
 
       do j = 1, N
@@ -1693,7 +1811,7 @@
       ! faces of the solver carry it.
       if (diffusion_check_on()) then
          do j = 1-Ng, N+Ng
-            mflx(j) = 4.0d0*pi*(r_edg(j)*R0)**2*Frho(j)*n0*mu*msum(j)*v0
+            mflx(j) = 4.0d0*pi*(r_edg(j)*R0)**2*Frho(j)*n0*mu*v0
          enddo
          mflx_median = median_of(mflx(j_min:N))
          write(0,'(A,ES10.3,A,ES12.5,A,I0)')                              &
@@ -1862,16 +1980,41 @@
       end function median_of
 
 
-      subroutine element_nucleus_counts(f_sp, nucH, nucHe)
+      subroutine element_nucleus_counts(f_sp, nucH, nucHe, validity)
       ! Element (nucleus) counts per unit mass, over every species that
       ! carries them: n_H/rho = f_HI + f_HII + 2 f_H2 + 2 f_H2+ + 3 f_H3+
       ! + f_HeH+, n_He/rho = f_HeI + f_HeII + f_HeIII + f_HeH+.  Columns a
       ! run does not carry are zero, so no flag has to be tested.  He 2^3S
       ! is skipped: it is an excited level of He I and its nucleus is
       ! already inside the HeI column (bsp_is_excited_level).
+      !
+      ! A COUNT IS A MEASURED INVENTORY, SO IT IS SIGNED AND JUDGED, NOT
+      ! CLIPPED.  The sums are formed as they stand; the magnitudes of the
+      ! same contributions are summed in a loop of their own (so the sums'
+      ! arithmetic is that of the sums alone), and each cell's count is
+      ! judged by the rule of carrier_element_totals (element_inventory):
+      !   not finite, or below -inventory_feasible_slack*magnitude:
+      !        REFUSED, and the count is left signed;
+      !   below zero inside that allowance: the zero the summation
+      !        cancellation rounds to.
+      ! The first refused count (cells in index order, ghosts included,
+      ! hydrogen before helium) is returned in `validity` (element ien_H or
+      ! ien_He, the cell, the signed count and its magnitude, per unit of
+      ! the hydrodynamic density).  A caller that passes `validity` owns a
+      ! refusal: the element step and the element projection refuse their
+      ! operation and restore their entry composition, carrier_state
+      ! refuses the carrier state.  A caller that does not pass it has no
+      ! refusal of its own: it reads a composition an operation already
+      ! admitted (a step's entry state, a held stationary iterate, a
+      ! reported state), so a refused count there is a broken invariant and
+      ! stops the run with the element and the cell.  No caller divides by
+      ! a refused count.
       real*8, dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
       real*8, dimension(1-Ng:N+Ng),           intent(out) :: nucH, nucHe
-      integer :: ib
+      type(signed_element_total), optional,   intent(out) :: validity
+      real*8, dimension(1-Ng:N+Ng) :: magH, magHe
+      type(signed_element_total) :: v
+      integer :: ib, j
 
       nucH  = 0.0d0
       nucHe = 0.0d0
@@ -1882,10 +2025,77 @@
          if (bsp_nHe(ib) .gt. 0)                                          &
             nucHe = nucHe + dble(bsp_nHe(ib))*f_sp(:,bsp_fsp(ib))
       enddo
-      where (nucH  .lt. 0.0d0) nucH  = 0.0d0
-      where (nucHe .lt. 0.0d0) nucHe = 0.0d0
+      magH  = 0.0d0
+      magHe = 0.0d0
+      do ib = 1, n_bsp
+         if (bsp_is_excited_level(ib)) cycle
+         if (bsp_nH(ib)  .gt. 0)                                          &
+            magH  = magH  + dble(bsp_nH(ib)) *abs(f_sp(:,bsp_fsp(ib)))
+         if (bsp_nHe(ib) .gt. 0)                                          &
+            magHe = magHe + dble(bsp_nHe(ib))*abs(f_sp(:,bsp_fsp(ib)))
+      enddo
+
+      v = signed_element_total()
+      do j = 1-Ng, N+Ng
+         call judge_count(nucH(j),  magH(j),  ien_H)
+         call judge_count(nucHe(j), magHe(j), ien_He)
+      enddo
+      if (present(validity)) then
+         validity = v
+      else if (v%status .ne. element_total_ok) then
+         write(*,'(a,a,a,i0,a,a)') ' element_nucleus_counts: the ',       &
+              trim(inv_element_name(v%element)), ' count at cell j = ',   &
+              v%cell, ': ', trim(signed_element_total_text(v%status))
+         write(*,'(a,es12.4,a,es12.4,a)') '   signed count ', v%total,    &
+              ', magnitude of its contributions ', v%magnitude,           &
+              ' (per unit of the hydrodynamic density)'
+         write(*,'(a)') '   the composition reached an operation that'//  &
+              ' holds no refusal for it: it is not a state of the gas.'
+         error stop 1
+      endif
+
+      contains
+
+      subroutine judge_count(c, mag, ie)
+      real*8,  intent(inout) :: c
+      real*8,  intent(in)    :: mag
+      integer, intent(in)    :: ie
+      if (.not. (abs(c) .le. huge(1.0d0)) .or.                            &
+          .not. (mag .le. huge(1.0d0))) then
+         if (v%status .eq. element_total_ok) then
+            v = signed_element_total(status = element_total_not_finite,   &
+                                     element = ie, cell = j, total = c,   &
+                                     magnitude = mag)
+         endif
+      else if (c .lt. -inventory_feasible_slack*mag) then
+         if (v%status .eq. element_total_ok) then
+            v = signed_element_total(status = element_total_negative,     &
+                                     element = ie, cell = j, total = c,   &
+                                     magnitude = mag)
+         endif
+      else if (c .lt. 0.0d0) then
+         c = 0.0d0
+      endif
+      end subroutine judge_count
 
       end subroutine element_nucleus_counts
+
+
+      subroutine record_count_refusal(validity, where)
+      ! Keeps the refused count of an element operation and names it once,
+      ! with the operation, the element, the cell and the signed count.
+      type(signed_element_total), intent(in) :: validity
+      character(len=*),           intent(in) :: where
+      element_count_refusal = validity
+      write(*,'(a,a,a,a,a,i0,a,a)') ' (', where, ') REFUSED: the ',        &
+           trim(inv_element_name(validity%element)),                      &
+           ' nucleus count at cell j = ', validity%cell, ': ',            &
+           trim(signed_element_total_text(validity%status))
+      write(*,'(a,es12.4,a,es12.4,a)') '   signed count ', validity%total, &
+           ', magnitude of its contributions ', validity%magnitude,       &
+           ' (per unit of the hydrodynamic density); the entry'//         &
+           ' composition stands'
+      end subroutine record_count_refusal
 
 
       subroutine carrier_counts(f_sp, carH, carHe, mcarH)
@@ -3393,7 +3603,7 @@
                   he_terms%res(1:N), he_terms%scale(1:N),                 &
                   he_terms%floor(1:N), he_terms%F_rho(0:N),               &
                   he_terms%Y_face(0:N), he_terms%J(0:N))
-         call face_mass_flux_cgs(Frho, msum, Fface_cgs)
+         call face_mass_flux_cgs(Frho, Fface_cgs)
          do j = 1, N
             he_terms%rho_phys(j) = rho_phys(j)
             he_terms%X(j)        = Xhe(j)
@@ -3489,9 +3699,10 @@
       !             stages put on the face, and it is dimensionless, so this
       !             routine neither scales nor rescales the flux it is given.
       !             With the code face mass flux of the mass row (rho v in
-      !             units of n0 mu and v0, the mixture mass msum(j) still
-      !             outside it) Fadv is in those code units and
-      !             n0 mu msum v0 Fadv is g cm^-2 s^-1; with a face mass flux
+      !             the fixed units n0 mu and v0) Fadv is in those code
+      !             units; face_mass_flux_cgs gives the flux in
+      !             g cm^-2 s^-1, n0 mu v0 F_rho (the element row itself
+      !             converts its advective half with cadvf below); with a face mass flux
       !             already in g cm^-2 s^-1, which the element flux profile
       !             writer below passes, Fadv is in g cm^-2 s^-1 directly.
       !             Jdif below is in g cm^-2 s^-1 either way, so a caller
@@ -3588,8 +3799,9 @@
       call helium_diffusive_face_flux(rho, Tcode, f_sp, Jdif)
 
       ! The advective half: the face mass flux of the mass row carrying the
-      ! reconstructed face mass fraction, the same two routines the stages
-      ! and element_advective_divergence call.
+      ! reconstructed face mass fraction, the same two routines
+      ! element_advective_divergence calls.  (The ionization stages take
+      ! the donor cell's fraction instead: ionization_stage_face_fractions.)
       call species_face_fraction(Xhe, Frho, Yf)
       call species_face_flux(Frho, Yf, Fs)
       do j = 0, N
@@ -4565,6 +4777,39 @@
       end function advected_carrier_count
 
 
+      integer function advected_carrier_species(k)
+      ! The f_sp column of the species the k-th advected column carries,
+      ! as advected_carrier_register declared it: the identity a reader of
+      ! advected_carrier_fractions maps that column by.
+      integer, intent(in) :: k
+      if (k .lt. 1 .or. k .gt. n_car) then
+         write(*,*) 'ERROR: advected_carrier_species: column ', k,         &
+                    ' outside the declared set of ', n_car
+         error stop 1
+      endif
+      advected_carrier_species = car_isp(k)
+      end function advected_carrier_species
+
+
+      subroutine step_element_advective_mass_flux(Fel, nq, ready)
+      ! The advective element mass fluxes the Runge-Kutta stages of the
+      ! current marching attempt applied (declaration of Fel_adv_step), in
+      ! the code units of the face mass flux: helium in column 1, a trace
+      ! metal with its own row in column 1+im; nq columns are filled.
+      ! ready is false, and Fel zero, where the element rows are not
+      ! advected or the attempt has not finished its third stage.
+      real*8, dimension(1-Ng:N+Ng,1+n_melem), intent(out) :: Fel
+      integer, intent(out) :: nq
+      logical, intent(out) :: ready
+      Fel   = 0.0d0
+      nq    = 0
+      ready = el_adv_flux_ready .and. allocated(Fel_adv_step)
+      if (.not. ready) return
+      nq = size(Fel_adv_step,2)
+      Fel(:,1:nq) = Fel_adv_step
+      end subroutine step_element_advective_mass_flux
+
+
       logical function advected_carrier_state_ready()
       ! Whether the carriers of the step just taken were advected and are
       ! waiting to be read.  False through an attempt that never reached its
@@ -4605,7 +4850,8 @@
 
 
       subroutine mixture_mass_sum(f_sp, msum)
-      ! Mass of the mixture per unit of f_sp, = rho/(n0 mu).  It is the
+      ! Species mass per unit of the hydrodynamic density, M/(n0 mu rho),
+      ! equal to one on a closed composition.  It is the
       ! denominator every mass fraction in this module is taken against.
       real*8, dimension(1-Ng:N+Ng,n_species), intent(in)  :: f_sp
       real*8, dimension(1-Ng:N+Ng),           intent(out) :: msum
@@ -4617,12 +4863,13 @@
       end subroutine mixture_mass_sum
 
 
-      subroutine mixture_mass_split(f_sp, nucH, nucHe, mass1, msum, mmet)
+      subroutine mixture_mass_split(f_sp, nucH, nucHe, mass1, msum, mmet, &
+                                    validity)
       ! THE MASS A CELL'S SPECIES ACTUALLY CARRY, split into the two
       ! components of the module header:
       !
       !   mass1 = m_H n_H + sum_X A_X n_X + A_O n_O(mol) + A_C n_C(mol)
-      !   msum  = mass1 + m_He n_He  = rho/(n0 mu)
+      !   msum  = mass1 + m_He n_He  = M/(n0 mu rho)
       !
       ! component 1 being the hydrogen carriers together with the trace
       ! metals and the heavy nuclei bound in the molecular carriers, and
@@ -4650,11 +4897,14 @@
       real*8, dimension(1-Ng:N+Ng),           intent(out) :: nucH, nucHe
       real*8, dimension(1-Ng:N+Ng),           intent(out) :: mass1, msum
       real*8, dimension(1-Ng:N+Ng), optional, intent(out) :: mmet
+      ! The judgment of the two nucleus counts (element_nucleus_counts);
+      ! absent, a refused count stops the run there.
+      type(signed_element_total),   optional, intent(out) :: validity
 
       real*8, dimension(1-Ng:N+Ng) :: mmetal, nucOm, nucCm
       integer :: ib, im
 
-      call element_nucleus_counts(f_sp, nucH, nucHe)
+      call element_nucleus_counts(f_sp, nucH, nucHe, validity)
 
       mmetal = 0.0d0
       if (eos_include_metals .and. thereis_metals) then
@@ -4725,9 +4975,31 @@
       ! composition the checkpoint restored and not from the one a discarded
       ! attempt advected.
       real*8, dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
+      real*8, dimension(1-Ng:N+Ng) :: nucH, nucHe
+      type(signed_element_total) :: count_validity
 
       car_ready = .false.
       step_flux_ready = .false.
+      el_adv_flux_ready = .false.
+
+      ! THE COMPOSITION AN ATTEMPT BEGINS FROM IS JUDGED BEFORE ANY MASS
+      ! FRACTION IS FORMED FROM IT.  It is the composition the checkpoint
+      ! holds, the state the previous step was accepted with (or the
+      ! initial state), so a refused nucleus count here cannot be answered
+      ! by retaking the attempt from the same state at a shorter step: it
+      ! is a broken invariant of the march and stops the run with the
+      ! element and the cell (element_nucleus_counts).
+      if (element_rows_advected() .or. carrier_rows_advected()) then
+         call element_nucleus_counts(f_sp, nucH, nucHe, count_validity)
+         if (count_validity%status .ne. element_total_ok) then
+            call record_count_refusal(count_validity,                     &
+                                      'species_advection_begin_step')
+            write(*,'(a)') '   the composition an attempted step begins'//&
+                 ' from is not a state of the gas; no shorter step can'// &
+                 ' change it.'
+            error stop 1
+         endif
+      endif
 
       if (element_rows_advected()) then
          n_etr = 1
@@ -4786,7 +5058,18 @@
             Y(j,k) = Y(N,k)
          enddo
       enddo
-      where (Y .lt. 0.0d0) Y = 0.0d0
+      ! THE CARRIER VALUES ARE TAKEN AS THEY STAND, NOT CLIPPED.  The mass
+      ! sum above is formed from judged nucleus counts (mixture_mass_sum,
+      ! element_nucleus_counts).  A negative or nonfinite stored carrier is
+      ! not a state the carrier operator admits, and replacing it by zero
+      ! here would hand the stages a different composition without a
+      ! record.  These fractions reach exactly one consumer, carrier_state
+      ! (through advected_carrier_fractions), which judges the stored
+      ! value of every solved carrier in every cell and ghost, finiteness
+      ! first, before anything is integrated, and refuses it with the
+      ! carrier, the cell and the value: the advected column built from it
+      ! is then never adopted (the interval is not covered and its entry
+      ! checkpoint is restored).
 
       end subroutine carrier_mass_fractions
 
@@ -4808,6 +5091,7 @@
       real*8, dimension(1-Ng:N+Ng), intent(in) :: Frho, dt_loc
 
       real*8, dimension(1-Ng:N+Ng,1+n_melem) :: Ynew
+      real*8, dimension(1-Ng:N+Ng,1+n_melem) :: Fel
       real*8, dimension(1-Ng:N+Ng,max(n_car,1)) :: Ycnew
       integer :: q
 
@@ -4815,7 +5099,8 @@
          call species_advective_update(stage, n_etr, 1,                   &
                                     Yetr_n(:,1:n_etr), Yetr(:,1:n_etr),   &
                                     Frho, rho_n, rho_in, rho_new, dt_loc, &
-                                    2, Ynew(:,1:n_etr))
+                                    2, Ynew(:,1:n_etr),                   &
+                                    Fs_out=Fel(:,1:n_etr))
          Yetr(:,1:n_etr) = Ynew(:,1:n_etr)
          do q = 1, n_etr
             Yetr(N+1:N+Ng,q) = Yetr(N,q)
@@ -4834,6 +5119,24 @@
          case (3)
             Frho_step = Frho_step + 2.0d0*Frho/3.0d0
             step_flux_ready = .true.
+         end select
+         ! The step's advective element mass fluxes, with the same weights
+         ! (declaration of Fel_adv_step).  Formed after every statement of
+         ! the stage above and read by none of them.
+         if (allocated(Fel_adv_step)) then
+            if (size(Fel_adv_step,1) .ne. N + 2*Ng .or.                    &
+                size(Fel_adv_step,2) .ne. n_etr) deallocate(Fel_adv_step)
+         endif
+         if (.not. allocated(Fel_adv_step))                                &
+            allocate(Fel_adv_step(1-Ng:N+Ng,n_etr))
+         select case (stage)
+         case (1)
+            Fel_adv_step = Fel(:,1:n_etr)/6.0d0
+         case (2)
+            Fel_adv_step = Fel_adv_step + Fel(:,1:n_etr)/6.0d0
+         case (3)
+            Fel_adv_step = Fel_adv_step + 2.0d0*Fel(:,1:n_etr)/3.0d0
+            el_adv_flux_ready = .true.
          end select
       endif
 
@@ -4857,7 +5160,7 @@
       end subroutine species_advection_stage
 
 
-      subroutine species_advection_project(f_sp)
+      subroutine species_advection_project(f_sp, status)
       ! Write the advected element composition into the species vector: the
       ! element totals are set here, the split within an element is left to
       ! the ionization solve, which is the same division of labour
@@ -4873,16 +5176,180 @@
       !
       ! Each metal element is put on the amount its own advected mass fraction
       ! asks for, and the hydrogen group closes the mixture around it.
+      !
+      ! A REFUSED PROJECTION WRITES NOTHING, and everything is judged
+      ! before the first write, so no cell is left half projected:
+      !   the composition written into (its nucleus counts,
+      !        element_nucleus_counts): refused, status
+      !        element_step_entry_invalid, recorded in element_count_refusal;
+      !   every advected target (element_target_validity): refused, status
+      !        element_step_target_refused, recorded in
+      !        element_target_refusal.
+      ! On either the received composition is returned bit for bit and the
+      ! step controller refuses the element operation of the attempt
+      ! (EXHALE_main).
       real*8, dimension(1-Ng:N+Ng,n_species), intent(inout) :: f_sp
+      integer, optional, intent(out) :: status
+      type(signed_element_total) :: count_validity
+      type(element_target_record) :: target_validity
+      real*8, dimension(1-Ng:N+Ng) :: nucH, nucHe
 
+      if (present(status)) status = element_step_accepted
       if (carrier_rows_advected()) car_ready = .true.
       if (.not. element_rows_advected()) return
-      call project_element_mass_fractions(f_sp, Yetr)
+      call element_nucleus_counts(f_sp, nucH, nucHe, count_validity)
+      if (count_validity%status .ne. element_total_ok) then
+         call record_count_refusal(count_validity,                        &
+                                   'species_advection_project')
+         if (present(status)) status = element_step_entry_invalid
+         return
+      endif
+      call element_target_validity(Yetr, target_validity)
+      if (target_validity%status .ne. 0) then
+         call record_target_refusal(target_validity)
+         if (present(status)) status = element_step_target_refused
+         return
+      endif
+      call project_element_mass_fractions(f_sp, Yetr,                     &
+                                          validity = count_validity)
+      if (count_validity%status .ne. element_total_ok) then
+         call record_count_refusal(count_validity,                        &
+                                   'species_advection_project')
+         if (present(status)) status = element_step_entry_invalid
+      endif
 
       end subroutine species_advection_project
 
 
-      subroutine project_element_mass_fractions(f_sp, Y)
+      subroutine element_operation_of_the_attempt(rho, Tcode, f_sp,        &
+                                                  dt_code, Jface, JXface,  &
+                                                  outcome)
+      ! THE ELEMENT OPERATION OF ONE ATTEMPTED STEP, at its operator-split
+      ! point (EXHALE_main): the advective half rode on the face mass
+      ! fluxes of the Runge-Kutta stages and is projected here
+      ! (species_advection_project); the diffusive half is the implicit
+      ! element step taken at the projected composition.  A REFUSED
+      ! PROJECTION ENDS THE OPERATION: it wrote nothing, and the element
+      ! step is not called on the composition it refused.  outcome is the
+      ! element_step_* code of whichever half decided (accepted when both
+      ! were), and the caller acts on it (element_operation_disposition,
+      ! attempted_step).  Jface and JXface are the element step's face
+      ! fluxes, zero where it did not run.
+      real*8, dimension(1-Ng:N+Ng),           intent(in)    :: rho, Tcode
+      real*8, dimension(1-Ng:N+Ng,n_species), intent(inout) :: f_sp
+      real*8, dimension(1-Ng:N+Ng),           intent(in)    :: dt_code
+      real*8, dimension(0:N),                 intent(out)   :: Jface
+      real*8, dimension(0:N,n_melem),         intent(out)   :: JXface
+      integer,                                intent(out)   :: outcome
+      Jface  = 0.0d0
+      JXface = 0.0d0
+      outcome = element_step_accepted
+      if (species_advection_active())                                     &
+         call species_advection_project(f_sp, outcome)
+      if (he_diffusion .and. outcome .eq. element_step_accepted) then
+         call element_diffusion_step(rho, Tcode, f_sp, dt_code,           &
+                                     Jface_out = Jface, JXface_out = JXface)
+         outcome = element_step_last_status
+      endif
+      end subroutine element_operation_of_the_attempt
+
+
+      subroutine element_target_validity(Y, validity)
+      ! WHETHER THE ADVECTED ELEMENT MASS FRACTIONS ARE MASS FRACTIONS OF
+      ! THE MIXTURE, judged before the projection writes any of them.
+      ! The projection (project_element_mass_fractions, project_elements)
+      ! is a nonnegative scaling: a negative helium target gives helium a
+      ! factor of zero and empties the cell of it, a target above one
+      ! leaves the hydrogen group a negative mass that is clipped to zero,
+      ! a negative metal target is written as zero, and a sum of targets
+      ! above one is closed by clipping the remaining component.  Each of
+      ! these writes a composition other than the one the transport
+      ! computed, without a record, so every target outside the physical
+      ! range is REFUSED, with no rounding allowance:
+      !   not finite                                 target_not_finite;
+      !   below zero                                 target_below_zero;
+      !   helium above one                           target_above_one;
+      !   1 - Y_He - sum Y_metal below zero          target_remainder_negative
+      !        (only where the metals are advected; without them it is the
+      !        helium bound);
+      ! the first refusal in cell order (ghosts included, the cells the
+      ! projection writes), helium before the metals, then the remainder.
+      ! Y is not changed: what is accepted is written exactly as advected.
+      !
+      ! WHY NO ROUNDING ALLOWANCE.  A tolerance below zero would have to
+      ! be the forward rounding error of the three Runge-Kutta stages
+      ! (species_advective_update): each stage's own arithmetic is bounded
+      ! by a few eps times its uncanceled terms, |rho_n Y_n| +
+      ! |dt| (|A_r F_r| + |A_l F_l|)/V over |rho_new|, but the error a stage
+      ! inherits enters the next through the face values, and the face
+      ! reconstruction has no usable sensitivity bound: the WENO3 weights
+      ! of Reconstruction.f90 (S = 1 + tau^2/b, b >= (dr q_max)^2) change
+      ! by O(1/dr^2) relative to a perturbation of the cell values, so the
+      ! propagated bound is many orders above the rounding it should
+      ! describe, and an allowance built from it would admit resolved
+      ! excursions of the scheme.  No defensible allowance is available,
+      ! so none is used (section 172.1 of the update log).  What this
+      ! refuses beyond a rounding is not lost: a cell whose stage terms
+      ! are all zero advects to an exact zero, and a refused attempt is
+      ! retaken at a shorter step (the retry-budget stop where it never
+      ! clears).
+      real*8, dimension(1-Ng:N+Ng,1+n_melem), intent(in)  :: Y
+      type(element_target_record),            intent(out) :: validity
+      real*8  :: rem
+      integer :: j, q
+      validity = element_target_record()
+      do j = 1-Ng, N+Ng
+         rem = 1.0d0
+         do q = 1, n_etr
+            if (.not. (abs(Y(j,q)) .le. huge(1.0d0))) then
+               call refuse(target_not_finite, q, Y(j,q));  return
+            else if (Y(j,q) .lt. 0.0d0) then
+               call refuse(target_below_zero, q, Y(j,q));  return
+            else if (q .eq. 1 .and. Y(j,q) .gt. 1.0d0) then
+               call refuse(target_above_one, q, Y(j,q));  return
+            endif
+            rem = rem - Y(j,q)
+         enddo
+         if (n_etr .gt. 1 .and. rem .lt. 0.0d0) then
+            call refuse(target_remainder_negative, 0, rem);  return
+         endif
+      enddo
+
+      contains
+
+      subroutine refuse(why, col, val)
+      integer, intent(in) :: why, col
+      real*8,  intent(in) :: val
+      validity = element_target_record(status = why, column = col,        &
+                                       cell = j, target = val)
+      end subroutine refuse
+
+      end subroutine element_target_validity
+
+
+      subroutine record_target_refusal(validity)
+      ! Keeps the refused advected target and names it once.
+      type(element_target_record), intent(in) :: validity
+      character(len=24) :: what
+      element_target_refusal = validity
+      if (validity%column .eq. 1) then
+         what = 'helium'
+      else if (validity%column .gt. 1) then
+         what = trim(melem_name(validity%column-1))
+      else
+         what = 'the remaining component'
+      endif
+      write(*,'(a,a,a,i0,a,i0,a)') ' (species_advection_project)'//       &
+           ' REFUSED: the advected ', trim(what),                         &
+           ' mass fraction at cell j = ', validity%cell, ' (reason ',     &
+           validity%status, ': 1 not finite, 2 below zero, 3 above one,'//&
+           ' 4 remainder negative)'
+      write(*,'(a,es12.4,a)') '   target ', validity%target,             &
+           '; nothing written, the received composition stands'
+      end subroutine record_target_refusal
+
+
+      subroutine project_element_mass_fractions(f_sp, Y, validity)
       ! Write the element TOTALS of a species vector from the element mass
       ! fractions Y: helium in column 1, each trace metal in column 1+im.
       ! It is the inverse of element_mass_fractions, and it is the one map
@@ -4898,12 +5365,21 @@
       ! so the mixture's mass is unchanged by the write-back.
       real*8, dimension(1-Ng:N+Ng,n_species), intent(inout) :: f_sp
       real*8, dimension(1-Ng:N+Ng,1+n_melem), intent(in)    :: Y
+      ! The judgment of the nucleus counts of the composition written into
+      ! (element_nucleus_counts).  Present and refused, nothing is written
+      ! and f_sp is returned as it was handed in; absent, a refused count
+      ! stops the run.
+      type(signed_element_total), optional,   intent(out)   :: validity
 
       real*8, dimension(1-Ng:N+Ng) :: nucH, nucHe, msum, mass1, nucX
       real*8  :: nXnew, rXsc
       integer :: j, im, i0m, k, top
 
-      call mixture_mass_split(f_sp, nucH, nucHe, mass1, msum)
+      call mixture_mass_split(f_sp, nucH, nucHe, mass1, msum,             &
+                              validity = validity)
+      if (present(validity)) then
+         if (validity%status .ne. element_total_ok) return
+      endif
 
       if (.not. (he_metal_diffusion .and. thereis_metals)) then
          call project_elements(f_sp, Y(:,1), msum, .true.)
@@ -4971,28 +5447,22 @@
       end function element_flux_profile_on
 
 
-      subroutine face_mass_flux_cgs(Frho, msum, Fcgs)
+      subroutine face_mass_flux_cgs(Frho, Fcgs)
       ! A face mass flux in the code units of the mass row, returned in
       ! g cm^-2 s^-1:
       !
-      !    F_cgs(f) = F_rho(f) n0 mu v0 [ msum(f) + msum(f+1) ]/2 .
+      !    F_cgs(f) = F_rho(f) n0 mu v0 .
       !
-      ! n0 mu msum is the mass one unit of the code density carries (the
-      ! factor every row of this operator converts with, cadvf) and v0 the
-      ! velocity unit.  The row of cell j converts the flux of both its
-      ! faces with its own msum(j), so a face shared by two cells is
-      ! converted with two values; the face value here is their mean.  The
-      ! two differ by the state's mass closure, msum = 1 to 1e-15 on a
-      ! closed state, so the choice moves no digit a record prints.  The
-      ! outermost ghost face has no cell beyond it and takes its own cell's
-      ! value.
-      real*8, dimension(1-Ng:N+Ng), intent(in)  :: Frho, msum
+      ! n0 mu is the mass unit of the hydrodynamic density and v0 the
+      ! velocity unit, the fixed unit of every hydrodynamic face mass flux.
+      ! The composition's mass closure msum = M/(n0 mu rho) is not a unit
+      ! of the wind's flux and does not enter.  (The element row's cadvf
+      ! carries msum(j) because its time term is written on the species
+      ! mass density rho_phys = rho n0 mu msum; the two agree to the
+      ! closure |msum - 1|.)
+      real*8, dimension(1-Ng:N+Ng), intent(in)  :: Frho
       real*8, dimension(1-Ng:N+Ng), intent(out) :: Fcgs
-      integer :: j, jn
-      do j = 1-Ng, N+Ng
-         jn = min(j+1, N+Ng)
-         Fcgs(j) = Frho(j)*n0*mu*v0*0.5d0*(msum(j) + msum(jn))
-      enddo
+      Fcgs = Frho*n0*mu*v0
       end subroutine face_mass_flux_cgs
 
 
@@ -5054,7 +5524,7 @@
       rep = r_edg*R0
 
       ! The face mass flux of the state in g cm^-2 s^-1.
-      call face_mass_flux_cgs(Frho, msum, Frho_f)
+      call face_mass_flux_cgs(Frho, Frho_f)
 
       ! Both halves of the element flux, from the one routine that spells
       ! them: the advective half is Frho_f times the face mass fraction, so

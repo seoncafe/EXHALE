@@ -226,7 +226,7 @@
          exit compare
       do k = imeta_reservoir, imeta_options
          write(expected,'(A,I0,1X,A)') 'CONFIG ', k, trim(meta(k))
-         if (.not. next_line_is(iu, expected, 'physical configuration', &
+         if (.not. next_line_is(iu, expected, 'configuration (including solver route)', &
                                 why)) exit compare
       enddo
       expected = 'BOUNDARY '//base_boundary_model_id()//' '//         &

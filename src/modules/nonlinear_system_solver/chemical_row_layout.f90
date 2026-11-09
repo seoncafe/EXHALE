@@ -172,6 +172,19 @@
 
 	contains
 
+	pure real*8 function helium_closure_allowance(has_triplet, has_molecule) result(allowance)
+	! The neutral ground singlet closes He II, He III, the metastable level
+	! when present, and HeH+ only when the helium budget is positive.
+	! Each summed fraction contributes
+	! one fraction_resolution to the representable face allowance.
+	logical, intent(in) :: has_triplet, has_molecule
+	integer :: n_terms
+	n_terms = 2
+	if (has_triplet) n_terms = n_terms + 1
+	if (has_molecule) n_terms = n_terms + 1
+	allowance = dble(n_terms)*fraction_resolution
+	end function helium_closure_allowance
+
 
 	pure integer function nuclei_of_species(slot, element_group) result(nu)
 	! Nuclei of the element of element_group (1 H, 2 He, 2 + e metal e)

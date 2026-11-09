@@ -14,6 +14,7 @@
            ieq_sweep_ledger_last, ghost_acc_res_cell, ieq_res_tol,       &
            xuv_field_block_cells,xuv_self_field_passes
       use excited_hydrogen, only: excited_H_update
+      use omp_lib, only: omp_get_wtime
       implicit none
       private
       public :: stationary_ghost_state, boundary_chemistry_result
@@ -21,6 +22,8 @@
       public :: ghost_fraction_accuracy, ghost_thermal_accuracy
       public :: boundary_thermodynamic_invalid
       public :: boundary_chemistry_record,hold_boundary_chemistry,restore_boundary_chemistry
+      public :: boundary_closure_work,boundary_closure_work_reset
+      public :: boundary_closure_work_count
       integer, parameter :: boundary_chemistry_closed = 0
       integer, parameter :: boundary_chemical_nonroot = 1
       integer, parameter :: boundary_thermodynamic_invalid = 2
@@ -40,6 +43,21 @@
          type(boundary_chemistry_result) :: result
          real*8, allocatable :: conserved(:,:),composition(:,:)
       end type boundary_chemistry_record
+      ! THE WORK OF THE BOUNDARY CLOSURE, counted and timed: the calls of
+      ! stationary_ghost_state, the thermochemical iterations they took, and
+      ! the ioniz_eq sweeps they made, full (every cell) and of the lower
+      ! ghosts only. The wall clock is the whole call (omp_get_wtime). The
+      ! stationary outer iteration resets the record at the start of each
+      ! pass and prints it on the pass's cost line ("(pass_cost)",
+      ! EXHALE_main.f90); nothing reads it to decide anything.
+      type :: boundary_closure_work
+         integer :: calls = 0
+         integer :: iterations = 0
+         integer :: full_sweeps = 0
+         integer :: ghost_only_sweeps = 0
+         real*8 :: seconds = 0.0d0
+      end type boundary_closure_work
+      type(boundary_closure_work), save :: closure_work
       type(boundary_chemistry_result), save :: result_last
       real*8, allocatable, save :: u_last(:,:),f_last(:,:)
       contains
@@ -70,6 +88,9 @@
       logical :: ghost_roots_only,full_sweeps
       integer :: j,it,iteration_cap,ios
       character(len=64) :: diagnostic_seed,trace_env,cap_env,full_env
+      real*8 :: t_call0
+      t_call0=omp_get_wtime()
+      closure_work%calls=closure_work%calls+1
       result = boundary_chemistry_result()
       sweep = ioniz_eq_ledger()
       heat=0.0d0; cool=0.0d0; eta=0.0d0; n_part=0.0d0
@@ -145,9 +166,21 @@
          rho_before=rho(1-Ng:0); t_before=t(1-Ng:0)
          if (use_excited_H) call excited_H_update(t,rho,f_sp,w(2,:),exc_change)
          ghost_roots_only=it.gt.1.and..not.full_sweeps
+         if (ghost_roots_only) then
+            closure_work%ghost_only_sweeps=closure_work%ghost_only_sweeps+1
+         else
+            closure_work%full_sweeps=closure_work%full_sweeps+1
+         endif
          call ioniz_eq(t,rho,f_sp,heat,cool,eta,sweep, &
               lower_ghosts_only=ghost_roots_only,advance_composition_history=.false.)
+         if (sweep%n_invalid_imposed.gt.0) then
+            result%status=boundary_chemical_nonroot
+            exit
+         endif
+         ! A refused mass projection hands back a composition that does
+         ! not weigh its density: no closed boundary rests on it.
          if (sweep%n_ghost_open.gt.0 .or. sweep%n_nonfinite.gt.0 .or. &
+             sweep%n_projection_refused.gt.0 .or. &
              any(.not.ieee_is_finite(ghost_acc_res_cell)).or. &
              any(ghost_acc_res_cell.gt.ieq_res_tol)) then
             call thermodynamic_state
@@ -178,14 +211,20 @@
                ! Verify that a complete sweep leaves this boundary closed.
                f_before=f_sp(1-Ng:0,:)
                rho_before=rho(1-Ng:0); t_before=t(1-Ng:0)
+               closure_work%full_sweeps=closure_work%full_sweeps+1
                call ioniz_eq(t,rho,f_sp,heat,cool,eta,sweep, &
                               advance_composition_history=.false.)
+               if (sweep%n_invalid_imposed.gt.0) then
+                  result%status=boundary_chemical_nonroot
+                  exit
+               endif
                call thermodynamic_state
                if (.not.gas_ok) then
                   result%status=boundary_thermodynamic_invalid
                   exit
                endif
                if (sweep%n_ghost_open.gt.0.or.sweep%n_nonfinite.gt.0.or. &
+                   sweep%n_projection_refused.gt.0.or. &
                    any(.not.ieee_is_finite(ghost_acc_res_cell)).or. &
                    any(ghost_acc_res_cell.gt.ieq_res_tol)) then
                   result%status=boundary_chemical_nonroot
@@ -249,6 +288,8 @@
       u_last=u
       f_last=f_sp
       result_last=result
+      closure_work%iterations=closure_work%iterations+result%iterations
+      closure_work%seconds=closure_work%seconds+(omp_get_wtime()-t_call0)
       contains
       subroutine thermodynamic_state
       ! Install this composition before either the boundary or the EOS reads it.
@@ -269,6 +310,14 @@
       gas_ok=all(ieee_is_finite(t)).and.all(t.gt.0.0d0)
       end subroutine thermodynamic_state
       end subroutine stationary_ghost_state
+
+      subroutine boundary_closure_work_reset()
+      closure_work=boundary_closure_work()
+      end subroutine boundary_closure_work_reset
+      function boundary_closure_work_count() result(w)
+      type(boundary_closure_work) :: w
+      w=closure_work
+      end function boundary_closure_work_count
 
       subroutine boundary_chemistry_of_state(u,f_sp,result,known)
       ! A certificate may use a closure only for the exact state it measured.

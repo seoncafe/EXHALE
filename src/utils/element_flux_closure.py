@@ -2,6 +2,10 @@
 """Elemental-flux closure between the photochemical lower atmosphere and the
 EXHALE escape wind.
 
+The wind route defaults to physical marching with a K=3 profile-band check.
+The explicitly selected jfnk route retains the stationary solver. A stationary
+certificate is a diagnostic of a marching state, not its acceptance.
+
 The physics.  The two models are joined at the microbar match, and the
 handoff is one-way in each direction: the chemistry is told an elemental
 flux through its upper boundary, and the wind, given the resulting profile
@@ -43,7 +47,7 @@ the certified LHS 1140 b kzz1e9 states).  On the energy-coupled He/H 2.09
 lower-profile reference the overlap window is 1.00058-1.01892 R_p, 82
 faces, with spreads 3.8e-9 (H) and 3.1e-9 (He) (MEASURED 2026-10-04,
 update log stage 3 section 84).]  This driver
-therefore reads the overlap window first and falls back on the steady one
+on its explicitly selected stationary route reads the overlap window first and falls back on the steady one
 when the overlap is unmeasurable or its spread exceeds the tolerance,
 recording in the iteration log which window supplied the number and why.
 The substitution is never silent.  Section 6.2's honesty rule stands: a
@@ -88,8 +92,12 @@ carries through the surface], handed to the chemistry as
 `--trial-flux-H2`, so that its top takes the H2 flux and the atomic H flux
 (Phi_H - Phi_H2, an inflow where negative) separately, with the damped
 update of the other variables and the residual
-eps_H2 = |F_H2,meas - Phi_H2|/|F_H,meas| held to `tol`; the elemental flux
-is its scale because the atomic share can pass through zero.  The first
+eps_H2 = |F_H2,meas - Phi_H2|/max(|F_H2,meas|, |F_H,meas|) held to `tol`.
+The scale is the H2 flux itself: through the open base face H2 rises and
+atomic H sinks with fluxes up to 250 times the net hydrogen flux (LHS 1140 b,
+He/H 1e4: 1.27e6 against 6.5e3 g/s, 2026-10-28), so a residual on the net
+flux could not reach `tol`; the net flux is the scale only where it is the
+larger (user decision 2026-10-28).  The first
 Phi_H2 is `--phi0-H2`, or Phi_H (all hydrogen on H2) when not given.  A
 wind that writes no H2 face flux leaves Phi_H2 = Phi_H.  The history gains
 the columns trial_F_H2 meas_F_H2 eps_H2.
@@ -123,6 +131,7 @@ supplied the interpreter.
 """
 
 import argparse
+import math
 import json
 import os
 import re
@@ -175,17 +184,22 @@ CONFIG_TEMPLATE = r"""{
   ],
   "p_top_bar": null,
 
+  "wind_route": "march",
+  "march_driver": "<EXHALE>/LHS1140b/tools/march_case.py",
+  "march_chunk_steps": 50001,
+  "march_snapshot_interval": 10000,
+  "march_diagnostic_interval": 1000,
   "exhale_bin": "<EXHALE>/EXHALE.x",
   "input_template": "<EXHALE>/LHS1140b/archive_20260830/exhale/flux_closure/input_template.inp",
-  "omp_num_threads": 4,
+  "omp_num_threads": 12,
   "resid_tol": "1.0e-4",
 
   "input_keys_comment": "Optional. Whole input.inp lines added to every iteration's input, overriding the line already there and the driver's own defaults. This is how a rung is solved by a route other than the coupled JFNK below, e.g. [\"Well balanced: True\", \"Restart intent: stationary\", \"Solver: Newton\"] for the partitioned stationary route.",
   "input_drop_comment": "Optional. Replaces the keys dropped from the template (by default du_th, Solver and IC mode); name only what this route must not inherit.",
   "input_keys": [],
 
-  "exhale_env": {"EXHALE_PTC": "1", "EXHALE_PTC_JFNK": "1",
-                 "EXHALE_PTC_DTAU0": "1.0"},
+  "exhale_env_comment": "The empty exhale_env and 12 threads shown here are march defaults. On wind_route jfnk, omit exhale_env to retain the PTC defaults; an explicit empty object disables them. The jfnk no-step evaluate input needs the reviewed binary that permits evaluate without Solver Newton.",
+  "exhale_env": {},
 
   "energy_coupling_comment": "Optional, default false. True passes the wind's conductive base flux (EXHALE_resolved.out base_conductive_flux_cgs, damped by energy_coupling_omega) to the chemistry as --conducted-heat-flux, records F_cond and T_match, and requires |T_match(k) - T_match(k-1)| < T_match_tol [K] for convergence (6 K: update log stage 3 section 75). Needs an EXHALE that writes the flux and Conduction on.",
   "energy_coupling": false,
@@ -195,6 +209,16 @@ CONFIG_TEMPLATE = r"""{
 """
 
 CONFIG_DEFAULTS = {
+    'wind_route': 'march',
+    'march_driver': os.path.abspath(os.path.join(os.path.dirname(__file__),
+                                                '../../LHS1140b/tools/march_case.py')),
+    'march_checker': None,
+    'march_chunk_steps': 50001,
+    'march_cfl': 0.15,
+    'march_snapshot_interval': 10000,
+    'march_diagnostic_interval': 1000,
+    'march_lock': '/tmp/k07_stage3_exhale_lart4.lock',
+    'march_command_timeout': 30*86400,
     'python': sys.executable,
     'adapter': os.path.join(os.path.dirname(os.path.abspath(__file__)),
                             'photochem_to_lower_profile.py'),
@@ -247,6 +271,33 @@ def read_configuration(path):
     # the narrative: it is the one thing that told the 0.8.4 and the 0.9.0
     # chemistry apart when both environments existed.
     merged['python_named_by_config'] = 'python' in cfg
+    if merged['wind_route']=='march' and 'omp_num_threads' not in cfg:
+        merged['omp_num_threads']=12
+    if merged['wind_route'] not in ('march', 'jfnk'):
+        raise SystemExit('wind_route must be march or jfnk')
+    for key in ('march_chunk_steps','march_snapshot_interval','march_diagnostic_interval'):
+        value=merged[key]
+        if isinstance(value,bool) or not isinstance(value,int) or value < (2 if key=='march_chunk_steps' else 0):
+            raise SystemExit(key+' has an invalid integer value')
+    for key in ('march_cfl','march_command_timeout'):
+        if isinstance(merged[key],bool):raise SystemExit(key+' must be positive and finite')
+        try:value=float(merged[key])
+        except (TypeError,ValueError) as exc:raise SystemExit(key+' must be positive and finite') from exc
+        if not math.isfinite(value) or value<=0:raise SystemExit(key+' must be positive and finite')
+        merged[key]=value
+    if merged['wind_route']=='march':
+        threads=merged['omp_num_threads']
+        if isinstance(threads,bool) or not isinstance(threads,int) or not 1<=threads<=12:
+            raise SystemExit('march omp_num_threads must be an integer from 1 to 12')
+        if merged['march_lock']!='/tmp/k07_stage3_exhale_lart4.lock':
+            raise SystemExit('march route requires the common host lock')
+        profile=merged['profile_name']
+        if (not isinstance(profile,str) or not profile or os.path.isabs(profile)
+                or '..' in profile.split('/') or len(profile.split())!=1):
+            raise SystemExit('march profile_name must be a relative path inside the phase')
+        if not os.path.isfile(merged['march_driver']):
+            raise SystemExit('march_driver is absent: '+str(merged['march_driver'])+
+                '; supply an explicit reviewed march_driver (required in v1.00) or select wind_route jfnk')
     return merged
 
 
@@ -812,12 +863,459 @@ def copy_solved_state_to_ic(source_output, target_output):
         shutil.copyfile(exact_source, exact_target)
 
 
-def solve_escape_wind(cfg, iter_dir, seed_output, log):
+def marching_flux_window(keys, tol):
+    """Resolved H-nucleus and He fluxes on the requested r >= 2 R_p window.
+
+    The production report uses r_esc as its lower cutoff. Do not silently
+    substitute another cutoff or component-1 (metals included) for H nuclei.
+    """
+    lower = real_key(keys, 'steady_flux_window_r_lo_Rp')
+    if lower is None or not np.isfinite(lower) or abs(lower-2.0) > 16*np.finfo(float).eps:
+        return None, 'march closure requires the measured window r >= 2 R_p (Escape radius 2)', []
+    required = ('steady_F_Hnuc_median', 'steady_F_Hnuc_spread')
+    missing = missing_keys(keys, required)
+    if missing:
+        return None, 'march closure needs hydrogen-nucleus fluxes, not component-1 mass', missing
+    measurement = steady_flux_window(keys)
+    if not flux_window_resolved(measurement, tol):
+        return None, 'march far-field H and He flux window is UNRESOLVED', []
+    if int(measurement.nface) < 2:
+        return None, 'march far-field window needs at least two faces for a radial spread', []
+    measurement.reason = ('marching-accepted state; measured on r >= 2 R_p; '
+                          'far-field flux extrapolated to the matching surface; '
+                          'finite H-nucleus/He fluxes and radial spreads checked')
+    return measurement, measurement.reason, []
+
+
+def march_environment(cfg, log):
+    """A physical trajectory must not inherit a stationary/diagnostic override."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith('EXHALE_')}
+    ignored = sorted(k for k in cfg.get('exhale_env', {}) if k.startswith('EXHALE_'))
+    if ignored:
+        log('  march: stationary EXHALE overrides not used: '+', '.join(ignored))
+    env.update(OMP_NUM_THREADS=str(cfg['omp_num_threads']),
+               MKL_NUM_THREADS='1', OPENBLAS_NUM_THREADS='1')
+    return env
+
+
+def march_command(command, env, path, timeout):
+    """Bound our child and descendants, including detached EXHALE sessions.
+
+    On timeout stop the controller before enumerating its descendants.
+    Signals use recorded PID start times, never a process name or another
+    worker's process group. Linux /proc is already required by the driver.
+    """
+    import signal
+    def processes():
+        result={}
+        for name in os.listdir('/proc'):
+            if not name.isdigit():continue
+            try:
+                with open('/proc/'+name+'/stat') as fh:
+                    fields=fh.read().rsplit(')',1)[1].split()
+                result[int(name)]=(int(fields[1]),fields[19],fields[0])
+            except (OSError,ValueError,IndexError):continue
+        return result
+    def signal_owned(pid,started,sig):
+        current=processes().get(pid)
+        if current and current[1]==started and current[2]!='Z':
+            try:os.kill(pid,sig)
+            except ProcessLookupError:pass
+    with open(path,'x') as fh:
+        child=subprocess.Popen(command,env=env,stdout=fh,stderr=subprocess.STDOUT,start_new_session=True)
+        try:return child.wait(timeout=timeout)
+        except subprocess.TimeoutExpired as exc:
+            try:os.kill(child.pid,signal.SIGSTOP)
+            except ProcessLookupError:pass
+            table=processes();owned={child.pid}
+            while True:
+                more={pid for pid,value in table.items() if value[0] in owned}
+                if more<=owned:break
+                owned|=more
+            identities={pid:table[pid][1] for pid in owned if pid in table}
+            for pid,started in identities.items():signal_owned(pid,started,signal.SIGTERM)
+            # A stopped Python controller must run to receive its TERM.
+            if child.pid in identities:signal_owned(child.pid,identities[child.pid],signal.SIGCONT)
+            deadline=time.monotonic()+10
+            while time.monotonic()<deadline:
+                table=processes()
+                if not any(pid in table and table[pid][1]==stamp and table[pid][2]!='Z'
+                           for pid,stamp in identities.items()):break
+                time.sleep(.05)
+            for pid,started in identities.items():signal_owned(pid,started,signal.SIGKILL)
+            child.wait(timeout=10)
+            raise ClosureStop('march command timed out; owned controller/descendants stopped; see '+path) from exc
+
+
+def marching_state_digest(path):
+    import hashlib
+    h=hashlib.sha256()
+    with open(path,'rb') as fh:
+        for block in iter(lambda:fh.read(1024*1024),b''):
+            h.update(block)
+    return h.hexdigest()
+
+
+def marching_acceptance_manifest(iter_dir,cfg):
+    """Freeze the accepted history, consumed files, and verification policy."""
+    paths={os.path.abspath(__file__),os.path.abspath(sch.__file__),os.path.abspath(cfg['exhale_bin']),
+           os.path.abspath(cfg['march_driver']),
+           os.path.abspath(cfg.get('march_checker') or os.path.join(
+               os.path.dirname(cfg['march_driver']),'marching_acceptance.py'))}
+    reader=os.path.abspath(os.path.join(os.path.dirname(cfg.get('march_checker') or
+        os.path.join(os.path.dirname(cfg['march_driver']),'marching_acceptance.py')),
+        '../../examples/exhale_io.py'))
+    if os.path.isfile(reader):paths.add(reader)
+    for directory in ('march_seed','march_run','output'):
+        for here,dirs,files in os.walk(os.path.join(iter_dir,directory)):
+            for leaf in files:
+                path=os.path.join(here,leaf)
+                if os.path.isfile(path): paths.add(os.path.abspath(path))
+    for leaf in ('input.inp','marching_acceptance.txt','march_route_manifest.txt',
+                 'march_iteration_trial.json',
+                 cfg['profile_name'],'base.inp','metals.inp','wind_face_radiation.txt',
+                 'conducted_heat_column.txt'):
+        path=os.path.join(iter_dir,leaf)
+        if os.path.isfile(path):paths.add(os.path.abspath(path))
+    manifest=os.path.join(iter_dir,'march_acceptance_manifest.txt')
+    with open(manifest,'x') as fh:
+        fh.write('# EXHALE_MARCHING_ACCEPTANCE 1 K=3\n')
+        for path in sorted(paths):fh.write(marching_state_digest(path)+' '+path+'\n')
+    return manifest
+
+
+def verify_marching_acceptance(iter_dir,cfg):
+    """A stationary closure history cannot become a marching result on resume."""
+    manifest=os.path.join(iter_dir,'march_acceptance_manifest.txt')
+    try:
+        with open(manifest) as fh:lines=fh.read().splitlines()
+        if not lines or lines[0]!='# EXHALE_MARCHING_ACCEPTANCE 1 K=3':
+            raise ValueError('missing marching acceptance policy')
+        paths=set()
+        for line in lines[1:]:
+            fields=line.split(None,1)
+            if len(fields)!=2:raise ValueError('malformed manifest')
+            checksum,path=fields
+            if path in paths or not re.fullmatch('[0-9a-f]{64}',checksum):
+                raise ValueError('duplicate or malformed manifest entry')
+            paths.add(path)
+            if marching_state_digest(path)!=checksum:
+                raise ValueError('changed acceptance input: '+path)
+        required=[os.path.abspath(cfg['exhale_bin']),os.path.abspath(cfg['march_driver']),
+                  os.path.abspath(__file__)]
+        required += [os.path.abspath(os.path.join(iter_dir,'output',s+'.txt'))
+                     for s in ('Hydro_ioniz','Ion_species','conserved_state')]
+        required += [os.path.abspath(os.path.join(iter_dir,p)) for p in (
+            'marching_acceptance.txt','input.inp','output/EXHALE_resolved.out',
+            'march_iteration_trial.json','march_route_manifest.txt')]
+        checker=cfg.get('march_checker') or os.path.join(os.path.dirname(cfg['march_driver']),
+                                                       'marching_acceptance.py')
+        required.append(os.path.abspath(checker))
+        if not set(required)<=paths:raise ValueError('incomplete acceptance manifest')
+        for directory in ('march_seed','march_run','output'):
+            for here,dirs,files in os.walk(os.path.join(iter_dir,directory)):
+                for leaf in files:
+                    path=os.path.join(here,leaf)
+                    if os.path.isfile(path) and os.path.abspath(path) not in paths:
+                        raise ValueError('unrecorded file in accepted state: '+path)
+    except (OSError,ValueError) as exc:
+        raise ClosureStop('saved wind has no unchanged marching acceptance: '+str(exc)) from exc
+
+
+def remaining_marching_case_budget_totals(ledger):
+    """The tools worker's shared ledger; refuse malformed/overspent totals."""
+    wall=crossings=0.0
+    if os.path.isfile(ledger):
+        with open(ledger) as fh:
+            for line in fh:
+                if not line.strip() or line.startswith('#'):continue
+                fields=dict(x.split('=',1) for x in line.split() if '=' in x)
+                try:
+                    dw=float(fields['wall_charged'])
+                    dc=0.0
+                    if fields.get('tau') not in (None,'none'):
+                        tau=float(fields['tau']);start=float(fields['t_start']);end=float(fields['t_end'])
+                        if not all(np.isfinite(x) for x in (tau,start,end)) or tau<=0 or end<start:
+                            raise ValueError('invalid physical interval')
+                        dc=(end-start)/tau
+                    if not np.isfinite(dw) or dw<0:raise ValueError('invalid wall charge')
+                except (KeyError,ValueError) as exc:
+                    raise ClosureStop('invalid shared marching ledger: '+ledger) from exc
+                wall+=dw;crossings+=dc
+    return wall,crossings
+
+
+def remaining_marching_case_budget(case_dir):
+    wall,crossings=remaining_marching_case_budget_totals(os.path.join(case_dir,'budget_ledger.txt'))
+    if wall>=10*86400 or 8-crossings<3:
+        raise ClosureStop('case budget cannot provide a new K=3 window')
+    return 10*86400-wall,8-crossings
+
+
+def charge_marching_preparation(ledger,phase,seconds):
+    """Charge column/seed/controller work to the driver's existing ledger."""
+    import fcntl
+    lock=open(ledger+'.lock','a')
+    try:
+        fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        if not os.path.isfile(ledger):raise ClosureStop('march setup did not establish the shared ledger')
+        with open(ledger,'a') as fh:
+            fh.write('phase=closure_%s chunk=0 wall_charged=%.9f t_start=0 t_end=0 tau=none\n'
+                     %(phase,seconds))
+            fh.flush();os.fsync(fh.fileno())
+    except BlockingIOError as exc:
+        raise ClosureStop('another controller holds the shared case ledger') from exc
+    finally:lock.close()
+
+
+def marching_trial_record(iter_dir, trial, verify=False):
+    """Persist the exact column trial before preparation; compare it on resume."""
+    required={'k','Phi_H','Phi_He','F_cond','Phi_H2','omega','energy_coupling'}
+    if (set(trial)!=required or isinstance(trial['k'],bool) or not isinstance(trial['k'],int)
+            or trial['k']<0 or not isinstance(trial['energy_coupling'],bool)):
+        raise ClosureStop('invalid marching iteration trial fields')
+    for key in ('Phi_H','Phi_He','omega','F_cond','Phi_H2'):
+        value=trial[key]
+        if value is None and key in ('F_cond','Phi_H2'):continue
+        if isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value):
+            raise ClosureStop('nonfinite or invalid marching trial '+key)
+    path=os.path.join(iter_dir,'march_iteration_trial.json')
+    text=json.dumps(trial,sort_keys=True,allow_nan=False,indent=2)+'\n'
+    if verify:
+        try:
+            def unique(pairs):
+                values=dict(pairs)
+                if len(values)!=len(pairs):raise ValueError('duplicate trial field')
+                return values
+            with open(path) as fh:saved=json.load(fh,object_pairs_hook=unique)
+            if json.dumps(saved,sort_keys=True,allow_nan=False,indent=2)+'\n'!=text:
+                raise ValueError('recomputed trial differs')
+        except (OSError,ValueError) as exc:
+            raise ClosureStop('marching iteration trial does not match: '+str(exc)) from exc
+    else:
+        import tempfile
+        fd,tmp=tempfile.mkstemp(prefix='.march_trial.',dir=iter_dir,text=True)
+        try:
+            with os.fdopen(fd,'w') as fh:
+                fh.write(text);fh.flush();os.fsync(fh.fileno())
+            os.link(tmp,path)  # exclusive publication; never replace a trial
+        finally:
+            os.unlink(tmp)
+    return path
+
+
+def marching_profile_matches_input(cfg, path):
+    """The column profile and the profile named by the wind must be the same."""
+    name=cfg['profile_name']
+    if (not isinstance(name,str) or not name or os.path.isabs(name)
+            or '..' in name.split('/') or len(name.split())!=1):
+        raise ClosureStop('march profile_name must be a relative path inside the phase')
+    with open(path) as fh:
+        names=[line.split(':',1)[1].split('#',1)[0].strip() for line in fh
+               if line.lstrip().startswith('Lower atmosphere profile:')]
+    if names!=[cfg['profile_name']]:
+        raise ClosureStop('march input Lower atmosphere profile must equal profile_name: '+
+                          repr(names)+' vs '+repr(cfg['profile_name']))
+
+
+def marching_route_files(cfg, iter_dir):
+    """Immutable problem and code files; the driver's evolving journal is separate."""
+    driver=os.path.abspath(cfg['march_driver'])
+    checker=os.path.abspath(cfg.get('march_checker') or os.path.join(os.path.dirname(driver),'marching_acceptance.py'))
+    paths={driver,checker,os.path.abspath(cfg['exhale_bin']),os.path.abspath(__file__),os.path.abspath(sch.__file__)}
+    reader=os.path.abspath(os.path.join(os.path.dirname(checker),'../../examples/exhale_io.py'))
+    if os.path.isfile(reader):paths.add(reader)
+    for leaf in ('input.inp',cfg['profile_name'],'march_iteration_trial.json'):
+        path=os.path.abspath(os.path.join(iter_dir,leaf))
+        if not os.path.isfile(path):raise ClosureStop('march route required file is absent: '+path)
+        paths.add(path)
+    for leaf in ('base.inp','metals.inp','wind_face_radiation.txt','conducted_heat_column.txt'):
+        path=os.path.abspath(os.path.join(iter_dir,leaf))
+        if os.path.isfile(path):paths.add(path)
+    return {path:marching_state_digest(path) for path in paths}
+
+
+def marching_route_manifest(cfg,iter_dir,verify=False):
+    frozen=marching_route_files(cfg,iter_dir)
+    path=os.path.join(iter_dir,'march_route_manifest.txt')
+    if verify:
+        try:
+            with open(path) as fh:lines=fh.read().splitlines()
+            if not lines or lines[0]!='# EXHALE_MARCHING_ROUTE 2':raise ValueError('missing route policy')
+            saved={}
+            for line in lines[1:]:
+                h,name=line.split(None,1)
+                if name in saved or not re.fullmatch('[0-9a-f]{64}',h):raise ValueError('malformed route manifest')
+                saved[name]=h
+            if saved!=frozen:raise ValueError('route input or code changed')
+        except (OSError,ValueError) as exc:
+            raise ClosureStop('march route manifest verification failed: '+str(exc)) from exc
+    else:
+        with open(path,'x') as fh:
+            fh.write('# EXHALE_MARCHING_ROUTE 2\n')
+            for name,h in sorted(frozen.items()):fh.write(h+' '+name+'\n')
+            fh.flush();os.fsync(fh.fileno())
+    return frozen
+
+
+def march_escape_wind(cfg,iter_dir,out_dir,log,preparation_seconds=0.0,resume=False):
+    """Continue an existing physical phase; only the checker's ACCEPTED is a wind."""
+    import glob
+    import gzip
+    started=time.monotonic()
+    case_dir=os.path.dirname(os.path.abspath(iter_dir))
+    ledger=os.path.join(case_dir,'budget_ledger.txt')
+    phase=os.path.basename(os.path.abspath(iter_dir))
+    driver=os.path.abspath(cfg['march_driver'])
+    checker=os.path.abspath(cfg.get('march_checker') or os.path.join(os.path.dirname(driver),'marching_acceptance.py'))
+    binary=os.path.abspath(cfg['exhale_bin'])
+    marching_profile_matches_input(cfg,os.path.join(iter_dir,'input.inp'))
+    try:frozen=marching_route_manifest(cfg,iter_dir,verify=resume)
+    except OSError as exc:raise ClosureStop('march route required file is absent: '+str(exc)) from exc
+    prepared=os.path.join(iter_dir,'march_seed');wind=os.path.join(iter_dir,'march_run')
+    env=march_environment(cfg,log)
+    def command(label,argv):
+        if marching_route_files(cfg,iter_dir)!=frozen:
+            raise ClosureStop('march binary/tool/input changed during the phase')
+        log('  march '+label+': '+repr(argv))
+        path=os.path.join(iter_dir,'march_'+label+'.log')
+        ordinal=1
+        while os.path.lexists(path):
+            ordinal+=1
+            path=os.path.join(iter_dir,'march_'+label+'_%04d.log'%ordinal)
+        rc=march_command(argv,env,path,cfg['march_command_timeout'])
+        if rc!=0:raise ClosureStop('march '+label+' exited '+str(rc)+'; records retained; resume uses driver status')
+        if marching_route_files(cfg,iter_dir)!=frozen:
+            raise ClosureStop('march binary/tool/input changed during '+label)
+        return path
+    def status():
+        path=command('status',[sys.executable,driver,'status',wind])
+        state={}
+        with open(path) as fh:
+            for line in fh:
+                if not line.strip() or line.startswith('#'):continue
+                key,separator,value=line.rstrip('\n').partition(' ')
+                if not separator or key in state:raise ClosureStop('malformed or duplicate march status field: '+key)
+                state[key]=value
+        return state
+    run=[sys.executable,driver,'run',wind,'--threads',str(cfg['omp_num_threads']),
+         '--host-lock',cfg['march_lock']]
+    if not resume:
+        remaining_marching_case_budget(case_dir)
+        os.makedirs(os.path.join(prepared,'output'))
+        for leaf in ('input.inp','base.inp','metals.inp',cfg['profile_name'],
+                     'conducted_heat_column.txt','wind_face_radiation.txt','target_grid_Hydro_ioniz.txt'):
+            source=os.path.join(iter_dir,leaf)
+            if os.path.isfile(source):
+                target=os.path.join(prepared,leaf)
+                os.makedirs(os.path.dirname(target),exist_ok=True)
+                shutil.copy2(source,target)
+        # A new column is a new source problem. Only its first entry is
+        # dimensional; later chunks are exact trajectory restarts.
+        for stem in ('Hydro_ioniz','Ion_species'):
+            shutil.copy2(os.path.join(out_dir,stem+'_IC.txt'),os.path.join(prepared,'output',stem+'.txt'))
+        setup=[sys.executable,driver,'setup',wind,'--seed',prepared,'--binary',binary,
+               '--chunk-steps',str(cfg['march_chunk_steps']),'--cfl',str(cfg['march_cfl']),
+               '--dimensional-seed','--ledger',ledger,'--case-label',os.path.basename(case_dir),
+               '--K','3','--budget-crossings','8','--budget-wall-days','10',
+               '--snapshot-interval',str(cfg['march_snapshot_interval']),
+               '--diagnostic-interval',str(cfg['march_diagnostic_interval'])]
+        for line in cfg.get('input_keys',[]):
+            if line.lstrip().startswith('Restart option change:'):
+                tokens=line.split(':',1)[1].strip()
+                if not tokens:raise ClosureStop('empty explicit Restart option change')
+                setup+=['--restart-option-change',tokens]
+        command('setup',setup)
+        charge_marching_preparation(ledger,phase,preparation_seconds+time.monotonic()-started)
+        remaining_marching_case_budget(case_dir)
+        command('run',run)
+        verification_start=time.monotonic()
+        state=status()
+    else:
+        if not os.path.isfile(os.path.join(wind,'case_manifest.txt')):
+            raise ClosureStop('march setup is incomplete; rebuild the column through run_closure')
+        state=status()
+        # Resume charges verification/status work, never the column a second
+        # time. The driver owns the remaining physical-time budget of this
+        # EXISTING phase; a fresh K=3 budget is not demanded here.
+        charge_marching_preparation(ledger,phase,preparation_seconds+time.monotonic()-started)
+        verification_start=time.monotonic()
+        verdict=state.get('status')
+        if verdict in ('NOT_ACCEPTED','STOPPED','MARCHED'):
+            raise ClosureStop('march phase has terminal verdict '+verdict+'; nothing reruns')
+        if verdict!='ACCEPTED':
+            if verdict not in ('READY','RUNNING'):raise ClosureStop('unknown march status: '+str(verdict))
+            allowed=state.get('resumable','')
+            if allowed=='yes':pass
+            elif (allowed.startswith('no (chunk ') and ' is uncertain ' in allowed and
+                  '(run --reconcile-abandoned)' in allowed):
+                run+=['--reconcile-abandoned']
+            else:raise ClosureStop('march phase is not resumable: '+allowed)
+            command('run',run)
+            state=status()
+    if state.get('status')!='ACCEPTED':raise ClosureStop('march phase is not ACCEPTED')
+    snapshot=os.path.realpath(state.get('last_snapshot',''))
+    if os.path.commonpath((os.path.realpath(wind),snapshot))!=os.path.realpath(wind) or not os.path.isdir(snapshot):
+        raise ClosureStop('last_snapshot is not an admitted directory of this phase')
+    with open(os.path.join(wind,'phase_id.txt')) as fh:identity=fh.read().strip()
+    prefix=os.path.join(iter_dir,'march_checked')
+    cached=os.path.exists(os.path.join(iter_dir,'march_acceptance_manifest.txt'))
+    if cached:verify_marching_acceptance(iter_dir,cfg)
+    checking=[sys.executable,checker,os.path.join(wind,'snapshots'),
+        os.path.join(wind,'output','Hydro_ioniz.txt'),'--K','3','--require-ion',
+        '--phase',identity,'--input',os.path.join(wind,'input.inp'),'--out',prefix]
+    if cached:checking+=['--no-plot']
+    command('checker',checking)
+    with open(prefix+'.txt') as fh:report=fh.read()
+    if 'VERDICT: ACCEPTED' not in report.splitlines():raise ClosureStop('checker did not write ACCEPTED')
+    for leaf in ('Hydro_ioniz.txt','Ion_species.txt'):
+        if marching_state_digest(os.path.join(snapshot,leaf))!=marching_state_digest(os.path.join(wind,'output',leaf)):
+            raise ClosureStop('accepted final pair differs from last_snapshot')
+    source_output=os.path.join(wind,'output')
+    for leaf in ('Hydro_ioniz.txt','Ion_species.txt','conserved_state.txt','EXHALE_resolved.out'):
+        if not os.path.isfile(os.path.join(source_output,leaf)):raise ClosureStop('accepted march lacks '+leaf)
+    def copy_verified(source,target):
+        if os.path.exists(target):
+            if marching_state_digest(source)!=marching_state_digest(target):
+                raise ClosureStop('existing accepted output differs from verified source: '+target)
+        else:shutil.copy2(source,target)
+    for source in glob.glob(os.path.join(source_output,'*')):
+        if os.path.isfile(source) and not source.endswith('_IC.txt'):
+            copy_verified(source,os.path.join(out_dir,os.path.basename(source)))
+    for leaf in ('EXHALE_resolved.out','element_flux_profile.txt','Cooling_breakdown.txt'):
+        source=os.path.join(snapshot,leaf)
+        if os.path.isfile(source):copy_verified(source,os.path.join(out_dir,leaf))
+    copy_verified(prefix+'.txt',os.path.join(iter_dir,'marching_acceptance.txt'))
+    png=os.path.join(iter_dir,'marching_acceptance.png')
+    if os.path.isfile(prefix+'.png') and not os.path.exists(png):shutil.copy2(prefix+'.png',png)
+    manifest=os.path.join(iter_dir,'march_acceptance_manifest.txt')
+    if os.path.exists(manifest):verify_marching_acceptance(iter_dir,cfg)
+    else:marching_acceptance_manifest(iter_dir,cfg)
+    logs=glob.glob(os.path.join(wind,'chunk_*.log*'));mass_line=''
+    # New controllers retain logs in chunks; keep the old location readable.
+    logs+=glob.glob(os.path.join(wind,'chunks','**','*.log*'),recursive=True)
+    for path in sorted(logs):
+        opener=gzip.open if path.endswith('.gz') else open
+        with opener(path,'rt') as fh:
+            for line in fh:
+                if 'steady-state Mdot' in line:mass_line=line
+    hits=re.findall(r'steady-state Mdot\s*=\s*([-\d.EDed+]+)',mass_line)
+    mdot=float(hits[-1].replace('D','E').replace('d','e')) if hits else float('nan')
+    charge_marching_preparation(ledger,phase,time.monotonic()-verification_start)
+    # A budget applies to the whole case, not a fresh ten days per column.
+    wall,_=remaining_marching_case_budget_totals(ledger)
+    if wall>10*86400:raise ClosureStop('case active wall limit exceeded during verification')
+    log('  wind: marching ACCEPTED; stationary certificates are diagnostics')
+    return out_dir,0,mdot
+
+
+def solve_escape_wind(cfg, iter_dir, seed_output, log, preparation_start=None):
     """The wind: the seed solution becomes the initial condition, the solver
     runs, then a post-processing pass on the solved state.  `output/` must
     exist before EXHALE starts.
 
-    The default route is the coupled JFNK under `EXHALE_PTC`, which is how
+    The default route is physical marching to profile acceptance. The explicitly
+    selected jfnk route uses `EXHALE_PTC`, which is how
     `archive_20260830/exhale/finish_case.sh` drove it; a configuration that
     states `input_keys` names another one.
     """
@@ -915,6 +1413,25 @@ def solve_escape_wind(cfg, iter_dir, seed_output, log):
     # The rung's own lines come first, so a configuration that states a
     # different route (`input_keys`) overrides the coupled JFNK defaults
     # rather than being overridden by them.
+    route = cfg.get('wind_route','march')
+    if route == 'march':
+        log('  wind route march: stationary controls are not used; physics keys retained')
+        extra = tuple(input_line_as_update(line) for line in cfg['input_keys'])
+        write_input_keys(inp, extra,
+                         drop=INPUT_DROP if cfg['input_drop'] is None else tuple(cfg['input_drop']))
+        write_input_keys(inp, (
+            ('Load IC?','True'), ('Do only PP:','False'),
+            ('Run mode:','phys'), ('Restart intent:','trajectory'),
+            ('Reconstruction scheme:','WENO3'),
+            ('CFL:',str(cfg['march_cfl'])),
+            ('Marching snapshot interval:',str(cfg['march_snapshot_interval'])),
+            ('Marching diagnostic interval:',str(cfg['march_diagnostic_interval'])),
+            ), drop=('Solver','Resid tol','du_th','IC mode','Valve eps','Restart option change'))
+        marching_profile_matches_input(cfg,inp)
+        return march_escape_wind(cfg,iter_dir,out_dir,log,
+            time.monotonic()-preparation_start if preparation_start is not None else 0.0)
+    if route != 'jfnk':
+        raise ClosureStop('wind_route must be march or jfnk')
     extra = tuple(input_line_as_update(line) for line in cfg['input_keys'])
     drop = INPUT_DROP if cfg['input_drop'] is None else tuple(cfg['input_drop'])
     write_input_keys(inp, extra + INPUT_JFNK + (
@@ -1001,7 +1518,24 @@ def solve_escape_wind(cfg, iter_dir, seed_output, log):
     elif info != 0:
         log('  wind: the pseudo-time continuation addresses '
             'hydrodynamic_refusal and nothing else, so none is taken')
-    if info != 0 or rc == 3:
+    # A COMPOSITION REFUSAL CARRIED AS A FLAG (opt-in, configuration key
+    # `accept_composition_refusal`, user decision 2026-10-27).  The ending
+    # class is the one rule of run_case.sh: the three hydrodynamic rows are
+    # inside their tolerances and only composition rows refuse the state.
+    # Under the acceptance by the precision of the observable
+    # (md/acceptance_by_observable_precision_20261009.md, user decisions
+    # 2026-10-09/10) the certification is a diagnostic, so such a state is
+    # carried with the refusal recorded, and its use for an observable needs
+    # the continuation-stability check (A1) of that note, which the caller
+    # makes.  Every other failed ending still stops the closure.
+    if (info != 0 or rc == 3) and ending == 'composition_refusal' \
+            and cfg.get('accept_composition_refusal', False):
+        log('  wind: NOT CERTIFIED, composition refusal carried as a flag '
+            '(accept_composition_refusal): %s' % reason)
+        with open(os.path.join(iter_dir, 'WIND_FLAG'), 'w') as fh:
+            fh.write('composition_refusal rc=%d info=%s: %s\n'
+                     % (rc, info, reason))
+    elif info != 0 or rc == 3:
         log(tail_of(runlog))
         raise ClosureStop('the stationary solve failed (rc=%d, info=%s); '
                           'see %s' % (rc, info, runlog))
@@ -1015,8 +1549,7 @@ def solve_escape_wind(cfg, iter_dir, seed_output, log):
     # the mass-loss line from it; its exit status is 2 when the state
     # claimed to be stationary and the measurement refuses it.
     write_input_keys(inp, (('Do only PP:', 'False'),
-                           ('Restart intent:', 'stationary evaluate'),
-                           ('Solver:', 'Newton')))
+                           ('Restart intent:', 'stationary evaluate')),drop=('Solver',))
     # The post-processing pass runs WITHOUT the PTC variables, exactly as
     # `finish_case.sh` does (there they are set inline on the JFNK command
     # alone).  With EXHALE_PTC=1 still set the binary re-enters the steady
@@ -1071,6 +1604,7 @@ SPLIT_HISTORY_COLUMNS = ' trial_F_H2 meas_F_H2 eps_H2'
 
 HISTORY_HEADER = (
     '# EXHALE elemental-flux closure history\n'
+    '# exhale_info is route status: march 0 means profile acceptance, not a stationary root\n'
     '# fluxes [g/s], eps and spreads [-], HeH_match = He/H number ratio at'
     ' the match\n'
     '# window_used: overlap = the match window; steady = the far field,'
@@ -1082,12 +1616,15 @@ def history_path(case_dir):
     return os.path.join(case_dir, 'closure_history.txt')
 
 
-def append_history_row(case_dir, row):
+def append_history_row(case_dir, row, exact=False):
     path = history_path(case_dir)
     new = not os.path.isfile(path)
     energy = 'F_cond_trial' in row
     split = 'trial_F_H2' in row
-    with open(path, 'a') as fh:
+    import io
+    from contextlib import nullcontext
+    buffer=io.StringIO() if exact else None
+    with (nullcontext(buffer) if exact else open(path, 'a')) as fh:
         if new:
             header = HISTORY_HEADER
             if energy:
@@ -1106,31 +1643,55 @@ def append_history_row(case_dir, row):
                     + ENERGY_HISTORY_COLUMNS + SPLIT_HISTORY_COLUMNS)\
                     .replace('# window_used', '# F_H2 [g/s of the hydrogen'
                              ' nuclei H2 carries through the matching'
-                             ' surface], eps_H2 on the measured F_H\n'
+                             ' surface], eps_H2 on max(|F_H2|, |F_H|) measured\n'
                              '# window_used')
             fh.write(header)
-        fh.write('%4d %18.10E %18.10E %18.10E %18.10E %12.5E %12.5E'
-                 ' %8.4f %-8s %12.5E %12.5E %14.7E %8.3f %s %s'
-                 % (row['k'], row['trial_F_H'], row['trial_F_He'],
-                    row['meas_F_H'], row['meas_F_He'],
-                    row['eps_H'], row['eps_He'], row['omega'],
-                    row['window_used'], _or_nan(row['window_spread_H']),
-                    _or_nan(row['window_spread_He']), row['HeH_match'],
-                    row['log10_Mdot'], row['solution_id'],
-                    row['exhale_info']))
-        if energy:
-            fh.write(' %14.7E %14.7E %10.4f' % (row['F_cond_trial'],
-                                               row['F_cond_meas'],
-                                               row['T_match']))
-        elif split:
-            # the split columns sit after the energy columns; without the
-            # energy coupling they are written in their place
-            fh.write(' %14s %14s %10s' % ('nan', 'nan', 'nan'))
-        if split:
-            fh.write(' %18.10E %18.10E %12.5E' % (row['trial_F_H2'],
-                                                 row['meas_F_H2'],
-                                                 row['eps_H2']))
-        fh.write('\n')
+        if exact:
+            numeric=('trial_F_H','trial_F_He','meas_F_H','meas_F_He','eps_H','eps_He','omega')
+            fields=[str(row['k'])]+[format(row[key],'.17E') for key in numeric]
+            fields += [row['window_used']]+[format(_or_nan(row[key]),'.17E') for key in ('window_spread_H','window_spread_He')]
+            fields += [format(row['HeH_match'],'.17E'),format(row['log10_Mdot'],'.17E'),str(row['solution_id']),str(row['exhale_info'])]
+            if energy:fields += [format(row[key],'.17E') for key in ('F_cond_trial','F_cond_meas','T_match')]
+            elif split:fields += ['nan','nan','nan']
+            if split:fields += [format(row[key],'.17E') for key in ('trial_F_H2','meas_F_H2','eps_H2')]
+            fh.write(' '.join(fields)+'\n')
+        else:
+            fh.write('%4d %18.10E %18.10E %18.10E %18.10E %12.5E %12.5E'
+                     ' %8.4f %-8s %12.5E %12.5E %14.7E %8.3f %s %s'
+                     % (row['k'], row['trial_F_H'], row['trial_F_He'],
+                        row['meas_F_H'], row['meas_F_He'],
+                        row['eps_H'], row['eps_He'], row['omega'],
+                        row['window_used'], _or_nan(row['window_spread_H']),
+                        _or_nan(row['window_spread_He']), row['HeH_match'],
+                        row['log10_Mdot'], row['solution_id'],
+                        row['exhale_info']))
+            if energy:
+                fh.write(' %14.7E %14.7E %10.4f' % (row['F_cond_trial'],
+                                                   row['F_cond_meas'],
+                                                   row['T_match']))
+            elif split:
+                # the split columns sit after the energy columns; without the
+                # energy coupling they are written in their place
+                fh.write(' %14s %14s %10s' % ('nan', 'nan', 'nan'))
+            if split:
+                fh.write(' %18.10E %18.10E %12.5E' % (row['trial_F_H2'],
+                                                     row['meas_F_H2'],
+                                                     row['eps_H2']))
+            fh.write('\n')
+    if exact:
+        import tempfile
+        existing=''
+        if not new:
+            with open(path) as fh:existing=fh.read()
+            if existing and not existing.endswith('\n'):raise ClosureStop('incomplete closure history; records retained')
+        fd,tmp=tempfile.mkstemp(prefix='.closure_history.',dir=case_dir,text=True)
+        try:
+            with os.fdopen(fd,'w') as fh:
+                fh.write(existing+buffer.getvalue());fh.flush();os.fsync(fh.fileno())
+            os.replace(tmp,path)
+        finally:
+            if os.path.exists(tmp):os.unlink(tmp)
+
 
 
 def read_history(case_dir):
@@ -1195,20 +1756,24 @@ def iteration_directory(case_dir, k):
     return os.path.join(case_dir, 'k%02d' % k)
 
 
-def measure_iteration(iter_dir, tol, log):
+def measure_iteration(iter_dir, tol, log, wind_route='jfnk'):
     """Read the resolved configuration of a finished wind solution and
     reduce it to one flux per element, saying which window supplied it."""
     keys, path = read_resolved_configuration(iter_dir)
     log('  measurement read from %s' % path)
     lacking = missing_keys(keys, PROVENANCE_KEYS)
-    meas, note, lacking_flux = select_flux_window(keys, tol)
+    if wind_route == 'march':
+        meas, note, lacking_flux = marching_flux_window(keys,tol)
+    elif wind_route == 'jfnk':
+        meas, note, lacking_flux = select_flux_window(keys,tol)
+    else:
+        raise ClosureStop('wind_route must be march or jfnk')
     if lacking or lacking_flux:
         log('  keys absent from this EXHALE_resolved.out (an older EXHALE'
             ' writes only the E1 set): ' + ', '.join(lacking + lacking_flux))
     if meas is None:
-        raise ClosureStop(
-            'neither flux window is usable: %s. The closure is UNRESOLVED on'
-            ' this configuration.' % note)
+        window='the r >= 2 R_p flux window is not usable' if wind_route=='march' else 'neither flux window is usable'
+        raise ClosureStop(window+': %s. The closure is UNRESOLVED on this configuration.' % note)
     log('  ' + note)
     log('  ' + meas.describe())
     return keys, meas
@@ -1261,13 +1826,16 @@ def hydrogen_in_h2_of_run(keys):
 
 
 def hydrogen_split_residual(measured_H2, trial_H2, measured_H):
-    """|F_H2,meas - Phi_H2| / |F_H,meas|: on the elemental hydrogen flux,
-    because the atomic share Phi_H - Phi_H2 can pass through zero."""
+    """|F_H2,meas - Phi_H2| / max(|F_H2,meas|, |F_H,meas|) (module docstring:
+    the H2 flux is the scale; the net hydrogen flux where it is larger)."""
     if measured_H2 is None or trial_H2 is None or measured_H is None or \
             not np.isfinite(measured_H2) or not np.isfinite(trial_H2) or \
-            not np.isfinite(measured_H) or measured_H == 0.0:
+            not np.isfinite(measured_H):
         return float('inf')
-    return abs(measured_H2 - trial_H2)/abs(measured_H)
+    scale = max(abs(measured_H2), abs(measured_H))
+    if scale == 0.0:
+        return float('inf')
+    return abs(measured_H2 - trial_H2)/scale
 
 
 def run_closure(case_dir, cfg, phi_H, phi_He, omega, tol, kmax, seed,
@@ -1279,6 +1847,8 @@ def run_closure(case_dir, cfg, phi_H, phi_He, omega, tol, kmax, seed,
     omega_E = float(cfg.get('energy_coupling_omega', 0.5))
     T_tol = float(cfg.get('T_match_tol', 6.0))
     T_match_prev = None
+    if cfg.get('wind_route','march')=='march' and not resume and os.path.isfile(history_path(case_dir)):
+        raise ClosureStop('existing closure history requires --resume')
     history = read_history(case_dir) if resume else []
     k0 = 0
     eps_prev = None
@@ -1295,7 +1865,9 @@ def run_closure(case_dir, cfg, phi_H, phi_He, omega, tol, kmax, seed,
             raise ClosureStop('the last history row has no resolved H and He'
                               ' flux measurement at the requested tolerance')
         saved_dir = iteration_directory(case_dir, last['k'])
-        _, saved_meas = measure_iteration(saved_dir, tol, log)
+        if cfg.get('wind_route','march')=='march':
+            verify_marching_acceptance(saved_dir,cfg)
+        _, saved_meas = measure_iteration(saved_dir, tol, log, cfg.get('wind_route','march'))
         if (saved_meas.window != last['window_used'] or
                 not np.isclose(saved_meas.F_H, last['meas_F_H'], rtol=1e-9,
                                atol=0.0) or
@@ -1342,12 +1914,23 @@ def run_closure(case_dir, cfg, phi_H, phi_He, omega, tol, kmax, seed,
     # k_max = 8 means eight iterations, k = 0 .. k_max-1 (design section 6.2).
     for k in range(k0, kmax):
         iter_dir = iteration_directory(case_dir, k)
-        if os.path.isdir(iter_dir):
-            stale = iter_dir + '.incomplete.%s' % time.strftime('%Y%m%d%H%M%S')
+        marching=cfg.get('wind_route','march')=='march'
+        trial=dict(k=k,Phi_H=phi_H,Phi_He=phi_He,F_cond=(fcond if energy else None),
+                   Phi_H2=phi_H2,omega=omega,energy_coupling=energy)
+        resume_marching=False
+        if os.path.isdir(iter_dir) and marching:
+            resume_marching=os.path.isfile(os.path.join(iter_dir,'march_run','case_manifest.txt'))
+            if not resume_marching and os.path.exists(os.path.join(iter_dir,'march_run','journal.txt')):
+                raise ClosureStop('march journal exists but setup manifest is missing; records retained')
+            if resume_marching or os.path.exists(os.path.join(iter_dir,'march_iteration_trial.json')):
+                marching_trial_record(iter_dir,trial,verify=True)
+        if os.path.isdir(iter_dir) and not resume_marching:
+            stale = iter_dir + '.incomplete.%d' % time.time_ns()
             os.rename(iter_dir, stale)
-            log('k=%d: an unrecorded iteration directory was set aside as %s'
-                % (k, stale))
-        os.makedirs(os.path.join(iter_dir, 'output'))
+            log('k=%d: setup not completed; unrecorded preparation was preserved at %s' % (k,stale))
+        if not resume_marching:
+            os.makedirs(os.path.join(iter_dir,'output'))
+            if marching:marching_trial_record(iter_dir,trial)
         log('k=%d: Phi_H = %.6E g/s, Phi_He = %.6E g/s, omega = %.4f'
             % (k, phi_H, phi_He, omega)
             + (', F_cond = %.6E erg/cm2/s, omega_E = %.4f' % (fcond, omega_E)
@@ -1360,20 +1943,32 @@ def run_closure(case_dir, cfg, phi_H, phi_He, omega, tol, kmax, seed,
         else:
             log('  hydrogen split at the matching surface: not stated yet,'
                 ' the chemistry puts the elemental flux on H2')
-        profile = solve_photochemical_lower_profile(
-            cfg, iter_dir, k, phi_H, phi_He, log,
-            fcond=(fcond if energy else None), phi_H2=phi_H2)
+        if resume_marching:
+            profile=os.path.join(iter_dir,cfg['profile_name'])
+            _,info,log10_mdot=march_escape_wind(cfg,iter_dir,os.path.join(iter_dir,'output'),log,resume=True)
+        else:
+            if marching:remaining_marching_case_budget(case_dir)
+            preparation_start=time.monotonic()
+            profile = solve_photochemical_lower_profile(
+                cfg, iter_dir, k, phi_H, phi_He, log,
+                fcond=(fcond if energy else None), phi_H2=phi_H2)
+    
+            # --seed seeds iteration 0 only. A resumed closure continues from the
+            # state of its last completed iteration: the launch scripts pass
+            # --seed on every start, and taking it at k0 > 0 restarted every
+            # resumed iteration from the iteration-0 seed instead (found
+            # 2026-10-29 on He/H 1.2 s = 1.28 k01 and He/H 5 s = 1.4 k03 of the
+            # EUV-match scan, md/lowheh_newbinary_failure_20261029.md).
+            seed_output = seed if k == 0 and seed else \
+                os.path.join(iteration_directory(case_dir, k - 1), 'output')
+            if not os.path.isdir(seed_output):
+                raise ClosureStop('seed directory %s does not exist'
+                                  % seed_output)
+            log('  seed: %s' % seed_output)
+            _, info, log10_mdot = solve_escape_wind(cfg, iter_dir, seed_output,
+                                                    log, preparation_start=preparation_start)
 
-        seed_output = seed if k == k0 and seed else \
-            os.path.join(iteration_directory(case_dir, k - 1), 'output')
-        if not os.path.isdir(seed_output):
-            raise ClosureStop('seed directory %s does not exist'
-                              % seed_output)
-        log('  seed: %s' % seed_output)
-        _, info, log10_mdot = solve_escape_wind(cfg, iter_dir, seed_output,
-                                                log)
-
-        keys, meas = measure_iteration(iter_dir, tol, log)
+        keys, meas = measure_iteration(iter_dir, tol, log, cfg.get('wind_route','march'))
         eps_H = elemental_flux_residual(meas.F_H, phi_H)
         eps_He = elemental_flux_residual(meas.F_He, phi_He)
         eps = max(eps_H, eps_He)
@@ -1424,7 +2019,7 @@ def run_closure(case_dir, cfg, phi_H, phi_He, omega, tol, kmax, seed,
             'HeH_match': heh if heh is not None else float('nan'),
             'log10_Mdot': log10_mdot,
             'solution_id': keys.get('lower_profile_solution_id', 'unknown'),
-            'exhale_info': str(info)}, **row_energy))
+            'exhale_info': str(info)}, **row_energy), exact=(cfg.get('wind_route','march')=='march'))
 
         # Section 6.2's honesty rule.  The flux is only defined to within its
         # own radial spread, so a window whose spread exceeds the tolerance

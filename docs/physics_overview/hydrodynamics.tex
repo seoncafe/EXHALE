@@ -149,6 +149,14 @@ bound the cell and $p_c$ is the cell's own pressure from the caloric equation
 of state.  Because $(A_+-A_-)/\Delta V_j \to 2/r$ as the cell narrows, the
 PLM branch of \eqref{eq:source} is the second term of \eqref{eq:sphp}.
 
+In a subsonic HLLC star branch, the effective numerical pressure is
+$P=p_K+S_K\rho^*_K(S_* - v_K)$ on the selected side $K$.
+At a supersonic face it is the upstream pressure, with no star increment.
+The complementary ram part is the complete Cartesian HLLC momentum flux
+minus $P$, so their sum retains that flux at a moving contact, at a sonic
+clamp, and in supersonic flow. The spherical pressure term uses this same
+effective pressure in the momentum split.
+
 The three physical terms of the momentum equation, the ram divergence, the
 spherical pressure gradient and the weight $\rho\,\partial\Phi/\partial r$,
 are gathered out of these pieces by
@@ -431,20 +439,20 @@ Eqs.~24--26, electron--ion and neutral hydrogen) and \citet{Sutton2015}
 $n$ the number density of all particles and $T$ in K; ions contribute through
 $n$ only.  The hydrogen term is the atomic hydrogen conductivity of
 \citet{Watson1981}, $4.45\times10^{4}(T/1000\,\mathrm{K})^{0.7}$, to within
-2 per cent between 300 and 7000~K; at He/H $=9.7$ the helium term decides
+2 percent between 300 and 7000~K; at He/H $=9.7$ the helium term decides
 $\kappa$ (the coefficients stand in the ratio $299/379 = 0.79$; the mixture
 value is 0.81 of the hydrogen one on the LHS~1140~b He/H\,$=9.7$ state,
 MEASURED, update log stage~3 section~41), and it
 agrees with the tabulated helium conductivity of \citet{Incropera2007}
-(Table~A.4) to 1 per cent at 300 and 1000~K.  None of these sources gives an
+(Table~A.4) to 1 percent at 300 and 1000~K.  None of these sources gives an
 H$_2$ coefficient: $k_{\rm H_2}(T) = A\,T^{s}\,[1 + c\,E(\theta_v/T)]$,
 $E(x) = x^2 e^x/(e^x-1)^2$, $A = 272.523$, $s = 0.735652$, $c = 0.370446$,
 $\theta_v = 5987$~K (the $v=0\to1$ spacing of H$_2$ in the
 \citet{Roueff2019} ladder), an Eucken form fitted to the tabulated
 conductivity of \citet{Incropera2007}, Table~A.4, over 200--2000~K (largest
-deviation 2.5 per cent, rms 1.05 per cent); it is valid there and an
+deviation 2.5 percent, rms 1.05 percent); it is valid there and an
 extrapolation outside (below 200~K, where the rotational heat capacity
-freezes out, it overestimates, by 20 per cent at 100~K).  The Einstein function is evaluated as
+freezes out, it overestimates, by 20 percent at 100~K).  The Einstein function is evaluated as
 $x^2e^{-x}/(1-e^{-x})^2$, which cannot overflow at low $T$, by its Taylor
 series $1-x^2/12+x^4/240-x^6/6048$ below $x = 0.05$, where $1-e^{-x}$ loses
 digits, and as zero above $x = 700$ (\texttt{einstein\_heat\_capacity}; the
@@ -522,7 +530,7 @@ erg\,cm$^{-2}$\,s$^{-1}$, and the two temperatures of
 \texttt{base\_conduction\_T\_cell1\_K}.  The energy coupling of the
 elemental-flux closure with the lower atmosphere reads this flux
 (Sec.~\ref{sec:mol:handoff}).  On the LHS~1140\,b states it carried 35 to 52
-per cent of the wind's absorbed heat (MEASURED, update log stage~3
+percent of the wind's absorbed heat (MEASURED, update log stage~3
 section~76).
 
 The Crank-Nicolson stage returns a state only when both tridiagonal

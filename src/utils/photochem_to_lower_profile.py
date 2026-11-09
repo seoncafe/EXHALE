@@ -1911,7 +1911,9 @@ def main():
     ap.add_argument('--surface-albedo', type=float, default=0.0,
                     help='albedo of the deep boundary (default 0)')
     ap.add_argument('--climate-t-deep-guess', type=float, default=400.0,
-                    help='initial guess for the deep temperature [K]')
+                    help='start of the bracket of the deep-temperature'
+                         ' fixed point (deep composition in chemical'
+                         ' equilibrium) [K]; the root does not depend on it')
     ap.add_argument('--climate-t-trop-guess', type=float, default=120.0,
                     help='initial guess for the stratospheric temperature'
                          ' [K]; it is solved for, not imposed')

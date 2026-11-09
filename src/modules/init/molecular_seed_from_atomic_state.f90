@@ -45,7 +45,8 @@
       ! smaller of the fit and that root, see "WHERE THE REQUESTED FRACTION
       ! COMES FROM" above.
       use diffusive_photochemistry, only: carrier_h2_chemical_root
-      use ionization_equilibrium, only: ioniz_eq, ieq_cell_acceptance_class
+      use ionization_equilibrium, only: ioniz_eq, ieq_cell_acceptance_class, &
+                                        ioniz_eq_ledger
       use Conversion, only: W_to_U, U_to_W
       use BC_Apply, only: Apply_BC
 
@@ -281,6 +282,8 @@
       ! The root of each cell's own H2 row, the sweep's outputs that are
       ! discarded with it, and what the comparison of the two found.
       real*8, dimension(1-Ng:N+Ng) :: n_root, heat_s, cool_s, eta_s
+      type(ioniz_eq_ledger) :: seed_sweep
+      logical :: seed_root_refused
       ! |P - L|/(P + L) at the density carrier_h2_chemical_root hands back,
       ! so the report states that the number IS the root of the row.
       real*8, dimension(1-Ng:N+Ng) :: root_imbalance
@@ -480,12 +483,50 @@
       ! cells into H2 (MEASURED) where their solved neighbours hold 1e-4 to
       ! 2e-3.  Such a cell takes the root of its nearest solved neighbours,
       ! interpolated in log x2 over r, and the smaller of that and the fit.
+      ! A SWEEP THAT REFUSED ITS MASS PROJECTION has no ions to read a root
+      ! off: its composition does not weigh the density.  No root is
+      ! derived from it, the atomic state goes back, and the fit stands.
+      seed_root_refused = .false.
       if (seed_x2_mode .eq. 'local') then
          heat_s = 0.0d0;  cool_s = 0.0d0;  eta_s = 0.0d0
-         call ioniz_eq(T_src, rho, f_sp, heat_s, cool_s, eta_s)
+         call ioniz_eq(T_src, rho, f_sp, heat_s, cool_s, eta_s, seed_sweep)
+         if (seed_sweep%n_projection_refused .gt. 0 .or.                &
+             seed_sweep%n_invalid_imposed .gt. 0) then
+            if (seed_sweep%n_invalid_imposed .gt. 0) then
+               write(*,'(A,I0,2A,ES10.3)') '   (molecular_seed) the'// &
+                    ' sweep refused imposed input at cell ',             &
+                    seed_sweep%invalid_imposed_cell, ', species ',        &
+                    trim(seed_sweep%invalid_imposed_species),            &
+                    seed_sweep%invalid_imposed_excess
+            endif
+            if (seed_sweep%n_projection_refused .gt. 0)               &
+               write(*,'(A,I0,A,ES10.3)') '   (molecular_seed) the'//  &
+                    ' sweep refused its mass projection at cell ',     &
+                    seed_sweep%projection_refusal_cell, ', |s-1| =',   &
+                    seed_sweep%projection_refusal_measure
+            write(*,'(A)') '   (molecular_seed) no root is read off it;'//  &
+                 ' the fit partition is the seed'
+            f_sp = f_atomic
+            call transfer_h2(x2_col)
+            seed_root_refused = .true.
+         endif
+      endif
+      ! A SWEPT STATE WITH A NEGATIVE OR NONFINITE ELEMENT TOTAL has no
+      ! budget to read a root against either (carrier_element_totals): the
+      ! atomic state goes back and the fit stands, as above.
+      if (seed_x2_mode .eq. 'local' .and. .not. seed_root_refused) then
          call carrier_h2_chemical_root(rho, f_sp, n_root,               &
-                                       row_imbalance = root_imbalance)
+                                       row_imbalance = root_imbalance,  &
+                                       inventory_refused = seed_root_refused)
          f_sp = f_atomic
+         if (seed_root_refused) then
+            write(*,'(A)') '   (molecular_seed) no root is read off a'//   &
+                 ' state with a refused element total; the fit'//        &
+                 ' partition is the seed'
+            call transfer_h2(x2_col)
+         endif
+      endif
+      if (seed_x2_mode .eq. 'local' .and. .not. seed_root_refused) then
          call root_of_the_solved_cells(n_root, x2_rootcol, root_ok)
          n_nonroot_cells = 0
          do j = 1-Ng, N+Ng

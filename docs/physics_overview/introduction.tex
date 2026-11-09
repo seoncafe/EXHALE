@@ -37,6 +37,13 @@ the wind conducts into the column back to the column's steady energy balance
 \texttt{src/utils/conducted\_heat\_column\_balance.py}), which makes the
 coupling two-way in energy as well as in the elements.
 
+The standard route advances the time-dependent equations and assesses the
+resulting profiles over a stated physical-time interval. A stationary
+Jacobian-free Newton--Krylov (JFNK) solution may be sought separately, but
+its absence does not invalidate a marching solution that meets the stated
+profile criterion. The discrete marching stop and stationary certificate
+are distinct diagnostics (Secs.~\ref{sec:numerics:du} and \ref{sec:steady}).
+
 The code started from ATES v2.0 \citep{Caldiroli2021, Biassoni2024} and is
 by now essentially a new code.  The finite-volume discretization, the
 three-stage strong-stability-preserving Runge-Kutta
@@ -103,7 +110,7 @@ handoff (\texttt{base.inp} or a profile file) states $p_{\rm base}$ in bar
 and $n_0$ follows the same way.  A run that states none is stopped at
 startup, and so is one whose handoff level disagrees with \texttt{Base BC:
 pressure} (by more than a part in $10^{6}$) or with the density key (by more
-than 1 per cent in the pressure it implies).  Without a handoff,
+than 1 percent in the pressure it implies).  Without a handoff,
 \texttt{Base BC: pressure} takes precedence over a density key stated beside
 it, and $n_0$ is the one the pressure gives; the conflict is not silent: the
 run prints a WARNING naming both levels ($n_0$ and the pressure of each) and

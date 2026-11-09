@@ -32,8 +32,7 @@
       use conservation_budget, only: conservation_budget_exports_left,  &
                                      write_conservation_budget_terms
       use binary_element_diffusion, only: interdiffusion_enthalpy_active, &
-                           interdiffusion_enthalpy_divergence_of_state,  &
-                           mixture_mass_sum
+                           interdiffusion_enthalpy_divergence_of_state
 
       implicit none
       private
@@ -45,6 +44,7 @@
                 flux_spread_of_state, steady_gates_met,              &
                 flux_spread_above_radius,                            &
                 n_cells_without_chemical_root,                       &
+                first_cell_without_chemical_root,                    &
                 row_terms_describe_state,                            &
                 face_mass_flux_of_state,                             &
                 mass_row_rounding_floor,                             &
@@ -205,6 +205,9 @@
       real*8, dimension(3,1-Ng:N+Ng), intent(out) :: WL, WR, dF, S
       real*8, dimension(3,1-Ng:N+Ng) :: WLw, WRw, dFw, Sw, ff_plm
       real*8, dimension(1-Ng:N+Ng)   :: fp_plm, epf_plm
+      real*8 :: area_plm(2,1-Ng:N+Ng), grad_plm(2,1-Ng:N+Ng)
+      real*8 :: embedded_plm(1-Ng:N+Ng), qu_plm(1-Ng:N+Ng)
+      real*8 :: qd_plm(1-Ng:N+Ng)
       real*8, dimension(1-Ng:N+Ng)   :: ram_plm, pgr_plm, grv_plm
       logical :: sav_plm, sav_weno
       character(len=:), allocatable :: sav_method
@@ -236,6 +239,10 @@
          call RK_rhs(u_in, WL, WR, dF, S)
          ff_plm  = face_flux
          fp_plm  = face_p
+         area_plm = face_pressure_area
+         grad_plm = face_pressure_gradient
+         embedded_plm = face_pressure_in_flux
+         qu_plm = face_q_up; qd_plm = face_q_dn
          ram_plm = momentum_ram_divergence
          pgr_plm = momentum_pressure_gradient
          grv_plm = momentum_gravity
@@ -253,6 +260,16 @@
          ! correction rebuilds a cell from; keep them on the same homotopy.
          face_flux = om*ff_plm + lam*face_flux
          face_p    = om*fp_plm + lam*face_p
+         ! Pressure contributions must be blended BEFORE taking a cell
+         ! difference. lambda times an already blended face_p is not the
+         ! WENO3 pressure contribution; WB also needs both side departures.
+         face_pressure_area = om*area_plm + lam*face_pressure_area
+         face_pressure_gradient = om*grad_plm + lam*face_pressure_gradient
+         face_pressure_in_flux = om*embedded_plm + lam*face_pressure_in_flux
+         face_q_up = om*qu_plm + lam*face_q_up
+         face_q_dn = om*qd_plm + lam*face_q_dn
+         ! A blend of two Riemann fluxes is the flux of no one contact side.
+         face_contact_side(:)%valid = .false.
          ! The momentum row on the homotopy is the same combination of the
          ! two schemes' rows, so each term of the equation it holds, and
          ! the equilibrium pressure force it is read against under that option,
@@ -290,7 +307,7 @@
       ! The divergence of the interdiffusion enthalpy flux, in the units of
       ! the energy row (zero unless the elements move).
       real*8, dimension(1-Ng:N+Ng)   :: Sidf, Scar
-      real*8, dimension(1-Ng:N+Ng)   :: mass_sum, Frho_cgs
+      real*8, dimension(1-Ng:N+Ng)   :: Frho_cgs
       integer :: rows_kind
       ! The continuity row's scale of every cell, formed only when the
       ! conservation budget exports this assembly, and the two flux-branch
@@ -402,14 +419,14 @@
       if (associated(carrier_enthalpy_divergence)) then
          call U_to_W(u, W)
          Tc = W(3,:)/n_part
-         call mixture_mass_sum(f_sp, mass_sum)
          Frho_cgs = 0.0d0
          ! Use this assembly's flux. The stored face_mass_flux record is
          ! updated only by store_row_terms below and may not yet exist.
+         ! The hydrodynamic face mass flux has the fixed unit n0 mu v0
+         ! (face_mass_flux_cgs); the composition's mass closure msum does
+         ! not enter it.
          do jcell_scale = 1-Ng, N+Ng-1
-            Frho_cgs(jcell_scale) = face_flux(1,jcell_scale)             &
-                 *0.5d0*(mass_sum(jcell_scale)+mass_sum(jcell_scale+1)) &
-                 *n0*mu*v0
+            Frho_cgs(jcell_scale) = face_flux(1,jcell_scale)*n0*mu*v0
          enddo
          call carrier_enthalpy_divergence(W(1,:), Tc, f_sp, Scar,       &
                                           Frho_cgs=Frho_cgs)
@@ -1195,9 +1212,12 @@
       !      or it is not a finite number. Such a state is kept only by the
       !      relaxation amnesty, so that a cold start may pass through it,
       !      and the chemistry does not describe it.
-      !   6  NOT a root either, and the candidate was so far from one
-      !      (residual above ieq_nonroot_res_cap) that it was not adopted at
-      !      all: the cell kept the composition it entered the sweep with.
+      !   6  NOT a root either: no admissible root candidate. The residual
+      !      is above ieq_nonroot_res_cap, or no in-simplex candidate has
+      !      a projection that is both admissible and a root. This includes
+      !      an infeasible budget with transported fractions imposed and
+      !      the atomic branch's projected non-root. It was not adopted:
+      !      the cell kept the composition it entered the sweep with.
       !      That composition solved an EARLIER cell state, not this one, so
       !      the chemistry does not describe this state.
       !
@@ -1207,6 +1227,27 @@
       integer, intent(in) :: acc_n(6)
       n_no = acc_n(4) + acc_n(6)
       end function n_cells_without_chemical_root
+
+
+      integer function first_cell_without_chemical_root(classes, found) &
+                                                            result(cell)
+      ! Locate the current sweep's first class 4 or 6 over every stored cell,
+      ! including ghosts. A found flag distinguishes a real cell 0 from an
+      ! absent record; historical non-root streaks are not this verdict.
+      integer, allocatable, intent(in) :: classes(:)
+      logical, intent(out) :: found
+      integer :: j
+      cell = 0
+      found = .false.
+      if (.not. allocated(classes)) return
+      do j = lbound(classes,1), ubound(classes,1)
+         if (classes(j) .eq. 4 .or. classes(j) .eq. 6) then
+            cell = j
+            found = .true.
+            return
+         endif
+      enddo
+      end function first_cell_without_chemical_root
 
 
       logical function steady_gates_met(rnorm, u, resid_tol, fspread,   &

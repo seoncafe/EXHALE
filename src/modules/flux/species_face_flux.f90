@@ -158,7 +158,7 @@
 
       subroutine species_advective_update(stage,nq,n_norm,Y_n,Y_in,Frho,  &
                                           rho_n,rho_in,rho_new,dt_loc,    &
-                                          jlo,Y_out)
+                                          jlo,Y_out,Fs_out)
       ! One SSP-RK3 stage of the species rows, on the faces, the volumes and
       ! the time step of the mass row of the same stage.
       !
@@ -182,12 +182,17 @@
       !
       ! Rows 1-Ng .. jlo-1 and N+1 .. N+Ng are not updated: they are the
       ! boundary composition, which the caller imposes.
+      !
+      ! Fs_out, when present, returns the species face fluxes F_s the
+      ! update was formed with, on every face: a copy, so a caller that
+      ! records them evaluates no face fraction a second time.
       integer, intent(in) :: stage,nq,n_norm,jlo
       real*8, dimension(1-Ng:N+Ng,nq), intent(in)  :: Y_n,Y_in
       real*8, dimension(1-Ng:N+Ng),    intent(in)  :: Frho
       real*8, dimension(1-Ng:N+Ng),    intent(in)  :: rho_n,rho_in,rho_new
       real*8, dimension(1-Ng:N+Ng),    intent(in)  :: dt_loc
       real*8, dimension(1-Ng:N+Ng,nq), intent(out) :: Y_out
+      real*8, dimension(1-Ng:N+Ng,nq), intent(out), optional :: Fs_out
 
       real*8, dimension(1-Ng:N+Ng,nq) :: Yf,Fs,divFs
       real*8, dimension(1-Ng:N+Ng)    :: Yclose,Fclose
@@ -274,6 +279,8 @@
          enddo
 
       enddo
+
+      if (present(Fs_out)) Fs_out = Fs
 
       end subroutine species_advective_update
 

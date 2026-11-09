@@ -1,0 +1,373 @@
+%% Written 2026-11-08 from the project records.
+%% Author: Kwang-Il Seon
+\documentclass[english,a4paper]{my_memo}
+\synctex=1
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{url}
+\urlstyle{tt}
+\usepackage{babel}
+\newcommand{\ev}[2]{\textnormal{\small[#1:#2]}}
+\sloppy
+\begin{document}
+
+\title{Stationary finish and marching in EXHALE: why earlier molecular
+LHS~1140\,b iterates were not certified}
+\author{Kwang-Il Seon}
+\maketitle
+
+\section{Marching acceptance and a stationary root}
+
+The two procedures have different stopping criteria. \textbf{Marching}
+advances the time-dependent equations. In the campaign configuration,
+hydrodynamics and advection use three-stage Runge--Kutta updates with
+reconstructed HLLC fluxes; chemistry, carrier transport and thermal sources
+also have separate implicit operations. The complete calculation is therefore
+not simply a third-order Runge--Kutta integration of every term.
+\ev{Main}{2308--2431,2608--2609,2777--2781}
+
+PLM and WENO3 are spatial reconstructions, not separate stationary solvers.
+Earlier initialization could switch from PLM to WENO3. Neither reconstruction
+guarantees a particular final mass-flux spread; the campaign instead judges
+the recorded profile variation. Every physical cell must satisfy a
+maximum-to-minimum span of at most 0.004\,dex in temperature and density over
+the final $K=3$ crossing times. Velocity must have a span within 1\% of its
+minimum $|v|$ in cells that retain one sign and Mach number at least 0.01 in
+every selected snapshot. Other cells use 1\% of $V_{\rm hs}$, the largest
+$|v|$ among those cells and all selected snapshots. This is finite-band
+profile acceptance, not proof that every chemical row vanishes.
+\ev{M}{426--440,548--576}\ev{U}{60--61}
+
+The checker calculates, from the final snapshot,
+\begin{equation}
+\tau_{\rm cross}=\max\left(
+\sum_{j=j_M}^{N}\frac{\Delta r_j}{|v_j|},\;
+\sum_{j=1}^{N}\frac{\Delta r_j}{c_{s,j}+|v_j|}\right),
+\end{equation}
+where $j_M$ is the first cell after the last cell below Mach 0.01;
+$\Delta r_j$ are the widths reconstructed by the checker. If the outermost
+cell is below that threshold, the first sum is infinite and coverage fails.
+The selected snapshots must bracket the final window; default sampling also
+requires at least 30 snapshots and no gap larger than $\tau_{\rm cross}/10$.
+\ev{M}{389--418,460--465,540--564}
+The preflight listed about $2.6$--$4.0\times10^5$\,s for the original five
+selected seeds, not a fixed crossing time for their later evolving winds.
+\ev{P}{121--128}
+
+\textbf{The stationary finish} attempts to solve a discrete steady residual
+with Jacobian-free Newton--Krylov (JFNK) iterations. Its unknowns depend on the
+configuration: species can be eliminated through chemical closure, held in a
+hydrodynamic solve, or included as transported unknowns. A successful
+hydrodynamic Newton solve does not by itself certify every active species
+balance; the final certification is a separate test.
+\ev{N}{2338--2367,4271--4309,4491--4512}\ev{K/run.log}{373,872}
+Marching can supply a starting state for an optional Newton finish, but
+starting at a universal mass-flux spread of $10^{-3}$ is not required.
+
+\section{What the earlier records establish}
+
+\textbf{An atomic example.} The retained \texttt{wasp\_full\_newton}
+regression is a WASP-121\,b atomic configuration. Its input requests
+PLM+WENO3 and Newton. The log switches PLM to WENO3 at step 1716 and starts
+the Newton finish at step 16500, with face mass-flux spread
+$8.091\times10^{-2}$, not $10^{-3}$. Multiple Newton solves follow; the final
+report certifies every active equation. Thus this example demonstrates a
+successful atomic finish after substantial marching, not a universal
+``few Newton passes'' result or a measured speed advantage for every atomic
+planet. The solve carries three hydrodynamic rows; its success is not a
+controlled comparison isolating the effect of molecular chemistry.
+\ev{W/input.inp}{1,21,33--34}\ev{W/run.log}{1803,16661--16668,16851--16852,17001}
+This v1.00 atomic regression is not one of the invalid v1.00 LHS~1140\,b
+physical targets.\ev{U}{67}
+
+\textbf{A molecular closure example.} In
+\texttt{HeH1.2/xuv\_x1p28/k07}, the input sets
+\texttt{Restart intent: stationary evaluate}, \texttt{Solver: Newton} and
+\texttt{Coupled carrier solve: False}. The log explicitly says that no CFL
+step is taken and no physical elapsed time is claimed.
+\ev{K/input.inp}{32,40,42}\ev{K/run.log}{63,2970}
+The worst gated carrier row, HeH$^+$ at cell 364, remains 0.996 against
+$10^{-5}$ in all eight outer alternation passes. Hydrodynamic Newton returns
+\texttt{info=0} in seven passes; pass 6 fails and restores the earlier
+converged wind with its composition. The alternation is refused at pass 8
+because the joint distance has not improved for three passes, and the final
+state is not certified. This is failure of the joint stationary procedure,
+not failure of every hydrodynamic Newton solve.
+\ev{K/run.log}{872,1196,1517,1829,2131,2353,2442,2742,2956--2970,3080}
+
+Such a run can finish quickly compared with a several-crossing-time march
+because it takes no physical time steps and terminates without reaching a
+joint root. It is not evidence that the wind physically relaxed quickly.
+Historical closure outputs were used to prepare campaign seeds, but a seed
+is not an accepted marching solution; in particular, the He/H~0.1 case uses
+an additional init-relaxed seed.\ev{C}{26--36}\ev{Q15}{19--29}
+
+\section{Possible difficulties with molecular chemistry and transport}\label{sec:difficulties}
+
+These are plausible mechanisms or observations from particular diagnostics,
+not five established causes of the quoted k07 outcome.
+
+\begin{enumerate}
+\item \textbf{Separated time scales.} At cell 95 in the same-state ion
+record, inverse loss coefficients $n/L$ are about 2.3\,ms for H$_2^+$,
+3.0\,ms for HeH$^+$ and 2.5\,s for H$_3^+$, far shorter than the seed wind
+crossing times above. These are local estimates, not universal lifetimes.
+Such separation can make a stationary linearization difficult, depending on
+scaling and preconditioning; no Jacobian condition number or isolated causal
+test is supplied by this comparison.\ev{H}{2362--2366}
+
+\item \textbf{Trace rows and their own scales.} Carrier residuals are judged
+relative to their physical terms, with a separate arithmetic-roundoff check;
+small abundance alone does not establish balance.\ev{D}{1953--1969,2024--2042}
+In one constructed stationary interval from the He/H~0.1 pass-9 state,
+cell-500 HeH$^+$ had scale $4.35\times10^{-14}$\,cm$^{-3}$\,s$^{-1}$ and
+relative residual 0.0236. Four helium rows failed, but the then-existing
+constrained-cell exemption hid them. This was not a demonstration that only
+one trace row refused every later interval. The corresponding marching
+probe passed its rows; the exemption has since been removed.
+\ev{Q}{47--66,76--82}\ev{D}{2024--2027}
+
+\item \textbf{Admissibility boundaries.} Positivity and element budgets
+limit, project or refuse candidate states. Changes of active constraints can
+make the numerical residual or its sampled action nonsmooth. In the Q13b
+stationary pass-9 probe, the raw Newton candidate left the helium simplex,
+the projection restored feasibility, and the line search later failed.
+It was not an inward direction incorrectly projected outward; the init and
+marching probes behaved differently. This supports a possible boundary
+obstacle, not a universal explanation.\ev{Q}{39--51}
+
+\item \textbf{Seed-dependent chemical closure.} Earlier diagnostics in a
+different molecular configuration recorded distinct chemical/front solutions
+from different seeds; adding transported H$_2$ removed the small-seed
+ambiguity in that test. This motivates checking root selection, but does not
+establish physical bistability or two certified LHS~1140\,b wind solutions.
+The low-He/H conditional alternatives also failed carrier certification.
+\ev{B}{3963--3988}\ev{L}{35--44}
+
+\item \textbf{Spatial coupling and approximate Jacobian actions.} Carrier
+transport couples neighboring stationary balance rows, while local chemical
+closure remains part of residual evaluation; it does not turn all chemistry
+into a single global chemical solve.\ev{N}{4271--4309,4491--4512}
+An exact Jacobian is linear wherever the derivative exists. A finite-difference
+action can instead depend on interval, direction and discrete choices.
+Earlier tests measured substantial additivity error; a later validated
+private action reduced the maximum to 0.00263 over 340 products. These
+records identify an approximation/evaluation issue, not intrinsic
+non-additivity of the exact Jacobian or proof that transport caused the
+present refusal.\ev{J}{21--31}\ev{JV}{2--12}
+\end{enumerate}
+
+\section{What marching does instead}
+
+Marching retains the time terms and uses finite, controlled steps. Fast ions
+may relax strongly within an implicit interval, but neither all chemistry
+nor every carrier is forced into instantaneous equilibrium in each step.
+The cell-95 record, for example, has a 0.183\,s step with both fast and slow
+chemical modes.\ev{H}{2363--2366}
+It is therefore a different route to a measured profile band, not a guarantee
+of reaching a certified stationary root. The original preflight estimated
+4.9--8.5 active host-days to the first possible three-crossing-time check for
+the selected seeds; this is an estimate, not a promised completion time.
+\ev{P}{121--128}
+The user's decision makes marching convergence the default in v1.00 and
+v1.10. A stationary root is welcome but not required; no new stationary
+method or diagnostic is started merely because one is missing. The campaign
+can also end NOT ACCEPTED at its finite budget.\ev{U}{60--64}
+
+\section{The marching time step}
+
+\textbf{The CFL number.} For an explicit discretization of a hyperbolic
+system, the Courant--Friedrichs--Lewy condition requires the numerical domain
+of dependence to include the physical one; it is a necessary condition, not
+a sufficient stability guarantee. On a uniform Cartesian mesh, the local
+Courant number is
+\begin{equation}
+C_j=\frac{\Delta t\,(|v_j|+c_{s,j})}{\Delta r},
+\end{equation}
+the fraction of a cell crossed in one step by the fastest local acoustic
+signal. The input \texttt{CFL:} scales the spherical time-step prescription
+below; it does not prescribe the same $C_j$ in every cell. The code comments
+state $\mathrm{CFL}\le1$ using the forward-Euler SSP coefficient of one for
+SSP-RK3, and assume a margin below one because the signal speeds are evaluated
+from cell averages rather than reconstructed face states.
+\ev{E}{20--32} This is not a general upper bound enforced by the
+\texttt{CFL:} parser, which reads the supplied value; the initialized default
+is 0.6. \ev{IR}{1512--1514}\ev{Par}{1022} At a fixed state, reducing this
+parameter reduces the CFL candidate interval in direct proportion. The cost
+and accuracy of the complete split update need not scale in that proportion,
+because its state, implicit solves, and retries also matter.
+
+The campaign marches with one global time step for all cells
+(\texttt{Run mode: phys}, \texttt{CFL: 0.15}). E1a's actual k07 marching
+input specifies 0.15, and the campaign's input generator retains this choice
+as its default. \ev{E1}{42--44}\ev{MI}{59--60,96--102}\ev{CD}{451}
+There was a recorded reason for the choice: the E1a design cites an earlier
+hot-Uranus experiment in which a numerical oscillation was reported at
+CFL 0.60 and 0.30 but suppressed at 0.15. That historical result motivated
+using 0.15; it was not a CFL-convergence or optimization study of k07 or of
+the present campaign states. The design leaves a higher-CFL comparison to a
+separate experiment. \ev{ED}{243--250} The hydrodynamic CFL candidate
+for each evolved cell $j=1,\ldots,N$ is
+\begin{equation}
+\Delta t_j^{\rm CFL}=\mathrm{CFL}\,\frac{V_j}{\max\left(A_{j-1/2}S_{j-1/2},\,
+A_{j+1/2}S_{j+1/2}\right)},\qquad
+S_f=\max\left(|v|+c_s\right)\ \text{over the two cells of face } f,
+\end{equation}
+with $A=r^2$ and $V_j=(r_{j+1/2}^3-r_{j-1/2}^3)/3$. On a locally uniform
+Cartesian mesh with equal face speeds this reduces to
+$\mathrm{CFL}\,\Delta r/(|v|+c_s)$. The global CFL candidate is
+$\min_j\Delta t_j^{\rm CFL}$; retries can reduce the interval actually
+accepted. The code uses cell-average sound speeds, with the state-dependent
+adiabatic index when the caloric mixture is active, rather than the full
+reconstructed Riemann signal speeds. This is a CFL prescription for the
+hydrodynamic update, not a stability guarantee for the complete split
+chemistry and energy update. Both the cell geometry and the signal speed
+matter; the smallest cell width alone does not determine the step.
+\ev{E}{12--32,44--71}\ev{Main}{2080--2118,3309--3326}
+
+By default, every 20 accepted physical steps the code compares one full step
+with two half steps from the same entry state. A resolved error above the
+allowed tolerance rejects the whole interval, restores the entry state, and
+retries with a smaller interval. The comparison accounts for the inner
+nonlinear errors; an unresolved estimate is reported and does not by itself
+reject the step. Thus sampling this estimate does not ensure that every
+accepted step has a resolved temporal-error bound. The adopted trajectory is
+the full-step trajectory, not the two-half-step result.
+\ev{A}{1497--1515,1704--1708}\ev{Main}{2127--2139,3377--3478}
+
+The following means are measured from the latest chunks committed by
+13:34 KST on November 8, 2026. Each is the difference between consecutive
+committed physical clocks divided by 50\,000 accepted steps. The journal's
+\texttt{steps=50001} is the terminal loop index; the chunk logs report
+50\,000 accepted steps, with rejected attempts excluded from that count.
+\ev{Main}{3483--3488}
+\begin{center}
+\begin{tabular}{rrrrl}
+\toprule
+He/H & Chunk & Mean $\Delta t$ [s] & Steps / $\tau_{\rm cross}$ & Clock records \\
+\midrule
+14   & 49 & 0.13457 & $2.69\times10^6$ & \ev{J14}{289,295} \\
+1.2  & 41 & 0.16066 & $1.60\times10^6$ & \ev{J12}{241,247} \\
+2.09 & 38 & 0.16636 & $2.41\times10^6$ & \ev{J209}{223,229} \\
+0.1  & 17 & 0.15609 & $1.67\times10^6$ & \ev{J01}{97,103} \\
+\bottomrule
+\end{tabular}
+\end{center}
+The last numerical column is a projection using the seed crossing times
+$3.622$, $2.568$, $4.007$, and $2.602\times10^5$\,s, respectively,
+not a measurement of the crossing time of the current profiles.
+\ev{P}{121,125--128} With those seed times and these mean intervals, three
+crossing times would take $4.8$--$8.1\times10^6$ steps; a chunk advances
+1.86--3.13\% of a crossing time. The intervals and crossing times can change
+as the wind evolves.
+
+\section{Local (cell-by-cell) time stepping}
+
+EXHALE offers \texttt{Time stepping: Local}, which uses each cell's own
+CFL interval instead of the global minimum. Among the recognized run modes,
+it is accepted only with \texttt{Run mode: init}; with
+\texttt{Run mode: phys} the run stops at startup. Unequal intervals multiply
+the flux on the two sides of an internal face by different amounts, so their
+contributions to the total material inventory need not cancel. The update is
+a relaxation iterate, not an advance along one common physical clock.
+\ev{E}{72--81}\ev{IR}{1083--1090,2715--2730}
+
+For the archived He/H~1.2 snapshot at chunk 41,
+$t=334184.60265$\,s, a reconstruction using a constant adiabatic index
+$5/3$, the recorded pressure and mass density, and midpoint faces gives a
+largest-to-smallest CFL-interval ratio of 707.8 and a median-to-smallest
+ratio of 14.10 over the 500 physical cells. The smallest interval occurs at
+cell 50, $r=1.00957\,R_p$, and the largest at cell 500. The density column
+is converted to mass density with the code's fixed hydrogen-atom mass,
+$1.67353284\times10^{-24}$\,g. These ratios are an estimate under the
+constant-$\gamma$ assumption, not the intervals calculated with the active
+caloric mixture, and they do not bound the actual speed-up of the complete
+relaxation. \ev{S12}{2--4,33--536}\ev{IO}{52}\ev{G}{209--210}\ev{E}{44--49}
+
+\textbf{Possible advantages.}
+\begin{itemize}
+\item The large outer cells can advance through larger relaxation intervals
+than the cells near the base, which may accelerate some stationary
+relaxations. The speed-up for these campaign states has not been measured.
+\item A locally stepped relaxation may provide a useful starting state for
+a global-step march or an optional Newton finish; reaching a suitable state
+is not guaranteed.
+\end{itemize}
+
+\textbf{Limitations.}
+\begin{itemize}
+\item The intermediate iterates do not represent a common physical time and
+cannot describe the timing or physical stability of an oscillation.
+\item Internal-face flux contributions need not cancel in the total
+inventory. At an exact stationary residual root, the complete cell updates
+can vanish, but that does not make the unequal time-weighted contributions
+at each face equal. Cancellation can also occur away from a stationary root,
+for example when that face's flux is zero.
+\item Multiplying each unsplit residual by a positive local interval
+preserves its zeros. This argument alone does not establish that the full
+finite-interval split chemistry and transport update has the same fixed
+points as the stationary residual.
+\item Local iterations cannot supply the present acceptance window of three
+physical crossing times. They would need to be followed by a global-step
+physical march to satisfy the campaign criterion. Stationary certification
+is a separate judgment.
+\item Convergence or failure of a local relaxation does not establish whether
+the physical wind has a stable stationary state or a limit cycle.
+\item The implementation passes local intervals to the carrier transport
+operator as well as to the hydro update; the performance and fixed-point
+effects of that coupling for these campaign states have not been established
+by the interval-ratio estimate. \ev{Main}{2309--2311,2608--2609}\ev{D}{2866--2870}
+\end{itemize}
+
+Using \texttt{Run mode: init} and local stepping to prepare a He/H ladder
+rung before its physical march would be a change to the campaign procedure,
+not a measured acceleration or an approved change to the current campaign.
+
+\section*{Sources}
+
+Labels in brackets are file:line references; paths are relative to the
+ExoAtmosphere workspace. Values quoted from historical records were not
+remeasured by running a solver for this check.
+\begin{itemize}
+\item M: \path{EXHALE_v1.10/LHS1140b/tools/marching_acceptance.py}.
+\item E: \path{EXHALE_v1.10/src/modules/time_step/eval_dt.f90}; IR: \path{EXHALE_v1.10/src/modules/files_IO/input_read.f90}.
+\item Par: \path{EXHALE_v1.10/src/modules/init/parameters.f90};
+MI: \path{EXHALE_v1.10/LHS1140b/tools/make_march_input.py}.
+\item E1: \path{EXHALE_v1.10/LHS1140b/models/k07_conservative_20261030/E1a_time_relaxation_20261104/run/input.inp};
+ED: \path{EXHALE_v1.10/md/k07_time_relaxation_design_20261104.md};
+CD: \path{EXHALE_v1.10/md/lhs1140b_heh_le14_marching_campaign_20261105.md}.
+\item A: \path{EXHALE_v1.10/src/modules/time_step/attempted_step.f90};
+G: \path{EXHALE_v1.10/src/modules/init/define_grid.f90};
+IO: \path{EXHALE_v1.10/examples/exhale_io.py}.
+\item J14: \path{EXHALE_v1.10/LHS1140b/models/marching_campaign_20261105/cases/heh14_s1p60/phase/journal.txt}.
+\item J12: \path{EXHALE_v1.10/LHS1140b/models/marching_campaign_three_slots_20261106/cases/heh1p2_s1p28/phase/journal.txt}.
+\item J209: \path{EXHALE_v1.10/LHS1140b/models/marching_campaign_three_slots_20261106/cases/heh2p09_s1p42/phase/journal.txt}.
+\item J01: \path{EXHALE_v1.10/LHS1140b/models/marching_campaign_he01_series_20261106/cases/heh0p1_s2p53/phase/journal.txt}.
+The accepted-step counts are in each phase's compressed chunk log:
+\path{chunks/c0049.log.gz}:58299 (J14),
+\path{chunks/c0041.log.gz}:63232 (J12),
+\path{chunks/c0038.log.gz}:53268 (J209), and
+\path{chunks/c0017.log.gz}:68365 (J01); line numbers refer to decompressed text.
+\item S12: \path{snapshots/c0041/Hydro_ioniz.txt} in the phase containing J12.
+\item Main: \path{EXHALE_v1.10/src/EXHALE_main.f90};
+N: \path{EXHALE_v1.10/src/modules/time_step/steady_newton.f90};
+D: \path{EXHALE_v1.10/src/modules/lower_atmosphere/diffusive_photochemistry.f90}.
+\item K: directory
+\path{EXHALE_v1.10/LHS1140b/models/euv_match_20261027/HeH1.2/xuv_x1p28/k07/}.
+\item W: directory
+\path{EXHALE_v1.00/scratch_codex_q5_q6i_20261106/R1_reference_views/wasp_full_newton/}.
+\item P: \path{EXHALE_v1.10/md/lhs1140b_marching_campaign_preflight_20261105.md};
+C: \path{EXHALE_v1.10/md/lhs1140b_campaign_representative_s_20261105.md};
+Q15: \path{EXHALE_v1.10/md/briefs/q15_he01_packet_20261106_codex.md};
+U: project \path{CLAUDE.md}.
+\item H: \path{EXHALE_v1.10/LHS1140b/models/k07_conservative_20261030/opcons_20261104/h2p_hehp_same_state_20261104/continuation_20261104/offline_admission_20261104/results/hh_cells_92_105_offline.txt}.
+\item Q: \path{EXHALE_v1.10/md/briefs/q13b_carrier_corner_20261106_codex.md}.
+\item B: \path{EXHALE_v1.00/md/Update_EXHALE_stage2.md};
+L: \path{EXHALE_v1.10/md/briefs/crosscheck_lowheh_composition_20261029_codex_r1.md}.
+\item J: \path{EXHALE_v1.10/md/briefs/crosscheck_k07_coupled_gate2c_r3_20261030_codex.md};
+JV: \path{EXHALE_v1.10/LHS1140b/models/k07_conservative_20261030/codex_phase_20261101/measured_summary.json}.
+\end{itemize}
+
+\end{document}

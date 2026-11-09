@@ -1,6 +1,7 @@
    module ionization_equilibrium
 	! Evaluate the ionization structure and the heating and cooling functions for a given temperature
 
+	use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
 	use mol_rates, only: h2_thermochemistry_init, h2_thermochemistry_ready
 	use global_parameters
    use ion_cell_state, only: ieq_cell, ion_rates, h2_fraction_of_reservoir, &
@@ -29,6 +30,7 @@
 	                               is_constraint_row, finite_number,      &
 	                               constraint_row_tol,                    &
 	                               fraction_resolution,                   &
+	                               helium_closure_allowance,              &
 	                               h3p_row_balance_tol, slot_H3p,         &
 	                               turnover_of_group,                     &
 	                               turnover_row_without_reaction,         &
@@ -611,6 +613,10 @@
 	! are accumulated in every ledger, and it is the copy of the one sweep
 	! (sweep_ledger) that decides whether a trial or probe state is usable
 	! at all.
+	! Why a mass projection was refused (ioniz_eq_ledger%projection_cause).
+	integer, parameter, public :: ieq_projection_cause_none     = 0
+	integer, parameter, public :: ieq_projection_cause_above    = 1
+	integer, parameter, public :: ieq_projection_cause_unusable = 2
 	type :: ioniz_eq_ledger
 		integer :: n_sweep       = 0
 		integer :: n_reseed      = 0
@@ -632,6 +638,36 @@
 		real*8  :: viol_worst    = 0.0d0
 		integer :: streak_peak   = 0
 		integer :: n_ghost_open  = 0
+		! A transported partition that cannot fit its element budget is
+		! invalid input to the cell solve, rather than a failed root search.
+		integer :: n_invalid_imposed = 0
+		integer :: invalid_imposed_cell = 0
+		character(len=24) :: invalid_imposed_species = ''
+		real*8 :: invalid_imposed_excess = 0.0d0
+		! THE MASS PROJECTION OF THE SWEEP (the block "THE COMPOSITION THIS
+		! SWEEP RETURNS WEIGHS THE DENSITY IT WAS GIVEN"). Two records,
+		! kept apart because they need not belong to the same cell or the
+		! same sweep:
+		!   the DEPARTURE: the largest finite |s - 1| over the physical
+		!     cells (projection_worst) and its cell (projection_cell,
+		!     meaningful where projection_worst > 0);
+		!   the REFUSAL: how many projections were refused, why
+		!     (projection_cause; ieq_projection_cause_none means no
+		!     refusal is recorded and the two fields after it say nothing),
+		!     where (projection_refusal_cell: the first cell, ghosts
+		!     included, whose mixture mass is not a usable number, or the
+		!     cell of the departure above the limit) and the |s - 1| of the
+		!     physical cells in the refused sweep
+		!     (projection_refusal_measure).
+		! A refused projection hands back a composition that does not
+		! weigh its density, so a caller that may refuse its state reads
+		! these fields of the copy of its own call.
+		integer :: n_projection_refused = 0
+		real*8  :: projection_worst     = 0.0d0
+		integer :: projection_cell      = 0
+		integer :: projection_cause     = ieq_projection_cause_none
+		integer :: projection_refusal_cell    = 0
+		real*8  :: projection_refusal_measure = 0.0d0
 	end type ioniz_eq_ledger
 
 	! The marching ledger is kept once per LEDGER FAMILY: index
@@ -1007,7 +1043,8 @@
 
 
 	subroutine ioniz_eq(T_in,n_io,f_sp_io,heat_out,cool_out,q,sweep_ledger,&
-	                    rho_recon,lower_ghosts_only,advance_composition_history)
+	                    rho_recon,lower_ghosts_only,advance_composition_history, &
+	                    transported_state_is_trial)
       	 		  
 	integer :: j,im
 	logical :: usednt                     ! Task 2: Newton-vs-fallback flag
@@ -1070,6 +1107,11 @@
 	! only its two ghost roots while retaining the complete attenuated field.
 	! Source measurements never advance an adopted composition's history.
 	logical, optional, intent(in) :: lower_ghosts_only,advance_composition_history
+	! A trial's imposed transport partition may be refused through its
+	! ledger. This does not relax lower-boundary closure or other hard
+	! failures of a held state.
+	logical, optional, intent(in) :: transported_state_is_trial
+	logical :: invalid_input_is_refusable
 	logical :: ghosts_only,advance_history
 
 	real*8, dimension(1-Ng:N+Ng) ::  T_K      ! Dimensional temperature
@@ -1327,6 +1369,13 @@
    type(ioniz_eq_ledger) :: ledger_sweep
    ! A1 elemental census of the state this sweep was handed (element_census).
    type(element_census_state) :: cen_ieq
+   type(ioniz_eq_ledger) :: invalid_imposed_sweep
+   real*8 :: imposed_values(7), imposed_floor(7), imposed_allowance
+   integer :: imposed_full_terms
+   logical :: imposed_active(7), invalid_imposed, fix_ions, fix_molecules
+   logical :: helium_total_positive, invalid_helium_total, nonzero_helium_state
+   character(len=24) :: imposed_names(7), invalid_species
+   real*8 :: invalid_excess
 
    ! Heating and cooling of the state this routine RETURNS (n_io, f_sp_io),
    ! adimensional: assembled after the cell sweep from the post-sweep
@@ -1345,6 +1394,9 @@
       
    ! Numerical tolerance for system solution
    ghosts_only=.false.; advance_history=.true.
+	invalid_input_is_refusable = ieq_state_may_be_refused
+	if (present(transported_state_is_trial)) invalid_input_is_refusable = &
+	     invalid_input_is_refusable .or. transported_state_is_trial
    if (present(lower_ghosts_only)) ghosts_only=lower_ghosts_only
    if (present(advance_composition_history)) advance_history=advance_composition_history
    if (ghosts_only.and..not.held_composition_sources) then
@@ -1581,6 +1633,186 @@
 	! the advection-corrected post-process -- see utils.
 	call hydrogen_helium_nuclei_density(nhi,nhii,nhei,nheii,nheiii,       &
 	                                    nh,nhe,nmol_eq,nox_eq)
+
+	! Check the transported data before any cell solve. A root search cannot
+	! change these fractions: every attempted projection restores them. The
+	! same fraction-resolution allowance as ionization_fractions_physical
+	! applies to each fixed term. For a complete helium closure the allowance
+	! is k*fraction_resolution, with k from helium_closure_allowance. When
+	! terms are not fixed, their possible negative floors are added to the
+	! partial-sum bound; this does not enlarge the complete-closure bound.
+	! Only fixed terms enter these sums, so a violation is attributable to
+	! the input rather than an unknown root.
+	do j = 1, N+Ng
+		fix_ions = ionization_transport .and. (bg_ready .or. do_load_IC)
+		fix_molecules = thereis_mol .and. carrier_transport .and.       &
+		                (bg_ready .or. do_load_IC)
+		if (.not. fix_ions .and. .not. fix_molecules) cycle
+		! Transported fractions are defined per H nucleus. Refuse an
+		! invalid H total before forming any imposed fraction.
+		invalid_imposed = .false.
+		if (.not. ieee_is_finite(nh(j))) then
+			invalid_imposed = .true.
+		else if (nh(j) .le. 0.0d0) then
+			invalid_imposed = .true.
+		endif
+		if (invalid_imposed) then
+			invalid_species = 'H total'
+			invalid_excess = huge(1.0d0)
+		endif
+		if (.not. invalid_imposed) then
+		imposed_values = 0.0d0
+		imposed_floor = fraction_resolution
+		imposed_active = .false.
+		imposed_names = [character(len=24) :: 'H II', 'H2', 'H2+', 'H3+', &
+		                  'HeH+', 'OH', 'H2O']
+		if (fix_ions) then
+			imposed_active(1) = .true.
+			imposed_values(1) = nhii(j)/nh(j)
+		endif
+		if (fix_molecules) then
+			imposed_active(2:4) = .true.
+			imposed_values(2:4) = [2.0d0*nmol_eq(j,1)/nh(j),             &
+			                       2.0d0*nmol_eq(j,2)/nh(j),             &
+			                       3.0d0*nmol_eq(j,3)/nh(j)]
+			if (thereis_He) then
+				imposed_active(5) = .true.
+				imposed_values(5) = nmol_eq(j,4)/nh(j)
+			endif
+			if (thereis_oxychem) then
+				imposed_active(6:7) = .true.
+				imposed_values(6:7) = [nox_eq(j,1)/nh(j),            &
+				                       2.0d0*nox_eq(j,2)/nh(j)]
+				imposed_floor(6:7) = [fraction_resolution*       &
+				   nm_tot(j,iel_O)/nh(j),2.0d0*fraction_resolution* &
+				   nm_tot(j,iel_O)/nh(j)]
+			endif
+		endif
+		imposed_full_terms = 1
+		imposed_allowance = 0.0d0
+		if (.not. fix_ions) imposed_allowance = fraction_resolution
+		if (thereis_mol) then
+			imposed_full_terms = imposed_full_terms + 4
+			if (.not. fix_molecules) imposed_allowance =            &
+			     imposed_allowance + 4.0d0*fraction_resolution
+		endif
+		if (thereis_oxychem) then
+			imposed_full_terms = imposed_full_terms + 2
+			if (.not. fix_molecules) imposed_allowance =            &
+			     imposed_allowance + 3.0d0*fraction_resolution*   &
+			     nm_tot(j,iel_O)/nh(j)
+		endif
+		imposed_allowance = imposed_allowance +                  &
+		     dble(imposed_full_terms)*fraction_resolution
+		call imposed_fraction_group_invalid(imposed_values,imposed_active, &
+		     imposed_floor,imposed_names,'H I',imposed_allowance,    &
+		     invalid_imposed,invalid_species,invalid_excess)
+		! A zero He total is valid only when every active He-bearing
+		! density is zero. Judge finite status before any signed comparison.
+		helium_total_positive = .false.
+		invalid_helium_total = .false.
+		if (.not. invalid_imposed .and. thereis_He) then
+			if (.not. ieee_is_finite(nhe(j))) then
+				invalid_helium_total = .true.
+			else if (nhe(j) .lt. 0.0d0) then
+				invalid_helium_total = .true.
+			else if (nhe(j) .eq. 0.0d0) then
+				nonzero_helium_state = nhei(j) .ne. 0.0d0 .or. &
+				     nheii(j) .ne. 0.0d0 .or. nheiii(j) .ne. 0.0d0
+				if (thereis_HeITR) nonzero_helium_state = &
+				     nonzero_helium_state .or. nheiTR(j) .ne. 0.0d0
+				if (thereis_mol) nonzero_helium_state = &
+				     nonzero_helium_state .or. nmol_eq(j,4) .ne. 0.0d0
+				invalid_helium_total = nonzero_helium_state
+			else
+				helium_total_positive = .true.
+			endif
+			if (invalid_helium_total) then
+				invalid_imposed = .true.
+				invalid_species = 'He total'
+				invalid_excess = huge(1.0d0)
+			endif
+		endif
+		! No helium fraction exists when this cell has zero He nuclei.
+		if (.not. invalid_imposed .and. helium_total_positive) then
+			imposed_values = 0.0d0
+			imposed_floor = fraction_resolution
+			imposed_active = .false.
+			imposed_names = [character(len=24) :: 'He II', 'He III',   &
+			                 'He 2^3S', 'HeH+', '', '', '']
+			if (fix_ions) then
+				imposed_active(1:2) = .true.
+				imposed_values(1:2) = [nheii(j)/nhe(j),nheiii(j)/nhe(j)]
+				if (he23s_transport .and. thereis_HeITR) then
+					imposed_active(3) = .true.
+					imposed_values(3) = nheiTR(j)/nhe(j)
+				endif
+			endif
+			if (fix_molecules) then
+				imposed_active(4) = .true.
+				imposed_values(4) = nmol_eq(j,4)/nhe(j)
+				imposed_floor(4) = fraction_resolution*nh(j)/nhe(j)
+			endif
+			imposed_allowance = 0.0d0
+			if (.not. fix_ions) imposed_allowance =             &
+			     2.0d0*fraction_resolution
+			if (thereis_HeITR) then
+				if (.not. (fix_ions .and. he23s_transport))    &
+				   imposed_allowance = imposed_allowance + fraction_resolution
+			endif
+			if (thereis_mol) then
+				if (.not. fix_molecules) imposed_allowance =       &
+				   imposed_allowance + fraction_resolution*nh(j)/nhe(j)
+			endif
+			imposed_allowance = imposed_allowance +              &
+			     helium_closure_allowance(thereis_HeITR,                  &
+			     thereis_mol .and. nhe(j) .gt. 0.0d0)
+			call imposed_fraction_group_invalid(imposed_values,           &
+			     imposed_active,imposed_floor,imposed_names,          &
+			     'He I ground',imposed_allowance,                     &
+			     invalid_imposed,invalid_species,invalid_excess)
+		endif
+		if (.not. invalid_imposed .and. fix_molecules .and.          &
+		    thereis_oxychem) then
+			imposed_values = 0.0d0
+			imposed_floor = fraction_resolution
+			imposed_active = .false.
+			imposed_names = [character(len=24) :: 'OH', 'H2O', '', '', &
+			                 '', '', '']
+			imposed_active(1:2) = .true.
+			imposed_values(1:2) = [nox_eq(j,1)/max(nm_tot(j,iel_O),1.0d-30), &
+			                       nox_eq(j,2)/max(nm_tot(j,iel_O),1.0d-30)]
+			call imposed_fraction_group_invalid(imposed_values,           &
+			     imposed_active,imposed_floor,imposed_names,'O I',       &
+			     dble(2+melem_top(iel_O)+melem_top(iel_O))*           &
+			     fraction_resolution,                                 &
+			     invalid_imposed,invalid_species,invalid_excess)
+		endif
+		endif
+		if (.not. invalid_imposed) cycle
+		invalid_imposed_sweep = ioniz_eq_ledger()
+		invalid_imposed_sweep%n_invalid_imposed = 1
+		invalid_imposed_sweep%invalid_imposed_cell = j
+		invalid_imposed_sweep%invalid_imposed_species = invalid_species
+		invalid_imposed_sweep%invalid_imposed_excess = invalid_excess
+		write(*,'(A,I0,2A,ES12.5)')                            &
+		     ' (ioniz_eq) INVALID IMPOSED INPUT: cell ',j,          &
+		     ', species ',trim(invalid_species),invalid_excess
+		write(*,'(A)') '   excess in units of the element nuclei fraction'
+		if (.not. invalid_input_is_refusable)                    &
+		     error stop 'ioniz_eq: invalid imposed transported fractions'
+		if (allocated(ieq_cell_acceptance_class))                   &
+		     ieq_cell_acceptance_class = 0
+		if (allocated(ieq_cell_acceptance_res))                     &
+		     ieq_cell_acceptance_res = 0.0d0
+		call record_acceptance_classes_of_sweep()
+		call add_to_ioniz_eq_ledger(invalid_imposed_sweep)
+		ieq_sweep_ledger_last = invalid_imposed_sweep
+		if (present(sweep_ledger)) sweep_ledger = invalid_imposed_sweep
+		heat_out = 0.0d0; cool_out = 0.0d0; q = 0.0d0
+		if (present(rho_recon)) rho_recon = 0.0d0
+		return
+	enddo
 
 	! Free electron density (assuming overall neutrality; nm adds the
 	! metal electrons under the eos_metals policy, nmol_eq the molecular-ion
@@ -3919,6 +4151,12 @@
 	! sweep was tagged with. A steady-solver probe never reaches the
 	! ledgers of the states the run holds.
 	ledger_sweep%n_sweep       = 1
+	ledger_sweep%n_projection_refused = 0
+	ledger_sweep%projection_worst     = 0.0d0
+	ledger_sweep%projection_cell      = 0
+	ledger_sweep%projection_cause     = ieq_projection_cause_none
+	ledger_sweep%projection_refusal_cell    = 0
+	ledger_sweep%projection_refusal_measure = 0.0d0
 	ledger_sweep%n_reseed      = n_ieq_reseed
 	ledger_sweep%n_retry       = n_ieq_retry
 	ledger_sweep%n_unphys      = n_ieq_unphys
@@ -3948,14 +4186,7 @@
 	if (ieq_sweep_state_kind .ne. ieq_state_steady_candidate)          &
 		ledger_sweep%streak_peak = maxval(ieq_nonroot_streak)
 
-	call add_to_ioniz_eq_ledger(ledger_sweep)
-
 	call record_acceptance_classes_of_sweep()
-
-	if (present(sweep_ledger)) sweep_ledger = ledger_sweep
-	ieq_sweep_ledger_last = ledger_sweep
-
-
 
 	! THE COMPOSITION THIS SWEEP RETURNS WEIGHS THE DENSITY IT WAS GIVEN.
 	!
@@ -4001,10 +4232,14 @@
 	!                      is moving mass by more than its own arithmetic.
 	!   |s - 1| > 1e-8     NOT PROJECTED.  A closure error of that size is a
 	!                      failure of the sweep and is reported as one; the
-	!                      composition is handed back as the solve left it,
-	!                      so the certification's own mass-closure line
-	!                      shows the failure instead of a
-	!                      projection hiding it.
+	!                      composition is handed back as the solve left it
+	!                      and the ledger of this call says so
+	!                      (n_projection_refused, projection_cause,
+	!                      projection_refusal_cell,
+	!                      projection_refusal_measure), so a caller
+	!                      that may refuse its state does: the marching
+	!                      attempt (both run modes) and the stationary trial
+	!                      or probe.
 	!
 	! The factor is also refused where it is not a usable number at all: a
 	! non-finite or non-positive mixture mass is not a composition and
@@ -4017,7 +4252,7 @@
 		block
 		real*8, dimension(1-Ng:N+Ng) :: m_of_comp, s_close
 		real*8  :: s_worst
-		integer :: im_p, j_worst
+		integer :: im_p, j_worst, j_unusable
 		logical :: s_ok
 		if (thereis_mol) then
 			if (thereis_oxychem) then
@@ -4030,36 +4265,17 @@
 		else
 			call calc_rho(nhi,nhii,nhei,nheii,nheiii,m_of_comp,nm)
 		endif
-		s_ok    = .true.
-		s_worst = 0.0d0
-		j_worst = 0
-		do im_p = 1-Ng, N+Ng
-			if (finite_number(m_of_comp(im_p)) .and.                 &
-			    m_of_comp(im_p) .gt. 0.0d0 .and.                      &
-			    finite_number(n_in_dim(im_p)) .and.                  &
-			    n_in_dim(im_p) .gt. 0.0d0) then
-				s_close(im_p) = n_in_dim(im_p)/m_of_comp(im_p)
-			else
-				! An unusable input must refuse the sweep's projection,
-				! even though a unit factor safely preserves its densities.
-				s_close(im_p) = 1.0d0
-				s_ok = .false.
-			endif
-			if (.not. finite_number(s_close(im_p)) .or.              &
-			    s_close(im_p) .le. 0.0d0) then
-				s_close(im_p) = 1.0d0
-				s_ok = .false.
-			endif
-		enddo
-		do im_p = 1, N
-			if (abs(s_close(im_p) - 1.0d0) .gt. s_worst) then
-				s_worst = abs(s_close(im_p) - 1.0d0)
-				j_worst = im_p
-			endif
-		enddo
+		call mass_projection_factors(m_of_comp, n_in_dim, s_close,     &
+		                             s_worst, j_worst, s_ok, j_unusable)
 		ieq_mass_projection_worst = max(ieq_mass_projection_worst,        &
 		                                s_worst)
+		ledger_sweep%projection_worst = s_worst
+		ledger_sweep%projection_cell  = j_worst
 		if (.not. s_ok) then
+			ledger_sweep%n_projection_refused = 1
+			ledger_sweep%projection_cause = ieq_projection_cause_unusable
+			ledger_sweep%projection_refusal_cell    = j_unusable
+			ledger_sweep%projection_refusal_measure = s_worst
 			n_ieq_mass_projection_refused =                           &
 			   n_ieq_mass_projection_refused + 1
 			write(*,'(A)') ' (ioniz_eq) mass projection REFUSED: the'//&
@@ -4067,6 +4283,10 @@
 			   ' the composition is handed back unprojected.'
 			s_close = 1.0d0
 		else if (s_worst .gt. ieq_mass_projection_refuse) then
+			ledger_sweep%n_projection_refused = 1
+			ledger_sweep%projection_cause = ieq_projection_cause_above
+			ledger_sweep%projection_refusal_cell    = j_worst
+			ledger_sweep%projection_refusal_measure = s_worst
 			n_ieq_mass_projection_refused =                           &
 			   n_ieq_mass_projection_refused + 1
 			write(*,'(A,ES10.3,A,I0,A,ES10.3,A)')                     &
@@ -4106,6 +4326,13 @@
 		nox_eq(:,3)  = nox_eq(:,3) *s_close
 		end block
 	endif
+
+	! THE LEDGER OF THIS SWEEP IS FINAL ONLY HERE, after the projection,
+	! so the copy handed to the caller and the last-sweep census carry the
+	! projection's outcome and are the status of this call.
+	call add_to_ioniz_eq_ledger(ledger_sweep)
+	if (present(sweep_ledger)) sweep_ledger = ledger_sweep
+	ieq_sweep_ledger_last = ledger_sweep
 
 	! HEATING AND COOLING OF THE STATE THIS SWEEP RETURNS.
 	!
@@ -4673,19 +4900,17 @@
 		if (x(2) .lt. -fraction_resolution) return
 		if (x(3) .lt. -fraction_resolution) return
 		s = x(2) + x(3)
-		k = 2
 		if (thereis_HeITR) then
 			ix = 4
 			if (thereis_mol) ix = 8
 			if (x(ix) .lt. -fraction_resolution) return
 			s = s + x(ix)
-			k = k + 1
 		endif
 		if (thereis_mol .and. ieq_cell%nhe .gt. 0.0d0) then
 			s = s + x(7)*ieq_cell%nh/ieq_cell%nhe
-			k = k + 1
 		endif
-		if (s .gt. 1.0d0 + dble(k)*fraction_resolution) return
+		if (s .gt. 1.0d0 + helium_closure_allowance(            &
+		     thereis_HeITR,thereis_mol .and. ieq_cell%nhe .gt. 0.0d0)) return
 	endif
 
 	! Each metal element separately: X+ (+ X++ for the three-stage elements).
@@ -4717,6 +4942,52 @@
 	ok = .true.
 
 	end function ionization_fractions_physical
+
+
+	subroutine imposed_fraction_group_invalid(x,fixed,floor,names,        &
+	                                          remainder,allowance,         &
+	                                          invalid,species,excess)
+	! Only the imposed terms of one element budget are checked. The
+	! unknown terms remain available to the equilibrium solve. A fixed
+	! fraction below the resolution band, or a fixed sum above the element
+	! total, cannot be repaired by any reaction root or projection.
+	real*8, intent(in) :: x(:)
+	logical, intent(in) :: fixed(:)
+	real*8, intent(in) :: floor(:), allowance
+	character(len=*), intent(in) :: names(:), remainder
+	logical, intent(out) :: invalid
+	character(len=*), intent(out) :: species
+	real*8, intent(out) :: excess
+	integer :: i
+	real*8 :: s
+	invalid = .false.; species = ''; excess = 0.0d0
+	if (.not. any(fixed)) return
+	do i = 1,size(x)
+		if (.not. fixed(i)) cycle
+		if (.not. finite_real(x(i))) then
+			invalid = .true.; species = names(i)
+			excess = huge(1.0d0)
+			return
+		endif
+		if (x(i) .lt. -floor(i)) then
+			invalid = .true.; species = names(i)
+			excess = -x(i) - floor(i)
+			return
+		endif
+	enddo
+	! An unknown term can lie inside its negative resolution band. Its
+	! largest possible negative contribution is included in allowance,
+	! along with the full-system sum band. Thus this partial fixed sum is
+	! refused only if even the best admissible unknowns cannot close it.
+	s = 0.0d0
+	do i = 1,size(x)
+		if (fixed(i)) s = s + x(i)
+	enddo
+	if (s .gt. 1.0d0 + allowance) then
+		invalid = .true.; species = remainder
+		excess = s - 1.0d0 - allowance
+	endif
+	end subroutine imposed_fraction_group_invalid
 
 
 	subroutine ionization_balance_at_fixed_ne(x,n,mbase,n_e)
@@ -5325,7 +5596,106 @@
 	tot%viol_worst    = max(tot%viol_worst, a%viol_worst)
 	tot%streak_peak   = max(tot%streak_peak, a%streak_peak)
 	tot%n_ghost_open  = tot%n_ghost_open  + a%n_ghost_open
+	tot%n_invalid_imposed = tot%n_invalid_imposed + a%n_invalid_imposed
+	if (a%n_invalid_imposed .gt. 0 .and.                         &
+	    tot%invalid_imposed_cell .eq. 0) then
+		tot%invalid_imposed_cell = a%invalid_imposed_cell
+		tot%invalid_imposed_species = a%invalid_imposed_species
+		tot%invalid_imposed_excess = a%invalid_imposed_excess
+	endif
+	tot%n_projection_refused = tot%n_projection_refused                 &
+	                          + a%n_projection_refused
+	! The departure and the refusal are accumulated separately: a refusal
+	! whose departure is not the largest (an unusable mixture mass in a
+	! ghost of a sweep with no physical departure) keeps its cause and
+	! cell.
+	if (a%projection_worst .gt. tot%projection_worst) then
+		tot%projection_worst = a%projection_worst
+		tot%projection_cell  = a%projection_cell
+	endif
+	if (projection_refusal_outranks(a, tot)) then
+		tot%projection_cause           = a%projection_cause
+		tot%projection_refusal_cell    = a%projection_refusal_cell
+		tot%projection_refusal_measure = a%projection_refusal_measure
+	endif
 	end subroutine accumulate_ioniz_eq_ledger
+
+
+	! WHICH OF TWO RECORDED PROJECTION REFUSALS A LEDGER KEEPS: any
+	! refusal over none, an unusable mixture mass over a departure above
+	! the limit (it is no number at all), and between two of the same
+	! cause the larger |s - 1|.
+	pure logical function projection_refusal_outranks(a, tot) result(yes)
+	type(ioniz_eq_ledger), intent(in) :: a, tot
+	yes = .false.
+	if (a%projection_cause .eq. ieq_projection_cause_none) return
+	if (tot%projection_cause .eq. ieq_projection_cause_none) then
+		yes = .true.
+	else if (a%projection_cause .eq. ieq_projection_cause_unusable .and. &
+	         tot%projection_cause .eq. ieq_projection_cause_above) then
+		yes = .true.
+	else if (a%projection_cause .eq. tot%projection_cause) then
+		yes = a%projection_refusal_measure                               &
+		      .gt. tot%projection_refusal_measure
+	endif
+	end function projection_refusal_outranks
+
+
+	! THE FACTORS OF THE MASS PROJECTION of one sweep, s = n/m(composition)
+	! in every cell, ghosts included, with what decides whether they may be
+	! applied: usable = .false. where a mixture mass or a density is not a
+	! positive finite number, or a factor is not one (the factor is then 1
+	! there), with the FIRST such cell in j_unusable (a found flag, not a
+	! sentinel cell: every index of 1-Ng..N+Ng is a cell); s_worst the
+	! largest |s - 1| over the physical cells and j_worst its cell (0 when
+	! no physical cell departs).
+	subroutine mass_projection_factors(m_of_comp, n_in, s_close,         &
+	                                   s_worst, j_worst, usable, j_unusable)
+	real*8, dimension(1-Ng:N+Ng), intent(in)  :: m_of_comp, n_in
+	real*8, dimension(1-Ng:N+Ng), intent(out) :: s_close
+	real*8,  intent(out) :: s_worst
+	integer, intent(out) :: j_worst, j_unusable
+	logical, intent(out) :: usable
+	logical :: found, cell_ok
+	integer :: im_p
+	usable     = .true.
+	found      = .false.
+	s_worst    = 0.0d0
+	j_worst    = 0
+	j_unusable = 0
+	do im_p = 1-Ng, N+Ng
+		cell_ok = .true.
+		if (finite_number(m_of_comp(im_p)) .and.                         &
+		    m_of_comp(im_p) .gt. 0.0d0 .and.                              &
+		    finite_number(n_in(im_p)) .and.                               &
+		    n_in(im_p) .gt. 0.0d0) then
+			s_close(im_p) = n_in(im_p)/m_of_comp(im_p)
+		else
+			! An unusable input must refuse the sweep's projection,
+			! even though a unit factor safely preserves its densities.
+			s_close(im_p) = 1.0d0
+			cell_ok = .false.
+		endif
+		if (.not. finite_number(s_close(im_p)) .or.                      &
+		    s_close(im_p) .le. 0.0d0) then
+			s_close(im_p) = 1.0d0
+			cell_ok = .false.
+		endif
+		if (.not. cell_ok) then
+			usable = .false.
+			if (.not. found) then
+				j_unusable = im_p
+				found = .true.
+			endif
+		endif
+	enddo
+	do im_p = 1, N
+		if (abs(s_close(im_p) - 1.0d0) .gt. s_worst) then
+			s_worst = abs(s_close(im_p) - 1.0d0)
+			j_worst = im_p
+		endif
+	enddo
+	end subroutine mass_projection_factors
 
 
 	subroutine write_ioniz_eq_acceptance_report

@@ -968,6 +968,8 @@
 	call put_r('lowmach_damp_eps', lowmach_damp_eps)
 	call put_r('lowmach_damp_mach_th', lowmach_damp_mach_th)
 	call put_i('count_max', marching_step_max)
+	call put_i('marching_snapshot_interval', marching_snapshot_interval)
+	call put_i('marching_diagnostic_interval', marching_diagnostic_interval)
 	call put_r('coronal_cutoff_width', coronal_cutoff_width)
 	call put_l('base_ir_field', base_ir_field)
 	call put_l('mol_ir_bands', mol_ir_bands)
@@ -1094,6 +1096,16 @@
 	! The discretization of the pressure/gravity pair, which decides what a
 	! profile written by this run is a steady state OF.
 	write(u,'(A,L1)')     'well_balanced             ', well_balanced
+	! The cadence of the marching records ("Marching snapshot interval",
+	! "Marching diagnostic interval"): a phys-mode archive of the state
+	! after every N accepted physical steps (0 = none; a cap endpoint is
+	! kept as the final triple instead), and the energy-identity and
+	! hydro-time-row records at accepted steps divisible by N (0 = only
+	! refused attempts and the final record).
+	write(u,'(A,I0)')     'marching_snapshot_interval ',                  &
+		marching_snapshot_interval
+	write(u,'(A,I0)')     'marching_diagnostic_interval ',                &
+		marching_diagnostic_interval
 	! THE GRID THIS RUN IS SOLVED ON, stated so that it can be rebuilt from
 	! this record alone. The width is written at round-trip precision
 	! because a grid is not reproduced by a rounded width: two widths that

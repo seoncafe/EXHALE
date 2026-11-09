@@ -145,7 +145,7 @@ Key & Default & What it selects, and where \\
 \multicolumn{3}{l}{\itshape Convergence and the stationary solvers}\\
 \midrule
 \texttt{du\_th [PLM,WENO3]:} & $10^{-3}$ &
-  Threshold on the cell-centred spread \eqref{eq:du} at which PLM hands over
+  Threshold on the cell-centered spread \eqref{eq:du} at which PLM hands over
   to WENO3; a second, smaller value makes the run two-stage. Stops nothing
   since 2026-10-09: the marching stops on the face spread below
   $4\times10^{-4}$ and $\chi$ \eqref{eq:chi} below $10^{-4}$
@@ -160,7 +160,7 @@ Key & Default & What it selects, and where \\
   The flux gate of the acceptance test
   (\texttt{steady\_residual.f90}). \\
 \texttt{Solver:} & marching only &
-  \texttt{Newton [<switch>]} hands over to the stationary solve once the
+  Optional \texttt{Newton [<switch>]} hands over to the stationary solve once the
   face mass-flux spread falls below the switch, default $0.1$ (a $du$
   threshold, default $10^{-2}$, until 2026-10-10; \texttt{EXHALE\_main.f90}). \\
 \texttt{Stall:} & $10^{-6}$, 2000 steps &
@@ -693,6 +693,9 @@ A\&A, 586, A75
 
 \bibitem[Moses \& Bass(2000)]{Moses2000}
 Moses, J.~I., \& Bass, S.~F. 2000, J. Geophys. Res., 105, 7013
+
+\bibitem[Moses et al.(2011)]{Moses2011}
+Moses, J.~I., Visscher, C., Fortney, J.~J., et al. 2011, ApJ, 737, 15
 
 \bibitem[Samson \& Haddad(1994)]{Samson1994}
 Samson, J.~A.~R., \& Haddad, G.~N. 1994, J. Opt. Soc. Am. B, 11, 277
