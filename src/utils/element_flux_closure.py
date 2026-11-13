@@ -275,6 +275,16 @@ def read_configuration(path):
         merged['omp_num_threads']=12
     if merged['wind_route'] not in ('march', 'jfnk'):
         raise SystemExit('wind_route must be march or jfnk')
+    # The cap of stationary outer passes is the input key "JFNK max
+    # iterations" since 2026-11-12; a binary built from that source refuses
+    # the environment variable that carried it.  A rung that wants another
+    # cap states the key in input_keys.
+    if ('EXHALE_OUTER_PASSES' in (merged.get('exhale_env') or {})
+            or 'EXHALE_OUTER_PASSES' in os.environ):
+        raise SystemExit('EXHALE_OUTER_PASSES (in exhale_env or in the '
+                         'environment) was replaced by the input key "JFNK '
+                         'max iterations"; put "JFNK max iterations: <n>" in '
+                         'input_keys and unset the variable')
     for key in ('march_chunk_steps','march_snapshot_interval','march_diagnostic_interval'):
         value=merged[key]
         if isinstance(value,bool) or not isinstance(value,int) or value < (2 if key=='march_chunk_steps' else 0):

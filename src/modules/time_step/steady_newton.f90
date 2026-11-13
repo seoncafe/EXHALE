@@ -141,8 +141,7 @@
                                         cert_tol_mass_at,                &
                                         cert_tol_momentum,               &
                                         cert_tol_energy,                 &
-                                        cert_regime_wind_r,              &
-                                        certification_species_row_gate
+                                        row_unavailable_in_selected_region
 
       implicit none
       private
@@ -8220,7 +8219,8 @@
          enddo
          if (.not. is_row) cycle
          n_read = n_read + 1
-         if (rep%e(i)%status .eq. cert_unavailable) then
+         if (rep%e(i)%status .eq. cert_unavailable .or.                  &
+             row_unavailable_in_selected_region(rep%e(i))) then
             ok = .false.;  none_measured = .true.
          else if (rep%e(i)%status .eq. cert_evaluated) then
             if (.not. rep%e(i)%within_tol .or. .not. rep%e(i)%finite) then

@@ -2,13 +2,27 @@
       ! Regional stabilization: finite-duration regional stability.
       ! Stationary convergence requires a separate stationary root test.
       use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
-      use global_parameters, only: output_dir
+      use global_parameters, only: output_dir, n_species
       implicit none
       private
       public :: regional_read, regional_begin, regional_sample, regional_incomplete
       public :: regional_enabled, regional_passed, regional_exhausted
       public :: regional_lower, regional_upper, regional_window
       public :: regional_profile_every
+      public :: field_velocity, n_fluid_fields, n_cell_fields
+      public :: field_mass_inventory, field_thermal_energy_inventory
+      public :: field_mass_flow, n_regional_fields
+      ! Field ids of the monitored quantities. Each cell supplies rho, v, p, T
+      ! (ids 1..n_fluid_fields), n_e, n_tot, and the number density of each
+      ! of the n_species columns of f_sp; each region then adds its mass and
+      ! thermal-energy inventories and the mass flow through its outer face.
+      integer, parameter :: field_velocity=2
+      integer, parameter :: n_fluid_fields=4
+      integer, parameter :: n_cell_fields=6+n_species
+      integer, parameter :: field_mass_inventory=n_cell_fields+1
+      integer, parameter :: field_thermal_energy_inventory=n_cell_fields+2
+      integer, parameter :: field_mass_flow=n_cell_fields+3
+      integer, parameter :: n_regional_fields=n_cell_fields+3
       logical :: regional_enabled=.false.,regional_passed=.false.
       logical :: regional_exhausted=.false.
       real*8 :: regional_lower=1.2d0,regional_upper=1.2d0
@@ -128,7 +142,7 @@
       m=size(values)
       if(size(region).ne.m.or.size(field).ne.m.or.size(normalization).ne.m) &
          error stop 'regional vector size mismatch'
-      if(any(region.lt.1).or.any(region.gt.3).or.any(field.lt.1).or.any(field.gt.49)) &
+      if(any(region.lt.1).or.any(region.gt.3).or.any(field.lt.1).or.any(field.gt.n_regional_fields)) &
          error stop 'invalid regional quantity metadata'
       if(.not.any(region.eq.1).or..not.any(region.eq.3)) error stop 'empty lower or upper region'
       if(.not.all(ieee_is_finite(normalization)).or.any(normalization.le.0d0)) &
@@ -182,7 +196,7 @@
          if(b.le.a) error stop 'regional window is below numerical time resolution'
          x0=previous+a*(values-previous);x1=previous+b*(values-previous)
          ! The accepted RK mass flow is an interval average, not an endpoint.
-         where(fields.eq.49)
+         where(fields.eq.field_mass_flow)
             x0=values;x1=values
          end where
          integral(:,iw)=integral(:,iw)+0.5d0*h*(x0+x1)
@@ -195,16 +209,17 @@
                reference=integral(:,1)/regional_window
                ! Positive fluid quantities and inventories use their FIRST
                ! window mean. Velocity and populations retain frozen scales.
-               where(fields.ne.2.and.(fields.le.4.or.(fields.ge.47.and.fields.le.48))) &
+               where(fields.ne.field_velocity.and.(fields.le.n_fluid_fields.or. &
+                     fields.eq.field_mass_inventory.or.fields.eq.field_thermal_energy_inventory)) &
                   scales=abs(reference)
                ! A zero mean flow has no relative scale. Retain a rounding-scale
                ! absolute denominator from the initial acoustic mass flow.
-               where(fields.eq.49) scales=max(abs(reference),epsilon(1d0)*scales)
+               where(fields.eq.field_mass_flow) scales=max(abs(reference),epsilon(1d0)*scales)
                if(any(scales.le.0d0)) error stop 'zero regional normalization'
             endif
             call evaluate_windows(elapsed+dt*a,ok)
             if(iw.eq.nwindow) then
-               ! State fields use the adopted endpoint; field 49 uses the
+               ! State fields use the adopted endpoint; the mass flow uses the
                ! accepted RK interval-average mass flow. Include each supplied
                ! value in the final finite-window bound.
                minimum(:,iw)=min(minimum(:,iw),values)
@@ -252,13 +267,13 @@
       span=(maxval(maximum(:,:iw),dim=2)-minval(minimum(:,:iw),dim=2))/scales
       ok=all(samples(:iw).ge.minimum_samples)
       do reg=1,3
-         do f=1,49
+         do f=1,n_regional_fields
             mask=regions.eq.reg.and.fields.eq.f
             if(.not.any(mask)) cycle
             ml=mean_limit(reg);rl=range_limit(reg)
-            if(f.eq.47.or.f.eq.48) then
+            if(f.eq.field_mass_inventory.or.f.eq.field_thermal_energy_inventory) then
                ml=inventory_limit(reg);rl=inventory_limit(reg)
-            else if(f.eq.49) then
+            else if(f.eq.field_mass_flow) then
                ml=flow_limit(reg);rl=huge(1d0)
             endif
             dmmax=maxval(dm,mask=mask);spmax=maxval(span,mask=mask)

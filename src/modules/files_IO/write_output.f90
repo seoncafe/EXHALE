@@ -9,6 +9,7 @@
                        coupling_state_fields,                            &
                        write_provenance_header,                          &
                        state_is_certified, state_certification_reason, &
+                       state_certification_wind_r,                       &
                        set_state_certified
       use, intrinsic :: iso_c_binding, only: c_char, c_int, c_null_char
       ! THE CONFIGURATION THE STATE IN THIS FILE IS A STATE OF. The block is
@@ -1381,6 +1382,7 @@
       type(adv_derived_state), intent(in), optional :: derived_state
       integer, dimension(0:4) :: nT, nc
       integer :: j, ist
+      character(len=48) :: wind_r_text
 
       nT = 0;  nc = 0
       do j = 1-Ng,N+Ng
@@ -1437,12 +1439,24 @@
       write(unit,'(A)') '#   CONDITION of the row, so a reader can'//      &
                      ' weigh a corrected row rather than only count it.'
       if (state_is_certified) then
-         ! The reason survives a certified state too: 'certified_in_wind'
-         ! says the species rows below the wind radius were reported and
-         ! did not gate.
+         ! The reason survives a certified state too: it names the region
+         ! the verdict was taken on, 'certified_all_cells' (every
+         ! applicable cell) or 'certified_in_wind' (the carrier and
+         ! elemental transport rows below the wind start radius were
+         ! reported and did not gate), the latter with the radius it was
+         ! made for (state_certification_wind_r, as on the coupling line).
+         wind_r_text = ''
+         if (trim(state_certification_reason) .eq. 'certified_in_wind') then
+            if (state_certification_wind_r .gt. 0.0d0) then
+               write(wind_r_text,'(ES23.16)') state_certification_wind_r
+            else
+               write(wind_r_text,'(ES23.16)') cert_regime_wind_r
+            endif
+            wind_r_text = ' cert_wind_r='//trim(adjustl(wind_r_text))
+         endif
          write(unit,'(A)') '# adv_input_certified T the input state'//      &
                      ' passed the stationary certification '//             &
-                     trim(state_certification_reason)
+                     trim(state_certification_reason)//trim(wind_r_text)
       else if (len_trim(state_certification_reason) .gt. 0) then
          write(unit,'(A)') '# adv_input_certified F '//                     &
                      trim(state_certification_reason)//                     &

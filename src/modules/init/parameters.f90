@@ -1291,6 +1291,33 @@
       real*8, parameter :: flux_spread_th_default = 2.0d-5
       real*8  ::  flux_spread_th = flux_spread_th_default
       real*8  ::  r_flux         = 1.2d0
+      ! WHICH CELLS THE ELEMENTAL TRANSPORT AND CARRIER BALANCES ARE JUDGED
+      ! ON in the stationary certification ("Certification region: all|wind",
+      ! user decision 2026-11-12; certification.f90, gate_species_row).
+      ! .true. ("all", the default): every applicable physical cell, and the
+      ! stationary outer iteration runs until the whole column is within
+      ! tolerance. .false. ("wind"): the cells at r >= cert_regime_wind_r;
+      ! the cells below it are reported and do not gate.
+      logical :: cert_gate_all_cells = .true.
+      ! THE WIND START RADIUS [R_p] ("Wind start radius [R_p]: <r>", default
+      ! 1.2): where the wind region of the certification begins. Gating
+      ! under "Certification region: wind", the wind-level judgment of a
+      ! state the outer iteration ends with under "all", and the wind column
+      ! of the report. 1.2 is the radius above which the flow is transonic on
+      ! every case of the regression matrix. Checked against the grid
+      ! (certification_check_wind_start_radius) once the grid exists. This
+      ! is the one definition of the radius; every reader uses it.
+      real*8  :: cert_regime_wind_r = 1.20d0
+      ! THE CAP OF STATIONARY OUTER PASSES ("JFNK max iterations: <n>",
+      ! default 20, an integer >= 1): the number of passes of the stationary
+      ! outer iteration (steady_wind_with_element_diffusion), each one
+      ! hydrodynamic JFNK solve at fixed composition followed by one
+      ! composition update. It is NOT the cap of the Newton or Krylov
+      ! iterations inside one pass (that is EXHALE_JFNK_MAXIT). A run that
+      ! alternates no species row takes one pass whatever the value. It
+      ! replaces the environment variable EXHALE_OUTER_PASSES, which the run
+      ! refuses (input_read).
+      integer ::  jfnk_max_iter      = 20
       real*8  ::  a_orb       ! Orbital distance
       real*8  ::  r_max       ! Radius the grid is constructed for [R_p]: r_out_user, or the Hill radius in Roche mode without one
       real*8  ::  r_out_user  ! User-set outer radius [R_p]: the domain in spherical mode, and in Roche mode when > 1

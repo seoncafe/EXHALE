@@ -20,7 +20,16 @@ trajectory: the `# coupling` line of the output says `mode=init t_phys=0
 certified=F cert_reason=mapped_seed` whatever the source said (the source line is kept as
 `# mapped-from-coupling:` provenance), because a nonconservative
 interpolation is neither the certified state nor the physical clock of the
-run that wrote it (finding B6 of the review of 2026-09-12). The `# grid`
+run that wrote it (finding B6 of the review of 2026-09-12). Each existing
+`t_phys[s]` metadata record is reset to zero in both output files, and its
+source value is kept as `# mapped-from-t_phys[s]`. Existing coupling records
+are rewritten as mode=init t_phys=0. A source without either clock record
+remains without a clock record; it requires an explicitly supplied zero time
+for admission by the marching checker. When both clocks are present, their
+values agree. The Fortran writer records zero in the metadata clock for
+mode=init and omits the coupling time in that mode. Both records are
+recognized by the first token of the comment body, after the `#` and any
+white space. The `# grid`
 line is taken from the target file, because a state describes the grid it is
 written on and `load_IC` refuses a file whose grid field is not the run's
 (the line is unchanged when the target is on the same grid). The other
@@ -540,6 +549,13 @@ def rewrite_coupling(header, tgt_path, src_path, shift, n_new, n_ghost_extrap,
                      ext_note='', grid_line='', reservoir_line=''):
     out = []
     for h in header:
+        # The comment body's tokens, '#' removed first: '#t_phys[s] v',
+        # '#  coupling: ...' and tab-separated records are the same records
+        # as their single-space forms. load_IC.f90 (comment_field_is) reads
+        # '#coupling:' and '#  coupling:' as the coupling record, so a
+        # mapper that matched only '# coupling:' left the source's mode and
+        # time in a file whose metadata clock it had reset.
+        fields = h[1:].split() if h.startswith('#') else []
         if reservoir_line and h.split()[:2] == ['#', 'reservoir']:
             # The reservoir the state is a state OF. --reservoir has
             # carried the element onto another one, so the line states that
@@ -554,15 +570,29 @@ def rewrite_coupling(header, tgt_path, src_path, shift, n_new, n_ghost_extrap,
             out.append(grid_line)
         elif h.startswith('# rows'):
             out.append(f'# rows {n_new}: 2 ghost cells at each end; physical cells are rows 3 to {n_new-2}')
-        elif h.startswith('# coupling:'):
-            toks = h.split()[2:]
-            # cert_reason= is dropped with certified=: a seed that kept the
-            # source's 'certified_in_wind' beside its own 'certified=F' would
-            # state both that it makes no claim and that it was certified.
+        elif fields[:1] == ['coupling:']:
+            toks = fields[1:]
+            # cert_reason= and cert_wind_r= are dropped with certified=: a
+            # seed that kept the source's 'certified_in_wind' (or the radius
+            # of that claim) beside its own 'certified=F' would state both
+            # that it makes no claim and that it was certified.
             kept = [t for t in toks if not (t.startswith('mode=') or t.startswith('t_phys=')
-                                            or t.startswith('certified=') or t.startswith('cert_reason='))]
+                                            or t.startswith('certified=') or t.startswith('cert_reason=')
+                                            or t.startswith('cert_wind_r='))]
             out.append('# coupling: mode=init t_phys=0 certified=F cert_reason=mapped_seed ' + ' '.join(kept))
             out.append('# mapped-from-coupling: ' + ' '.join(toks))
+        elif fields[:1] == ['t_phys[s]']:
+            # The clock of the state is the coupling line's: a mapped state
+            # is a new initial state, so its '# t_phys[s]' line is 0 as well,
+            # the value the code writes for every mode=init state (load_IC.f90,
+            # the clock of the restart metadata block: t_phys only in
+            # mode=phys, else 0).
+            # Copied verbatim, a source reached at t > 0 would state two
+            # clocks that disagree, and marching_acceptance.py, which
+            # march_case.py uses to admit a seed, refuses such a file. The
+            # source's clock is kept as provenance.
+            out.append('# t_phys[s] ' + f'{0.0:.16E}')
+            out.append('# mapped-from-t_phys[s] ' + ' '.join(fields[1:]))
         else:
             out.append(h)
     out.append(f'# mapped: onto the cell centers of {os.path.abspath(tgt_path)} from {os.path.abspath(src_path)} '

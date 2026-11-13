@@ -160,6 +160,11 @@
    ! above comes from 'certified=' alone, so a token this version does not
    ! know cannot promote an uncertified state to a certified one.
    character(len=cert_reason_len) :: ic_cert_reason = ''
+   ! THE WIND START RADIUS [R_p] OF A certified_in_wind CLAIM, as the file
+   ! states it (cert_wind_r=). A file that claims certified_in_wind and
+   ! states no radius was written under the fixed-radius rule and is taken
+   ! as 1.2 (said at the adoption). Not positive: no wind claim.
+   real*8 :: ic_cert_wind_r = -1.0d0
 
    ! THE CERTIFICATION PAIR AS ONE FILE STATES IT. The two halves of a state
    ! are two files, and a claim about the state is a claim about both of
@@ -182,6 +187,8 @@
       character(len=cert_reason_len) :: reason = ''
       logical :: state_id_present  = .false.
       character(len=64) :: state_id = ''
+      logical :: wind_r_present    = .false.
+      real*8  :: wind_r            = -1.0d0
    end type file_certification_claim
 
    ! THE RESTART METADATA BLOCK
@@ -2510,6 +2517,7 @@
       character(len=len(line)) :: rest
       character(len=64) :: key, val
       logical :: got
+      integer :: ios_wr
       claim%header_present = .true.
       rest = adjustl(line)
       do
@@ -2535,6 +2543,19 @@
                     'the "cert_reason" token is longer than the field')
             claim%reason_present = .true.
             claim%reason         = trim(val)
+         case ('cert_wind_r')
+            ! The wind start radius a certified_in_wind claim was made at.
+            if (claim%wind_r_present)                                     &
+               call refuse_coupling_header(fname, line,                   &
+                    'the key "cert_wind_r" is stated twice')
+            read(val, *, iostat = ios_wr) claim%wind_r
+            ! A radius that is not a finite positive number is refused, in
+            ! either half (NaN fails the comparisons; an infinity exceeds huge).
+            if (ios_wr .ne. 0 .or. .not. (claim%wind_r .gt. 0.0d0) .or.      &
+                .not. (claim%wind_r .le. huge(1.0d0)))                     &
+               call refuse_coupling_header(fname, line,                   &
+                    'the "cert_wind_r" value is not a finite positive number')
+            claim%wind_r_present = .true.
          case ('state_id')
             if (claim%state_id_present)                                   &
                call refuse_coupling_header(fname, line,                   &
@@ -2581,6 +2602,7 @@
       character(len=64) :: sid_stated_h, sid_stated_i
       ic_certified   = .false.
       ic_cert_reason = ''
+      ic_cert_wind_r = -1.0d0
       if (claim_h%state_id_present .neqv. claim_i%state_id_present) then
          sid_stated_h = '(none)'
          sid_stated_i = '(none)'
@@ -2650,6 +2672,32 @@
          ic_cert_reason = claim_h%reason
       else if (claim_i%reason_present) then
          ic_cert_reason = claim_i%reason
+      endif
+      ! THE RADIUS OF A WIND CLAIM. Two halves that state different radii
+      ! are two claims and are refused; a certified_in_wind claim that
+      ! states none was written under the fixed-radius rule.
+      if (claim_h%wind_r_present .and. claim_i%wind_r_present) then
+         if (abs(claim_h%wind_r - claim_i%wind_r) .gt.                     &
+             1.0d-12*abs(claim_h%wind_r)) then
+            write(*,'(A,ES23.16,A,ES23.16)') ' (load_IC) ERROR: the two'// &
+                 ' restart files state different cert_wind_r: ',          &
+                 claim_h%wind_r, ' and ', claim_i%wind_r
+            error stop 1
+         endif
+      endif
+      if (ic_certified .and. trim(ic_cert_reason) .eq. 'certified_in_wind') &
+      then
+         if (claim_h%wind_r_present) then
+            ic_cert_wind_r = claim_h%wind_r
+         else if (claim_i%wind_r_present) then
+            ic_cert_wind_r = claim_i%wind_r
+         else
+            ic_cert_wind_r = 1.2d0
+            write(*,'(A)') ' (load_IC) the file claims certified_in_wind'// &
+                 ' and states no cert_wind_r: it was written under the'//  &
+                 ' fixed-radius rule, and the claim is taken for r >= 1.2'//&
+                 ' R_p.'
+         endif
       endif
       end subroutine adopt_certification_claim
 

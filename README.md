@@ -74,8 +74,8 @@ the source has moved since.
 | P3 | H2+, H3+ and HeH+ are transported carriers beside H2 (and OH, H2O and CO with oxygen chemistry), with zero relative molecular diffusion, the same eddy mixing, and the hydrogen and helium nucleus budgets as constraints | `src/modules/lower_atmosphere/diffusive_photochemistry.f90`, `src/modules/lower_atmosphere/element_inventory.f90` | widens `Molecular carrier transport: True` |
 | P4 | `Ionization transport: True` with `Coupled carrier solve: True` is accepted in a molecular gas, where the ion stages are Newton carrier rows; it stays refused in an atomic gas, and `On stall` stays refused | `src/modules/files_IO/input_read.f90` | opt-in |
 | P5 | The enthalpy flux of the element carriers is taken from the actual step flux, including the helium share of HeH+ (not checked again here; whether v1.00 counted it twice was not determined) | `diffusive_photochemistry.f90`, `steady_residual.f90` | with `He_diffusion`, interdiffusion enthalpy and carrier transport |
-| P6 | Element and carrier rows are gated in every applicable physical cell against the wind tolerance `1e-5`; v1.00 gated them only at `r >= 1.20 R_p` | `src/modules/time_step/certification.f90` | certification |
-| P7 | A molecular state is not certified when a cell lies outside the validity range of the H3+ cooling (20-5000 K in LTE, or the non-LTE range) or the map of those cells is missing | `certification.f90`, `src/modules/lower_atmosphere/h3p_cooling.f90` | molecular certification |
+| P6 | The carrier and elemental transport rows of the certification are judged on a selectable region (every other row gates on the whole column): `Certification region: all` (default) gates every applicable physical cell, `Certification region: wind` gates the cells with `r >=` `Wind start radius [R_p]:` (default 1.2) and reports those below. The report prints both maxima of every such row; a certified state that carries such a row records `cert_reason=certified_all_cells` or `cert_reason=certified_in_wind` (a state without one carries no token). With `all`, a stationary outer iteration that spends its pass cap without all-cell acceptance is accepted on the wind region when the state it hands back is within tolerance there (`certified_in_wind`, info 0) | `src/modules/time_step/certification.f90`, `src/EXHALE_main.f90`, `src/modules/files_IO/input_read.f90` | `all`, wind start radius 1.2 R_p |
+| P7 | The certification report maps the cells that carry H3+ outside the validity range of the H3+ cooling (20-5000 K in LTE, 300-5000 K for the non-LTE rows); the map is a flag and does not refuse certification (only a nonfinite argument does) | `certification.f90`, `src/modules/lower_atmosphere/h3p_cooling.f90` | molecular certification |
 | P8 | Regional stabilization, a finite-duration criterion for physical-time marching (below) | `src/modules/time_step/regional_convergence.f90` | off; `Regional convergence: True` |
 | P9 | Reuse of the stellar photoionization and heating rates of a cell whose inputs are bitwise equal inside a held composition (speed only) | `src/modules/radiation/util_ion_eq.f90` | off; `EXHALE_HELD_STELLAR_RATE_REUSE=1` |
 
@@ -514,14 +514,55 @@ filename is not an instruction to resume calculations.
   tolerances are anchored by measurement, not inherited from the solver's own
   target: mass 3e-12, momentum 1e-8, energy 1e-6, the closure and the level
   balances at the tolerance the cell sweep already judges a root by, and the
-  element and carrier rows at 1e-5 for `r >= 1.20 R_p`, the rows below that
-  reported and not gating, because the same balance is a cancellation of
-  advective terms in the wind and of eddy and settling terms in the layer and
-  is not resolvable to one number in both. v1.10: the element and carrier
-  rows are gated in every applicable physical cell against the wind
-  tolerance 1e-5, the radius windows being reported only (P6), and two
-  further entries gate a state: the lower-boundary thermochemical closure
-  (P1) and, in a molecular gas, the validity range of the H3+ cooling (P7).
+  element and carrier rows at 1e-5. Which cells the element and carrier
+  rows are judged on is the certification region
+  (P6): `Certification region: all` (default) judges them on every
+  applicable physical cell; `Certification region: wind` judges them on the
+  cells with r at or above `Wind start radius [R_p]:` (default 1.2; refused
+  unless it lies above the inner boundary and at or below the last cell
+  center) and reports the cells below, because the same balance is a
+  cancellation of advective terms in the wind and of eddy and settling
+  terms in the layer. Every other row (the hydrodynamic rows, the level
+  balances, the eliminated-species closure, the ionization stage nucleus
+  sums and the lower-boundary thermochemical closure, P1) gates on the whole
+  column in both regions. The report prints, for every element and carrier row,
+  its largest measure over all applicable cells and over the wind region
+  side by side, marking the one that gates. A certified state file with
+  such a row states the region: `certified=T cert_reason=certified_all_cells`
+  or `certified=T cert_reason=certified_in_wind cert_wind_r=<r>`, a wind
+  claim carrying the numerical start radius it was made for; a state
+  without one (the atomic three-unknown route) carries no token. Each region
+  has its own availability: a region with no applicable cell is UNAVAILABLE
+  (printed so, not ABOVE) and certifies nothing, and it never hides the
+  other region's measured result. Older files with `certified_in_wind` and
+  no radius were written under the fixed rule and load as `r >= 1.2`; a
+  reload whose wind start radius differs from a file's wind claim reports
+  the claim as not re-judged. An evaluation (`Restart intent: stationary
+  evaluate`) under `all` records the all-cell verdict, else the wind
+  verdict (`certified_in_wind`), else the refusal; an unsuccessful
+  evaluation exits 2 when the input claimed certification, and an
+  unclaimed snapshot retains the diagnostic evaluation status.
+  A carrier absent from every cell of a region is not applicable there (no
+  refusal) only where its production and incoming transport could not
+  sustain it at the absence floor in any of those cells; otherwise the
+  region is UNAVAILABLE. A stationary restart whose stored pair is already
+  certified on the region in force is accepted at outer pass 0 and writes
+  it: the physical stored pair is retained; boundary ghosts are rebuilt
+  using the current boundary conditions. Under `all`, a stored pair that holds only the
+  wind verdict is iterated, and restored (`certified_in_wind`) if the pass
+  cap ends with a state that fails the wind verdict. With `all`, a
+  stationary outer iteration that spends its pass cap
+  (the input key `JFNK max iterations: <n>`, default 20, the number of
+  stationary outer passes and not a Newton or Krylov iteration cap; it
+  replaced the environment variable `EXHALE_OUTER_PASSES`, which a run now
+  refuses) without all-cell acceptance judges
+  the state it hands back on the wind region: within tolerance there, the
+  run says that all-cell convergence was not reached, names the worst row
+  below the wind start radius, and writes `certified_in_wind` with info 0;
+  otherwise the state is `certified=F` as before. In a
+  molecular gas, the H3+ cooling applicability map is reported; a
+  temperature outside the published intervals does not refuse
+  certification, while a nonfinite argument does (P7).
   The certification is a
   DIAGNOSTIC alongside the default marching profile acceptance. Use the
   default K=3 complete-profile bands in both trees; no
@@ -1090,7 +1131,7 @@ figures (and `docs/defect_fixes_20261027/`); the further notes are in
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-11-09 22:51 KST
+Last updated: 2026-11-13 14:17 KST
 
 
 ### Regression references (2026-11-09)

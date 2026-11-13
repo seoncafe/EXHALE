@@ -37,7 +37,7 @@
                                   energy_floor_first_step,                  &
                                   energy_floor_last_step,                   &
                                   energy_floor_cell_hits,                   &
-                                  energy_res_tol, energy_scale_floor
+                                  energy_res_tol
       use viscous_conduction, only: n_conduction_floor_hits,                &
                                   n_conduction_floor_hits_family,           &
                                   conduction_floor_first_step,              &
@@ -321,7 +321,9 @@
          !   identity_residual  d_u_th - d_u_th_transport - q_ext_dt, the
          !                   closure of the SOURCE STEP alone
          !   identity_scale  sum_j dV_j [ |u_th^n| + dt(|heat|+|cool|) ],
-         !                   the row scale of energy_semi_implicit summed
+         !                   a stored-energy scale summed over the cells,
+         !                   NOT the row norm of energy_semi_implicit
+         !                   (thermal_balance_norm; see the comment at scal)
          !   d_u_form        the formation reservoir's change over the step.
          !                   REPORTED as the reservoir's change and NEVER
          !                   added to the row: with this code's net thermal
@@ -1158,10 +1160,21 @@
          ! heat and cool are volumetric rates in the code's energy density
          ! unit per code time; the step is dt_g of code time.
          sq  = sq + dt_g*(heat(j) - cool(j))*dv
-         ! The row scale of energy_semi_implicit, |E_old| + dt(|heat|+|cool|),
-         ! summed over the cells: the same scale the cell-local row was
-         ! judged by, so the summed test cannot be stricter than the row
-         ! test it aggregates.
+         ! |E_old| + dt(|heat|+|cool|) summed over the cells. This is NOT
+         ! the norm the energy row of each cell is accepted by
+         ! (energy_semi_implicit: thermal_balance_norm, the energy the step
+         ! moves plus the arithmetic resolution, without the stored energy).
+         ! It is larger than the sum of those norms only where the caloric
+         ! change of the composition change at fixed T plus the arithmetic
+         ! allowance E_arith/energy_res_tol stay below the stored thermal
+         ! energy of the cell. That is the usual case but NOT a guarantee:
+         ! a caloric offset comparable to the stored energy (the allowance
+         ! E_arith/energy_res_tol adds only about 1e-6 of it) makes the row
+         ! norm the larger, and then this summed test can be stricter than
+         ! the row tests. It is a separate coarse guard of
+         ! the closure of the source step against a gross error; it does
+         ! not certify the row norm, and it admits an error of up to 1e-9
+         ! of the stored thermal energy, which the row test does not.
          scal = scal + (abs(uth_old)                                       &
                         + dt_g*(abs(heat(j)) + abs(cool(j))))*dv
       enddo
@@ -1169,7 +1182,7 @@
       verd%identity_evaluated = .true.
       verd%d_u_th   = sth
       verd%d_u_form = sfm
-      verd%identity_scale = max(scal, energy_scale_floor, as_scale_floor)
+      verd%identity_scale = max(scal, as_scale_floor)
 
       if (marked_before_sources .and. marked_after_sources) then
          verd%transport_measured = .true.
@@ -1185,11 +1198,18 @@
          verd%identity_residual = sth - sq
       endif
       ! THE GATE. In phys mode the closure of the source step refuses the
-      ! attempt, under the energy row's own tolerance and its own scale: the
-      ! summed residual is bounded by the sum of the cell residuals, each of
-      ! which the row already holds to energy_res_tol of its own scale, so
-      ! this test cannot be stricter than the row test it aggregates and no
-      ! tolerance was chosen to make a run pass. It is inert while the marks
+      ! attempt, under the energy row's tolerance and the stored-energy
+      ! scale above. The summed residual is bounded by the sum of the cell
+      ! residuals, each of which the row holds to energy_res_tol of its own
+      ! norm; that norm is usually, but not always, smaller than the cell's
+      ! share of this scale (see the comment at scal), so this gate is a
+      ! separate coarse guard: usually looser than the row tests, it can be
+      ! stricter where a cell's caloric offset or arithmetic allowance
+      ! exceeds its stored thermal energy. Tightening it would need a
+      ! separately derived aggregate of the cell and summation errors; it
+      ! is left unchanged so that the row-acceptance comparison is not
+      ! mixed with a second change. No tolerance here was chosen to make a
+      ! run pass. It is inert while the marks
       ! are absent, because without them there is no measured transport
       ! contribution to subtract and the number is not a closure.
       if (verd%transport_measured .and. run_mode .eq. run_mode_phys) then

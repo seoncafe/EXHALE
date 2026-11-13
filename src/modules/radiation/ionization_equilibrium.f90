@@ -31,6 +31,8 @@
 	                               constraint_row_tol,                    &
 	                               fraction_resolution,                   &
 	                               helium_closure_allowance,              &
+	                               imposed_stage_sum_rounding_bound,      &
+	                               closing_stage_density_at_rounding,     &
 	                               h3p_row_balance_tol, slot_H3p,         &
 	                               turnover_of_group,                     &
 	                               turnover_row_without_reaction,         &
@@ -1374,6 +1376,17 @@
    integer :: imposed_full_terms
    logical :: imposed_active(7), invalid_imposed, fix_ions, fix_molecules
    logical :: helium_total_positive, invalid_helium_total, nonzero_helium_state
+   ! The number of He-bearing terms the helium closure sums, and whether a
+   ! closing stage of some cell was negative inside the rounding bound and
+   ! was set to the zero it rounds to (the element totals are then formed
+   ! again from the stages).
+   integer :: n_he_terms
+   logical :: stage_closure_zeroed
+   ! The closing density as bounded and returned by
+   ! closing_stage_density_at_rounding, whether it was within the bound,
+   ! and the excess when it was not.
+   real*8  :: closure_repaired, closure_deficit
+   logical :: closure_within
    character(len=24) :: imposed_names(7), invalid_species
    real*8 :: invalid_excess
 
@@ -1636,13 +1649,40 @@
 
 	! Check the transported data before any cell solve. A root search cannot
 	! change these fractions: every attempted projection restores them. The
-	! same fraction-resolution allowance as ionization_fractions_physical
-	! applies to each fixed term. For a complete helium closure the allowance
-	! is k*fraction_resolution, with k from helium_closure_allowance. When
-	! terms are not fixed, their possible negative floors are added to the
-	! partial-sum bound; this does not enlarge the complete-closure bound.
-	! Only fixed terms enter these sums, so a violation is attributable to
-	! the input rather than an unknown root.
+	! same fraction-resolution floor as ionization_fractions_physical applies
+	! to each fixed term. The sum of the fixed terms of an element may stand
+	! above one by the rounding of a stored composition whose closing stage
+	! is at the rounding of the element total, and by the rounding of the sum
+	! itself: imposed_stage_sum_rounding_bound of the number of terms the
+	! complete closure sums (its derivation is at the function). When terms
+	! are not fixed, their possible negative floors are added to the
+	! partial-sum bound. Only fixed terms enter these sums, so a violation is
+	! attributable to the input rather than an unknown root.
+	!
+	! The cells checked are the cells the imposed fractions are written into
+	! (j >= 1 below, at the ieq_cell fixes): the physical cells and the upper
+	! ghosts, whose composition closes the outer face. The lower ghosts are
+	! the reservoir and impose nothing.
+	!
+	! A CLOSING STAGE BELOW ZERO INSIDE THE BOUND IS THE ZERO IT ROUNDS TO.
+	! Where the imposed terms are every term of the element but its closing
+	! stage (H I; the He I ground singlet n(He I) - n(He 2^3S) where the
+	! level is carried, the He I total where it is not), the signed closing
+	! density is bounded on the positive element total of the cell before
+	! it is zeroed (closing_stage_density_at_rounding, chemical_row_layout:
+	! the fraction-sum check above is a different floating-point evaluation
+	! and does not by itself bound that density). A deficit within
+	! imposed_stage_sum_rounding_bound times the total is set to zero; a
+	! larger one is refused as an invalid imposed input. After the loop the
+	! element totals are formed again from the stages
+	! (hydrogen_helium_nuclei_density), so the stages the cells solve sum
+	! to the element total and no stage density is negative. The transported
+	! stages themselves are not changed; the element total moves by the
+	! zeroed deficit, at most that bound times the total. This repair follows
+	! the same principle of treating a justified rounding-sized closing-stage
+	! deficit as zero; its scale and allowance are defined here and are not
+	! identical to the Newton inventory check.
+	stage_closure_zeroed = .false.
 	do j = 1, N+Ng
 		fix_ions = ionization_transport .and. (bg_ready .or. do_load_IC)
 		fix_molecules = thereis_mol .and. carrier_transport .and.       &
@@ -1703,10 +1743,27 @@
 			     nm_tot(j,iel_O)/nh(j)
 		endif
 		imposed_allowance = imposed_allowance +                  &
-		     dble(imposed_full_terms)*fraction_resolution
+		     imposed_stage_sum_rounding_bound(imposed_full_terms)
 		call imposed_fraction_group_invalid(imposed_values,imposed_active, &
 		     imposed_floor,imposed_names,'H I',imposed_allowance,    &
 		     invalid_imposed,invalid_species,invalid_excess)
+		! H I closes the hydrogen nuclei alone where every other H term
+		! is imposed.
+		if (.not. invalid_imposed .and. fix_ions .and.               &
+		    (fix_molecules .or. .not. thereis_mol) .and.             &
+		    nhi(j) .lt. 0.0d0) then
+			call closing_stage_density_at_rounding(nhi(j), nh(j),     &
+			     imposed_full_terms, closure_repaired, closure_within,  &
+			     closure_deficit)
+			if (closure_within) then
+				nhi(j) = closure_repaired
+				stage_closure_zeroed = .true.
+			else
+				invalid_imposed = .true.
+				invalid_species = 'H I'
+				invalid_excess  = closure_deficit
+			endif
+		endif
 		! A zero He total is valid only when every active He-bearing
 		! density is zero. Judge finite status before any signed comparison.
 		helium_total_positive = .false.
@@ -1764,13 +1821,54 @@
 				if (.not. fix_molecules) imposed_allowance =       &
 				   imposed_allowance + fraction_resolution*nh(j)/nhe(j)
 			endif
+			! The terms the complete helium closure sums: He II, He III,
+			! the 2^3S level where it exists, HeH+ where molecules do (the
+			! count helium_closure_allowance makes).
+			n_he_terms = 2
+			if (thereis_HeITR) n_he_terms = n_he_terms + 1
+			if (thereis_mol) n_he_terms = n_he_terms + 1
 			imposed_allowance = imposed_allowance +              &
-			     helium_closure_allowance(thereis_HeITR,                  &
-			     thereis_mol .and. nhe(j) .gt. 0.0d0)
+			     imposed_stage_sum_rounding_bound(n_he_terms)
 			call imposed_fraction_group_invalid(imposed_values,           &
 			     imposed_active,imposed_floor,imposed_names,          &
 			     'He I ground',imposed_allowance,                     &
 			     invalid_imposed,invalid_species,invalid_excess)
+			! The He I ground singlet closes the helium nuclei alone where
+			! the ionized stages, the carried 2^3S level and HeH+ are
+			! imposed; with the level not carried the closing stage is the
+			! He I total, the level inside it.
+			if (.not. invalid_imposed .and. fix_ions .and.          &
+			    (fix_molecules .or. .not. thereis_mol)) then
+				if (he23s_transport .and. thereis_HeITR) then
+					if (nhei(j) - nheiTR(j) .lt. 0.0d0) then
+						call closing_stage_density_at_rounding(           &
+						     nhei(j) - nheiTR(j), nhe(j), n_he_terms,     &
+						     closure_repaired, closure_within,            &
+						     closure_deficit)
+						if (closure_within) then
+							nhei(j) = nheiTR(j)
+							stage_closure_zeroed = .true.
+						else
+							invalid_imposed = .true.
+							invalid_species = 'He I ground'
+							invalid_excess  = closure_deficit
+						endif
+					endif
+				else if (nhei(j) .lt. 0.0d0) then
+					call closing_stage_density_at_rounding(nhei(j),       &
+					     nhe(j), n_he_terms, closure_repaired,           &
+					     closure_within, closure_deficit)
+					if (closure_within) then
+						nhei(j) = 0.0d0
+						nheiTR(j) = 0.0d0
+						stage_closure_zeroed = .true.
+					else
+						invalid_imposed = .true.
+						invalid_species = 'He I'
+						invalid_excess  = closure_deficit
+					endif
+				endif
+			endif
 		endif
 		if (.not. invalid_imposed .and. fix_molecules .and.          &
 		    thereis_oxychem) then
@@ -1813,6 +1911,11 @@
 		if (present(rho_recon)) rho_recon = 0.0d0
 		return
 	enddo
+	! The element totals of the stages as they now stand, by the one
+	! definition of them (nothing changes where no closure was zeroed).
+	if (stage_closure_zeroed)                                           &
+		call hydrogen_helium_nuclei_density(nhi,nhii,nhei,nheii,nheiii,  &
+		                                    nh,nhe,nmol_eq,nox_eq)
 
 	! Free electron density (assuming overall neutrality; nm adds the
 	! metal electrons under the eos_metals policy, nmol_eq the molecular-ion

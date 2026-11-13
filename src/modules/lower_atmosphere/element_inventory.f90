@@ -1227,10 +1227,12 @@
       real(dp) :: yhe(N), dhe
       integer  :: jv(n_inv_element), nbad(n_inv_element)
       integer  :: j, ie, jhe
+      logical  :: helium_carried
       type(signed_element_total) :: first_refused
       if (.not. element_inventory_report_on()) return
       vmax = 0.0d0;  omax = 0.0d0;  vres = 0.0d0
       jv   = 0;      nbad = 0
+      helium_carried = .false.
       first_refused = signed_element_total()
       do j = 1, N
          call element_inventory_of_cell(rho(j)*n0, f_sp(j,:), carried, inv)
@@ -1240,6 +1242,8 @@
             first_refused%cell = j
          endif
          yhe(j) = helium_to_hydrogen(inv)
+         helium_carried = helium_carried                                  &
+                          .or. inv%element_is_carried(ien_He)
          do ie = 1, n_inv_element
             if (inv%violation(ie) .gt. vmax(ie)) then
                vmax(ie) = inv%violation(ie)
@@ -1253,7 +1257,10 @@
       enddo
       write(*,'(a)') ' (inventory) '//trim(label)
       do ie = 1, n_inv_element
-         if (ie .eq. ien_He) cycle
+         ! Helium has a carrier budget only where one of its species is
+         ! carried (He 2^3S or HeH+); with none in any cell there is no
+         ! helium budget to report.
+         if (ie .eq. ien_He .and. .not. helium_carried) cycle
          write(*,'(a,a,a,es10.3,a,i5,a,es10.3)')                          &
             '   ', trim(inv_element_name(ie)),                            &
             ': worst breach ', vmax(ie), ' at cell ', jv(ie),             &

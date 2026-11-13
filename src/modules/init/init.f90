@@ -116,7 +116,8 @@
       
       ! Construction of radial grid
       write(*,*) '    - Constructing the spatial grid..'
-      call define_grid         
+      call define_grid
+
 
       ! Eddy diffusion coefficient of every cell. Needs the grid, and needs
       ! he_kzz / the lower-atmosphere profile to be final, so it sits here
