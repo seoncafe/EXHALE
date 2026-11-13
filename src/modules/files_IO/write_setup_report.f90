@@ -682,6 +682,19 @@
 				' Koskinen et al. 2013, 2022 and Yelle 2004 do)'
 		endif
 	endif
+	! The cells the stationary certification judges the elemental
+	! transport and carrier balances on, and the wind start radius.
+	if (cert_gate_all_cells) then
+		write(outfile,'(A,F8.4,A)') ' - Certification region: all (every'//  &
+			' applicable physical cell; wind start radius', cert_regime_wind_r, &
+			' R_p, the wind-level judgment at the end of a pass budget)'
+	else
+		write(outfile,'(A,F8.4,A)') ' - Certification region: wind (r >=',  &
+			cert_regime_wind_r, ' R_p; the cells below are reported only)'
+	endif
+	write(outfile,'(A,I0,A)') ' - JFNK max iterations: ', jfnk_max_iter,     &
+		' (the cap of STATIONARY OUTER PASSES, not of the Newton or'//      &
+		' Krylov iterations inside one pass)'
 	! Rieper (2011) low-Mach correction of the Roe dissipation: the normal
 	! velocity jump entering the two acoustic expansion coefficients is
 	! scaled by min(|U_Roe|/a_Roe, 1).  It is defined on the ROE branch only.
@@ -982,6 +995,9 @@
 	call put_r('visc_mu0', visc_mu0)
 	call put_r('visc_s', visc_s)
 	call put_r('resid_th', resid_th)
+	call put_l('cert_gate_all_cells', cert_gate_all_cells)
+	call put_r('cert_regime_wind_r', cert_regime_wind_r)
+	call put_i('jfnk_max_iter', jfnk_max_iter)
 	call put_r('flux_spread_th', flux_spread_th)
 	call put_r('r_flux', r_flux)
 	call put_r('CFL', CFL)

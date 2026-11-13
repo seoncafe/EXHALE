@@ -105,6 +105,11 @@
       public :: adiabatic_index_from_state, adiabatic_index_at_T
       public :: heat_capacity_per_particle, internal_energy_per_particle
       public :: temperature_from_energy_per_particle
+      ! The rounding of internal_energy_per_particle as evaluated, for the
+      ! arithmetic-resolution allowance of the temperature solve
+      ! (energy_semi_implicit).
+      public :: internal_energy_rounding_per_particle
+      public :: internal_energy_rounding_of_mixture
       ! The same three maps addressed by the H2 particle fraction instead of
       ! by a cell index, for the post-process energy equation, which walks a
       ! saved profile rather than the live grid.
@@ -561,6 +566,114 @@
       internal_energy_per_particle = internal_energy_of_mixture(x_h2(j), T)
 
       end function internal_energy_per_particle
+
+
+      real*8 function h2_rovibrational_energy_rounding(TK) result(err_K)
+      ! An upper bound, in K, of the rounding error of u_rv(TK) as
+      ! h2_rovibrational_energy_and_heat_capacity evaluates it, against the
+      ! same interpolant evaluated in exact arithmetic. eps = epsilon(1d0) =
+      ! 2^-52 is the spacing of doubles at 1; one rounding of a result r
+      ! costs at most (eps/2)|r|.
+      !   Inside the table. Two sources.
+      !   (1) The argument. TK = T*T0 (eps/2 relative, so eps/2 absolute in
+      !   ln TK), log (at most one unit in the last place, eps |ln TK|), the
+      !   subtraction of ln T_lo (eps/2 |ln TK - ln T_lo|), the division by
+      !   dlnT and the subtraction of i-1 (eps/2 |x| + eps/2 |s|) give
+      !       dlnT |delta s| <= eps (1 + 2 |ln TK| + |ln T_lo|) ,
+      !   using x dlnT = ln TK - ln T_lo and |s| <= 1. The interpolant moves
+      !   with s at du_rv/ds = c_rv TK dlnT, so this costs
+      !       eps c_rv TK (1 + 2 |ln TK| + |ln T_lo|) .
+      !   The slope multiplies |ln TK|/dlnT ~ 1e3 ulps of s; this is the
+      !   dominant term (about 15 eps c_rv TK at 1000 K).
+      !   (2) The cubic. Each Hermite basis value is at most 3 in magnitude
+      !   term by term and costs at most four roundings, so at most 6 eps
+      !   absolute; the four products and three additions cost at most
+      !   2 eps of M = |u_i| + |u_i+1| + dlnT (|T c_i| + |T c_i+1|) (each
+      !   basis value lies in [-4/27, 1] on [0,1]). Together 8 eps M.
+      !   Outside the table (linear continuation u_1 + c (TK - T_end)): the
+      !   difference, the product and the sum cost at most
+      !       eps (|u_rv| + 2 |c| (|TK| + T_end)) .
+      ! Monatomic comparison option: u_rv is the constant zero, no rounding.
+      real*8, intent(in) :: TK
+      real*8  :: eps_d, x, c_end, mag_terms, slope_K
+      integer :: i
+
+      err_K = 0.0d0
+      if (caloric_eos_monatomic) return
+      if (.not. utab_built) call build_h2_rovibrational_table()
+      eps_d = epsilon(1.0d0)
+
+      if (TK .le. T_utab_lo) then
+         c_end = dudlnT_utab(1)/T_utab_lo
+         err_K = eps_d*(abs(u_utab(1)) + abs(c_end*(TK - T_utab_lo))        &
+                        + 2.0d0*abs(c_end)*(abs(TK) + T_utab_lo))
+         return
+      endif
+      if (TK .ge. T_utab_hi) then
+         c_end = dudlnT_utab(n_utab)/T_utab_hi
+         err_K = eps_d*(abs(u_utab(n_utab))                                 &
+                        + abs(c_end*(TK - T_utab_hi))                       &
+                        + 2.0d0*abs(c_end)*(abs(TK) + T_utab_hi))
+         return
+      endif
+
+      x = (log(TK) - lnT_utab_lo)/dlnT_utab
+      i = 1 + int(x)
+      if (i .lt. 1)          i = 1
+      if (i .gt. n_utab - 1) i = n_utab - 1
+      ! c_rv TK = du_rv/dlnT of the interpolant anywhere in the interval:
+      ! (u_i+1 - u_i)/dlnT 6 s(1-s) + dh10 d_i + dh11 d_i+1 with
+      ! 6 s(1-s) <= 1.5 and |dh10|, |dh11| <= 1 on [0,1].
+      slope_K = 1.5d0*abs(u_utab(i+1) - u_utab(i))/dlnT_utab                &
+              + abs(dudlnT_utab(i)) + abs(dudlnT_utab(i+1))
+      mag_terms = abs(u_utab(i)) + abs(u_utab(i+1))                         &
+                + dlnT_utab*(abs(dudlnT_utab(i)) + abs(dudlnT_utab(i+1)))
+      err_K = eps_d*slope_K*(1.0d0 + 2.0d0*abs(log(TK)) + abs(lnT_utab_lo)) &
+            + 8.0d0*eps_d*mag_terms
+
+      end function h2_rovibrational_energy_rounding
+
+
+      real*8 function internal_energy_rounding_of_mixture(x2, T) result(err)
+      ! An upper bound of the rounding error of internal_energy_of_mixture
+      ! (x2, T) as evaluated, in the same units (k T0 per particle).
+      !   x2 <= 0: T/(gamma_ad - 1), one division and the rounding of the
+      !   constant gamma_ad - 1: eps |u|.
+      !   x2 > 0: 1.5 T + x2 u_rv/T0. The product 1.5 T, the product and
+      !   quotient x2 u_rv/T0 and the sum cost at most
+      !       eps (0.75 |T| + |x2 u_rv/T0| + 0.5 |u|) ,
+      !   and the rounding of u_rv itself enters as x2 err_rv/T0.
+      real*8, intent(in) :: x2, T
+      real*8  :: eps_d, u_rv, c_rv, u_eval
+
+      eps_d = epsilon(1.0d0)
+      if (x2 .le. 0.0d0) then
+         err = eps_d*abs(T/(gamma_ad - 1.0d0))
+         return
+      endif
+      call h2_rovibrational_energy_and_heat_capacity(T*T0, u_rv, c_rv)
+      u_eval = 1.5d0*T + x2*u_rv/T0
+      err = eps_d*(0.75d0*abs(T) + abs(x2*u_rv/T0) + 0.5d0*abs(u_eval))     &
+          + x2*h2_rovibrational_energy_rounding(T*T0)/T0
+
+      end function internal_energy_rounding_of_mixture
+
+
+      real*8 function internal_energy_rounding_per_particle(j, T) result(err)
+      ! The bound above at the composition of cell j, on the same branch
+      ! internal_energy_per_particle takes.
+      integer, intent(in) :: j
+      real*8,  intent(in) :: T
+
+      if (.not. caloric_mixture_active) then
+         err = epsilon(1.0d0)*abs(T/(gamma_ad - 1.0d0));  return
+      endif
+      if (.not. molecular_cell(j)) then
+         err = epsilon(1.0d0)*abs(T/(gamma_ad - 1.0d0));  return
+      endif
+      err = internal_energy_rounding_of_mixture(x_h2(j), T)
+
+      end function internal_energy_rounding_per_particle
 
 
       real*8 function heat_capacity_per_particle(j, T)

@@ -39,7 +39,10 @@ The configuration adds `Restart intent: stationary`, `Solver: Newton`,
 `Secondary_ionization: Immediate` (the same as the default `True` since
 2026-10-09) and the residual tolerance `Resid tol: 4.0e-6`; `exhale_env`
 holds the outer-alternation settings (`EXHALE_DIFF_OMEGA 0.5`,
-`EXHALE_CARRIER_TRUST_HOLD 0.04`, `EXHALE_OUTER_PASSES 60`, ...).
+`EXHALE_CARRIER_TRUST_HOLD 0.04`, ...). The cap of 60 stationary outer
+passes this recipe used as `EXHALE_OUTER_PASSES 60` is now the input key
+`JFNK max iterations: 60`, given through `input_keys` (the closure driver
+refuses a configuration whose `exhale_env` still names the variable).
 
 ## What the chemistry is handed (adapter defaults since 2026-10-10)
 

@@ -286,13 +286,24 @@
       !
       ! The radii: r_layer is the top of the diffusion-dominated column of
       ! this code's planets (the K_zz term of binary_element_diffusion still
-      ! exceeds the advective one there), r_wind the radius above which the
-      ! flow is transonic on every case of the matrix.
+      ! exceeds the advective one there), reported only; the wind start
+      ! radius cert_regime_wind_r is the input key "Wind start radius [R_p]"
+      ! (global_parameters, default 1.2, the radius above which the flow is
+      ! transonic on every case of the matrix).
       real*8, parameter, public :: cert_regime_layer_r = 1.10d0
-      real*8, parameter, public :: cert_regime_wind_r  = 1.20d0
 
-      ! WHICH CELLS A SPECIES ROW IS GATED IN, and what the number is
-      ! (user decision of 2026-09-10; the five anchors are MEASURED).
+      ! WHICH CELLS A SPECIES ROW IS GATED IN, and what the number is.
+      ! "Certification region: all" (the default, user decision 2026-11-12):
+      ! every applicable physical cell, at the wind tolerance below. A cell
+      ! is applicable to a carrier row where the carrier is not absolutely
+      ! absent (carrier_row_entry; the carrier operator solves cells 1..N,
+      ! the ghost below cell 1 is its Dirichlet inflow value), and to an
+      ! elemental row in every cell 1..N, cell 1 being the Dirichlet
+      ! reservoir that carries no element equation and whose row
+      ! element_transport_residual returns as zero. The same definition as
+      ! the full-column transport verdict of EXHALE_v1.10.
+      ! "Certification region: wind": the cells at r >= cert_regime_wind_r,
+      ! with the reasons of 2026-09-10 and 2026-09-24 that follow.
       !
       ! GATING, at r >= cert_regime_wind_r: 1e-5. It is the coarser of the
       ! two floors the element operator states for itself (about 1e-12 in a
@@ -304,9 +315,10 @@
       ! (element 3.05e-4, carrier 7.19e-2, MEASURED), so it admits no state
       ! that exists.
       !
-      ! REPORTED AND NOT GATING, below cert_regime_wind_r, by decision:
-      ! which cells gate is a choice of the acceptance, not a property the
-      ! rows measure. What the two parts of that column measure:
+      ! REPORTED AND NOT GATING under "wind", below cert_regime_wind_r, by
+      ! decision: which cells gate is a choice of the acceptance, not a
+      ! property the rows measure. What the two parts of that column
+      ! measured (2026-09, at the default radius 1.2):
       !   r < cert_regime_layer_r  on the Riemann face mass flux the rows
       !     ride on, the elemental helium flux varies over that window by
       !     2.2e-3 and 7.8e-5 of its median on the two certified LHS 1140 b
@@ -318,7 +330,7 @@
       !     2026-09-24). The spread of 9.8
       !     (39 before the mass-closure repair) once quoted here as the
       !     non-conservation of these fluxes was measured on the face mean
-      !     of the cell-centred rho and v, which carries the collocated
+      !     of the cell-centered rho and v, which carries the collocated
       !     odd-even velocity mode of the base and is not the flux the rows
       !     ride on; it is not a property of the operator.
       !   between the two radii  the element row stands at 6.9e-8 and
@@ -329,8 +341,12 @@
       !     wind H2 row to 2.4e-13 on a held background (MEASURED
       !     2026-09-11). No anchor for the band exists yet.
       ! A state whose wind rows are within tolerance is therefore certified
-      ! IN THE WIND, and the report and the state file say so in one line
-      ! with the worst reported row beside it.
+      ! IN THE WIND (token certified_in_wind), and the report and the state
+      ! file say so in one line with the worst reported row beside it. Under
+      ! "all" a state within tolerance on every applicable cell is
+      ! certified_all_cells; one that the stationary outer iteration ends its
+      ! pass budget with, within tolerance in the wind only, is certified in
+      ! the wind (certification_admit_wind_verdict).
       !
       ! THE CANDIDATE GATING, measured beside the one in force and deciding
       ! nothing (user decision of 2026-09-24, to be taken on a side-by-side
@@ -343,6 +359,12 @@
       ! equation (element_transport_residual reports it as zero); cell 2 is
       ! the first cell that operator solves. Both are reported only.
       integer, parameter, public :: cert_gate_candidate_first_cell = 3
+
+      ! THE TWO CERTIFICATION REGIONS, named as in EXHALE_v1.10: the
+      ! region a verdict was taken on (cert_report field region) and the
+      ! token the certified state file carries (certification_token).
+      integer, parameter, public :: cert_region_all_cells = 1
+      integer, parameter, public :: cert_region_in_wind   = 2
 
       ! What the run asked its stationary solver for ("Resid tol"), kept so
       ! that a report can name the solver's target beside the row measures.
@@ -421,6 +443,37 @@
          ! that binds the element row of a real state (r = 1.15).
          real*8            :: row_max_reported = 0.0d0
          integer           :: jworst_reported  = 0
+         ! THE TWO REGIONS OF A REGIME-GATED ROW, both always measured and
+         ! printed side by side; row_max_gate, jworst_gate and within_tol
+         ! above are those of the region in force (cert_gate_all_cells).
+         ! *_all: every applicable physical cell; *_wind: the applicable
+         ! cells at r >= cert_regime_wind_r. A cell index 0 says the region
+         ! holds no applicable cell, which is not within.
+         real*8            :: row_max_all   = 0.0d0
+         integer           :: jworst_all    = 0
+         logical           :: within_all    = .false.
+         real*8            :: row_max_wind_gate = 0.0d0
+         integer           :: jworst_wind_gate  = 0
+         logical           :: within_wind   = .false.
+         logical           :: avail_all     = .false.
+         logical           :: avail_wind    = .false.
+         ! A region with cells in all of which the species is absent and
+         ! unsourced (gate_species_row): not applicable, so it does not
+         ! refuse; with the largest sustained-abundance measure over the
+         ! region (the abundance its sources could sustain, over the
+         ! absence floor) and the cell that carries it.
+         logical           :: unsourced_all     = .false.
+         logical           :: unsourced_wind    = .false.
+         real*8            :: sustained_max_all  = 0.0d0
+         integer           :: jsustained_all     = 0
+         real*8            :: sustained_max_wind = 0.0d0
+         integer           :: jsustained_wind    = 0
+         ! The applicable cells BELOW the wind start radius: the largest
+         ! measure, its cell (0: none) and its distance from the row's
+         ! tolerance, for the worst-row line of a wind verdict.
+         real*8            :: row_max_gate_blw = 0.0d0
+         integer           :: jworst_gate_blw  = 0
+         real*8            :: dist_gate_blw    = 0.0d0
          ! THE SAME ROW UNDER THE CANDIDATE GATING, beside the gating in
          ! force (cert_gate_candidate_first_cell): every cell from the third
          ! outward gated at the wind tolerance of the row's kind, the
@@ -561,7 +614,35 @@
          integer :: n_conduction_floor_attempts        =  0
          logical :: certified = .false.
          integer :: n_failing = 0
+         ! THE SAME VERDICT WITH THE REGIME-GATED ROWS JUDGED IN THE WIND
+         ! (r >= cert_regime_wind_r), whatever region is in force; equal to
+         ! certified under "Certification region: wind".
+         logical :: certified_wind = .false.
+         ! The same verdict with those rows judged on every applicable cell,
+         ! whatever region is in force (the region a certified_all_cells
+         ! claim, or a claim with no token, names).
+         logical :: certified_all = .false.
+         ! THE REGION certified ABOVE WAS TAKEN ON: cert_region_all_cells
+         ! or cert_region_in_wind (the region the run selects, or the wind
+         ! verdict admitted after an exhausted all-cell outer iteration).
+         ! It names the token of the state file (certification_token).
+         integer :: region = cert_region_all_cells
+         integer :: n_failing_wind = 0
       end type cert_report
+
+      ! THE WIND VERDICT WHERE THE ALL-CELL ONE DOES NOT HOLD. Under
+      ! "Certification region: all", a stationary outer iteration that
+      ! spends its pass cap without an all-cell acceptance hands back a
+      ! state that may still be within tolerance on the wind region, and a
+      ! stationary evaluation ("Restart intent: stationary evaluate") labels
+      ! the stored pair the same way (stationary_state_of_the_loaded_restart).
+      ! Either states that through certification_admit_wind_verdict,
+      ! and the certification of the state written then records the wind
+      ! verdict (certified=T cert_reason=certified_in_wind) when the
+      ! all-cell one refuses and the wind one passes. Reset at the start of
+      ! every outer iteration and after the evaluation's certification of
+      ! the stored pair; set by nothing else.
+      logical, save :: cert_wind_verdict_admitted = .false.
 
       ! WHAT ONE RESIDUAL EVALUATION FOUND ABOUT THE STATE IT WAS GIVEN, as
       ! the probe and trial contexts read it. It is
@@ -648,6 +729,11 @@
       public :: certification_row_measure
       public :: certification_row_measure_over
       public :: cert_tol_element_at, cert_tol_carrier_at
+      public :: certification_admit_wind_verdict
+      public :: row_unavailable_in_selected_region
+      public :: gate_species_row
+      public :: certification_worst_below_wind
+      public :: certification_check_wind_start_radius
       public :: carrier_certificate_of_state, carrier_certificate_worst
       public :: measure_against_target_text
       public :: cert_tol_mass_at, mass_row_cell_verdict
@@ -1095,32 +1181,42 @@
       end function cert_mass_gate_name
 
 
-      pure function cert_tol_element_at(rr) result(tol)
+      pure function cert_tol_element_at(rr, all_cells) result(tol)
       ! THE ELEMENTAL TRANSPORT TOLERANCE AT ONE RADIUS, and the only
-      ! reader of cert_tol_element_wind: what is a gate in the wind is a
-      ! reported measure below it, for the reasons stated at the
-      ! declaration of the two radii.
-      real*8, intent(in) :: rr
-      real*8 :: tol
+      ! reader of cert_tol_element_wind. Over all cells (all_cells, by
+      ! default the region in force, cert_gate_all_cells) it gates every
+      ! cell; over the wind region it gates r >= cert_regime_wind_r and is
+      ! a reported measure below it, for the reasons stated at the
+      ! declaration of the radii.
+      real*8,            intent(in) :: rr
+      logical, optional, intent(in) :: all_cells
+      real*8  :: tol
+      logical :: whole
+      whole = cert_gate_all_cells
+      if (present(all_cells)) whole = all_cells
       tol = cert_tol_reported_only
-      if (rr .ge. cert_regime_wind_r) tol = cert_tol_element_wind
+      if (whole .or. rr .ge. cert_regime_wind_r) tol = cert_tol_element_wind
       end function cert_tol_element_at
 
 
-      pure function cert_tol_carrier_at(rr) result(tol)
+      pure function cert_tol_carrier_at(rr, all_cells) result(tol)
       ! The same for a transported carrier row. The two are separate
       ! functions because they are tolerances of two different equations
       ! and nothing but the anchoring makes them equal today.
-      real*8, intent(in) :: rr
-      real*8 :: tol
+      real*8,            intent(in) :: rr
+      logical, optional, intent(in) :: all_cells
+      real*8  :: tol
+      logical :: whole
+      whole = cert_gate_all_cells
+      if (present(all_cells)) whole = all_cells
       tol = cert_tol_reported_only
-      if (rr .ge. cert_regime_wind_r) tol = cert_tol_carrier_wind
+      if (whole .or. rr .ge. cert_regime_wind_r) tol = cert_tol_carrier_wind
       end function cert_tol_carrier_at
 
 
       subroutine certification_species_row_gate(nc, is_carrier, res,      &
                                                 scale, dgate, rgate,      &
-                                                jgate, absent)
+                                                jgate, absent, all_cells)
       ! THE PART OF A SPECIES ROW THAT DECIDES, in one reduction and one
       ! place: over the physical cells, the largest of
       !
@@ -1145,13 +1241,19 @@
       ! because the DISCRETIZATION cannot be judged there; this excludes it
       ! because there is no species to judge. Both leave the cell reported.
       logical, optional, intent(in) :: absent(nc)
+      ! The region: every applicable cell (.true.) or the wind (.false.);
+      ! absent, the region in force (cert_gate_all_cells).
+      logical, optional, intent(in) :: all_cells
       real*8  :: tol(nc)
+      logical :: whole
       integer :: j
+      whole = cert_gate_all_cells
+      if (present(all_cells)) whole = all_cells
       do j = 1, nc
          if (is_carrier) then
-            tol(j) = cert_tol_carrier_at(r(j))
+            tol(j) = cert_tol_carrier_at(r(j), whole)
          else
-            tol(j) = cert_tol_element_at(r(j))
+            tol(j) = cert_tol_element_at(r(j), whole)
          endif
       enddo
       call species_row_distance_over_gated_cells(nc, tol, res, scale,     &
@@ -1280,33 +1382,111 @@
       end subroutine fill_regime_measures
 
 
-      subroutine gate_species_row(ent, is_carrier, res, scale, absent)
-      ! THE VERDICT OF A ROW WHOSE TOLERANCE IS A FUNCTION OF THE RADIUS.
-      ! The entry keeps its whole-column measure, and what decides is the
-      ! gated part of it (certification_species_row_gate). A column with
-      ! no gated cell cannot be judged on this row and is refused with
-      ! that as the reason, so a domain that ends below the wind radius
-      ! never reads as a satisfied balance.
+      subroutine gate_species_row(ent, is_carrier, res, scale, absent,     &
+                                  sustained)
+      ! THE VERDICT OF A ROW WHOSE GATED CELLS ARE A CHOICE OF THE
+      ! ACCEPTANCE ("Certification region"). The entry keeps its
+      ! whole-column measure; both regions are measured
+      ! (certification_species_row_gate over every applicable cell and over
+      ! the wind), and what decides is the region in force,
+      ! cert_gate_all_cells. Each region keeps its own availability (an
+      ! applicable cell exists: avail_all, avail_wind) and its own
+      ! satisfaction (within_all, within_wind), so either region's verdict
+      ! is taken from its own measurements whatever region is selected, and
+      ! the entry status stays 'evaluated' for a measured row. A region with
+      ! no applicable cell is UNAVAILABLE and does not certify that region,
+      ! so a domain that ends below the wind radius, or a species absent
+      ! from every cell, never reads as a satisfied balance.
       type(cert_entry), intent(inout) :: ent
       logical,          intent(in)    :: is_carrier
       real*8,           intent(in)    :: res(1:N), scale(1:N)
       logical, optional, intent(in)   :: absent(1:N)
-      real*8  :: dgate
+      ! A CARRIER ABSENT AND UNSOURCED ON A REGION (user decision
+      ! 2026-11-12). sustained(j) is the abundance the row's own sources
+      ! (production and incoming transport) could sustain in cell j against
+      ! its loss frequency (chemical loss and outgoing transport over n_c),
+      ! over the absence floor (carrier_residual, sustained_out); a species
+      ! in balance reads n_c/floor. A region that has cells, every one of them absent,
+      ! is NOT APPLICABLE for this row only where sustained < 1 and finite
+      ! in every one of its cells: the species is not there and its sources
+      ! cannot put it there. Otherwise (a source that could sustain it, a
+      ! loss frequency that cannot be formed, a nonfinite term, or no
+      ! sustained measure at all) the region stays UNAVAILABLE and refuses.
+      ! A region without cells stays a refusal as well.
+      real*8,  optional, intent(in)   :: sustained(1:N)
+      real*8  :: dgate_all, dgate_wind, tol_blw(1:N)
+      integer :: j
       ! The candidate gating first, on the same res, scale and mask: it
       ! writes only its own fields, and a row the gating in force cannot
       ! judge (the return below) still carries it.
       call fill_candidate_gate(ent, is_carrier, res, scale, absent)
-      if (present(absent)) then
-         call certification_species_row_gate(N, is_carrier, res, scale,   &
-                  dgate, ent%row_max_gate, ent%jworst_gate,               &
-                  absent = absent)
+      ! A row or scale that is not a finite number, or a negative scale,
+      ! is not a measurement (the rule of EXHALE_v1.10 gate_species_row).
+      do j = 1, N
+         if (.not. finite_real(res(j)) .or. .not. finite_real(scale(j)))  &
+            ent%finite = .false.
+         if (scale(j) .lt. 0.0d0) ent%finite = .false.
+      enddo
+      call certification_species_row_gate(N, is_carrier, res, scale,      &
+               dgate_all, ent%row_max_all, ent%jworst_all,                &
+               absent = absent, all_cells = .true.)
+      call certification_species_row_gate(N, is_carrier, res, scale,      &
+               dgate_wind, ent%row_max_wind_gate, ent%jworst_wind_gate,   &
+               absent = absent, all_cells = .false.)
+      ent%avail_all   = ent%jworst_all .gt. 0
+      ent%avail_wind  = ent%jworst_wind_gate .gt. 0
+      ent%within_all  = ent%finite .and. ent%avail_all .and.               &
+                        (dgate_all .lt. 1.0d0)
+      ent%within_wind = ent%finite .and. ent%avail_wind .and.              &
+                        (dgate_wind .lt. 1.0d0)
+      do j = 1, N
+         tol_blw(j) = cert_tol_reported_only
+         if (r(j) .lt. cert_regime_wind_r) then
+            if (is_carrier) then
+               tol_blw(j) = cert_tol_carrier_wind
+            else
+               tol_blw(j) = cert_tol_element_wind
+            endif
+         endif
+      enddo
+      call species_row_distance_over_gated_cells(N, tol_blw, res, scale,   &
+               ent%dist_gate_blw, ent%row_max_gate_blw, ent%jworst_gate_blw,&
+               absent)
+      if (cert_gate_all_cells) then
+         ent%row_max_gate = ent%row_max_all
+         ent%jworst_gate  = ent%jworst_all
+         ent%within_tol   = ent%within_all
       else
-         call certification_species_row_gate(N, is_carrier, res, scale,   &
-                  dgate, ent%row_max_gate, ent%jworst_gate)
+         ent%row_max_gate = ent%row_max_wind_gate
+         ent%jworst_gate  = ent%jworst_wind_gate
+         ent%within_tol   = ent%within_wind
+      endif
+      ! An all-absent region of an absent, unsourced species (above).
+      call region_absent_and_unsourced(.false., ent%avail_all,            &
+           ent%unsourced_all, ent%sustained_max_all, ent%jsustained_all)
+      call region_absent_and_unsourced(.true., ent%avail_wind,            &
+           ent%unsourced_wind, ent%sustained_max_wind, ent%jsustained_wind)
+      if (ent%unsourced_all)  ent%within_all  = ent%finite
+      if (ent%unsourced_wind) ent%within_wind = ent%finite
+      ! A selected region on which the species is absent and unsourced
+      ! does not refuse.
+      if (cert_gate_all_cells .and. ent%unsourced_all) then
+         ent%within_tol = ent%within_all
+         ent%reason = 'not_applicable: absent and unsourced on the region'
+         return
+      endif
+      if (.not. cert_gate_all_cells .and. ent%unsourced_wind) then
+         ent%within_tol = ent%within_wind
+         ent%reason = 'not_applicable: absent and unsourced on the region'
+         return
       endif
       if (ent%jworst_gate .eq. 0) then
-         ent%status = cert_unavailable
-         if (ent%n_absent .gt. 0) then
+         ! The selected region is UNAVAILABLE for this row: it refuses
+         ! there (within_tol false), and the other region's measurement
+         ! stays readable.
+         if (cert_gate_all_cells) then
+            ent%reason = 'every physical cell is empty of this species'
+         else if (ent%n_absent .gt. 0) then
             ent%reason = 'every cell at or above the wind radius is '//   &
                          'empty of this species'
          else
@@ -1314,9 +1494,38 @@
                          'gate this row'
          endif
          ent%within_tol = .false.
-         return
       endif
-      ent%within_tol = ent%finite .and. (dgate .lt. 1.0d0)
+      contains
+         subroutine region_absent_and_unsourced(in_wind, available,       &
+                                                unsourced, smax, js)
+         ! Whether the region (every cell, or r >= cert_regime_wind_r) has
+         ! cells, all absent, all unsourced; and the largest sustained
+         ! measure over its cells with the cell that carries it.
+         logical, intent(in)  :: in_wind, available
+         logical, intent(out) :: unsourced
+         real*8,  intent(out) :: smax
+         integer, intent(out) :: js
+         integer :: jj, ncell
+         unsourced = .false.;  smax = 0.0d0;  js = 0
+         if (available) return
+         if (.not. present(absent) .or. .not. present(sustained)) return
+         ncell = 0
+         do jj = 1, N
+            if (in_wind .and. r(jj) .lt. cert_regime_wind_r) cycle
+            ncell = ncell + 1
+            if (.not. absent(jj)) then
+               smax = 0.0d0;  js = 0;  return
+            endif
+            if (.not. finite_real(sustained(jj))) then
+               smax = sustained(jj);  js = jj;  return
+            endif
+            if (js .eq. 0 .or. sustained(jj) .gt. smax) then
+               smax = sustained(jj);  js = jj
+            endif
+         enddo
+         if (ncell .eq. 0) return
+         unsourced = smax .lt. 1.0d0
+         end subroutine region_absent_and_unsourced
       end subroutine gate_species_row
 
 
@@ -1707,6 +1916,30 @@
                                         verdict_n_failing)
       rep%certified = verdict_certified
       rep%n_failing = verdict_n_failing
+      rep%region = cert_region_all_cells
+      if (.not. cert_gate_all_cells .and. has_region_gated_row(rep))      &
+         rep%region = cert_region_in_wind
+      ! The same verdict with the regime-gated rows judged in the wind.
+      call certification_report_verdict(rep, .false., verdict_certified,  &
+                                        verdict_n_failing,                 &
+                                        wind_region = .true.)
+      rep%certified_wind = verdict_certified
+      rep%n_failing_wind = verdict_n_failing
+      call certification_report_verdict(rep, .false., verdict_certified,  &
+                                        verdict_n_failing,                 &
+                                        all_region = .true.)
+      rep%certified_all = verdict_certified
+      ! THE WIND VERDICT, admitted only to the certification of the state an
+      ! all-cell outer iteration hands back after spending its pass cap
+      ! (cert_wind_verdict_admitted): refused over every applicable cell,
+      ! within tolerance in the wind, it is certified in the wind.
+      if (cert_records_verdict .and. context .eq. cert_context_stationary  &
+          .and. cert_gate_all_cells .and. cert_wind_verdict_admitted .and. &
+          .not. rep%certified .and. rep%certified_wind) then
+         rep%certified = .true.
+         rep%n_failing = rep%n_failing_wind
+         rep%region    = cert_region_in_wind
+      endif
 
       ! The first cell of the state whose composition is not a root, so a
       ! refusal names a cell and not only a count.
@@ -1721,12 +1954,12 @@
       then
          if (rep%certified) then
             ! WHAT THE FILE SAYS ABOUT A STATE CERTIFIED WITH SPECIES
-            ! ROWS: those rows were judged in the wind alone, so the
-            ! header carries that qualification and a reader of the file
-            ! knows it without the run log. A state with no species row
-            ! is certified over its whole column and carries no token.
+            ! ROWS: the region they were judged on, certified_all_cells or
+            ! certified_in_wind, so a reader of the file knows it without
+            ! the run log. A state with no species row is certified over
+            ! its whole column and carries no token.
             call set_state_certified(.true.,                              &
-                 trim(wind_certification_token(rep)))
+                 trim(certification_token(rep)))
          else if (stationary_solve_failed) then
             call set_state_certified(.false., 'stationary_solve_failed')
          else if (.not. stationarity_claimed) then
@@ -1797,7 +2030,8 @@
 
 
       subroutine certification_report_verdict(rep, candidate_gating,       &
-                                              certified, n_failing)
+                                              certified, n_failing,        &
+                                              wind_region, all_region)
       ! THE VERDICT OF A REPORT, and the one expression of it. An entry
       ! refuses when it is unavailable, or evaluated and not within its
       ! tolerance or not finite; the state is refused by any refusing entry
@@ -1809,18 +2043,39 @@
       ! (fill_candidate_gate, cert_gate_candidate_first_cell) and every
       ! other entry and condition as it stands; it is reported beside the
       ! verdict and never replaces it.
+      !
+      ! wind_region = .true. reads each regime-gated row over the wind
+      ! region (within_wind) whatever region is in force, every other entry
+      ! and condition as it stands: the verdict "in the wind" (cert_report
+      ! field certified_wind). all_region = .true. reads them over every
+      ! applicable cell (within_all), whatever region is in force: the
+      ! verdict "on all cells" (cert_report field certified_all).
       type(cert_report), intent(in)  :: rep
       logical,           intent(in)  :: candidate_gating
       logical,           intent(out) :: certified
       integer,           intent(out) :: n_failing
+      logical, optional, intent(in)  :: wind_region, all_region
       integer :: i
-      logical :: refuses
+      logical :: refuses, in_wind, on_all
+      in_wind = .false.
+      if (present(wind_region)) in_wind = wind_region
+      on_all = .false.
+      if (present(all_region)) on_all = all_region
       n_failing = 0
       certified = .true.
       do i = 1, rep%n
          refuses = .false.
          if (candidate_gating .and. rep%e(i)%regime_gated) then
             refuses = .not. rep%e(i)%within_from3
+         else if (on_all .and. rep%e(i)%regime_gated .and.                 &
+                  rep%e(i)%status .ne. cert_not_applicable) then
+            refuses = .not. rep%e(i)%within_all
+         else if (in_wind .and. rep%e(i)%regime_gated .and.                &
+                  rep%e(i)%status .ne. cert_not_applicable) then
+            ! regime_gated is set only on a measured row (gate_species_row
+            ! fills within_wind), and within_wind is false where the wind
+            ! holds no applicable cell or the row is not finite.
+            refuses = .not. rep%e(i)%within_wind
          else
             select case (rep%e(i)%status)
                case (cert_unavailable)
@@ -1850,7 +2105,8 @@
       end subroutine certification_report_verdict
 
 
-      subroutine carrier_rows_of_state(rho, v, f_sp, cres, cterms, cabsent)
+      subroutine carrier_rows_of_state(rho, v, f_sp, cres, cterms, cabsent, &
+                                       csus)
       ! The carrier balance of a state, measured INSIDE AN ISOLATED
       ! WORKSPACE. carrier_steady_residual refreshes the frozen background,
       ! the photolysis rates, the advection correction, the row terms, the
@@ -1864,6 +2120,9 @@
       ! isolated evaluation that forms the rows, so the mark and the row
       ! describe one state (carrier_absent_fraction, carrier_residual).
       logical, dimension(1:N,n_carrier_max),  intent(out) :: cabsent
+      ! The abundance each carrier's own sources could sustain, over the
+      ! absence floor (carrier_residual, sustained_out).
+      real*8,  dimension(1:N,n_carrier_max),  intent(out) :: csus
       type(carrier_module_state) :: ws
       real*8  :: rcmax, rvol
       real*8  :: bff(n_carrier_max,2)
@@ -1872,7 +2131,7 @@
       call carrier_steady_residual(rho, v, f_sp, rcmax, jworst, icworst,  &
                                    rvol=rvol, res_out=cres,              &
                                    terms_out=cterms, absent_out=cabsent, &
-                                   base_face_flux=bff)
+                                   base_face_flux=bff, sustained_out=csus)
       ! The H2 the state exchanges with the lower atmosphere through the
       ! base face, recorded for the resolved configuration on the state the
       ! certification writes (carrier_record_base_face_flux).
@@ -2022,11 +2281,14 @@
       logical,                                intent(out) :: carriers_measured
       real*8, dimension(1:N,n_carrier_max)  :: cres, cterms
       logical, dimension(1:N,n_carrier_max) :: cabsent
+      real*8,  dimension(1:N,n_carrier_max) :: csus
       integer :: ic, ient
       carriers_measured = .false.
       cabsent = .false.
+      csus    = huge(1.0d0)
       if (transported_rows_exist() .and. bg_ready) then
-         call carrier_rows_of_state(rho, v, f_sp, cres, cterms, cabsent)
+         call carrier_rows_of_state(rho, v, f_sp, cres, cterms, cabsent,  &
+                                    csus)
          carriers_measured = .true.
       endif
       do ic = 1, n_carrier_max
@@ -2044,7 +2306,7 @@
                            ient)
             cycle
          endif
-         call carrier_row_entry(rep, ic, cres, cterms, cabsent)
+         call carrier_row_entry(rep, ic, cres, cterms, cabsent, csus)
       enddo
       end subroutine add_carrier_balance_entries
 
@@ -2085,6 +2347,10 @@
       iworst = 0;  distance = 0.0d0
       do i = 1, rep%n
          if (rep%e(i)%name(1:16) .ne. 'carrier balance ') cycle
+         if (row_unavailable_in_selected_region(rep%e(i))) then
+            n_unavailable = n_unavailable + 1
+            cycle
+         endif
          select case (rep%e(i)%status)
          case (cert_unavailable)
             n_unavailable = n_unavailable + 1
@@ -2121,7 +2387,7 @@
       end function measure_against_target_text
 
 
-      subroutine carrier_row_entry(rep, ic, cres, cterms, cabsent)
+      subroutine carrier_row_entry(rep, ic, cres, cterms, cabsent, csus)
       ! The steady balance of one transported carrier, transport minus
       ! reaction, on the row's own terms.
       !
@@ -2134,6 +2400,8 @@
       integer,           intent(in)    :: ic
       real*8, dimension(1:N,n_carrier_max), intent(in) :: cres, cterms
       logical, dimension(1:N,n_carrier_max), intent(in) :: cabsent
+      real*8,  dimension(1:N,n_carrier_max), intent(in) :: csus
+      real*8,  dimension(1:N) :: sus
       real*8, dimension(1:N) :: rr, ss, ww
       logical, dimension(1:N) :: aa
       integer :: j, idx, nro_last, nro_total, nro_sub
@@ -2160,6 +2428,7 @@
          rr(j) = cres(j,ic)
          ss(j) = cterms(j,ic)
          aa(j) = cabsent(j,ic)
+         sus(j) = csus(j,ic)
          ww(j) = r(j)*r(j)*dr_j(j)
          if (aa(j)) then
             rep%e(idx)%n_absent = rep%e(idx)%n_absent + 1
@@ -2177,7 +2446,8 @@
                                      rep%e(idx)%finite,                   &
                                      wvol = ww, rvol = rep%e(idx)%row_vol)
       call fill_regime_measures(rep%e(idx), rr, ss)
-      call gate_species_row(rep%e(idx), .true., rr, ss, absent = aa)
+      call gate_species_row(rep%e(idx), .true., rr, ss, absent = aa,       &
+                            sustained = sus)
       end subroutine carrier_row_entry
 
 
@@ -2721,6 +2991,8 @@
       type(face_mass_flux_budget), intent(in), optional :: face_budget
       integer :: i
       character(len=14) :: st
+      character(len=11) :: row_txt
+      logical :: row_ok, row_avail
       real*8 :: fb_scale
       write(*,'(A)') ' '
       write(*,'(A,A)') ' (certification) ', trim(label)
@@ -2748,15 +3020,21 @@
       write(*,'(A,ES9.2,A,ES9.2,A,ES9.2,A,ES9.2)')                         &
            '     closure ', cert_tol_closure,                              &
            ', level ', cert_tol_level,                                     &
-           '; and IN THE WIND, at r >=', cert_regime_wind_r,               &
-           ', carrier ', cert_tol_carrier_at(cert_regime_wind_r)
-      write(*,'(A,ES9.2,A)')                                               &
-           '     and elemental transport ',                                &
-           cert_tol_element_at(cert_regime_wind_r),                        &
-           '; the species rows of the cells below that radius are'
-      write(*,'(A,ES9.2,A)') '     REPORTED AND DO NOT GATE, by'//         &
-           ' decision: the layer r <', cert_regime_layer_r,               &
-           ' and the band above it'
+           ', carrier ', cert_tol_carrier_wind,                            &
+           ', elemental transport ', cert_tol_element_wind
+      write(*,'(A,A,A,F7.4,A)') '     certification region: ',            &
+           trim(certification_region_name()),                              &
+           ' ("Certification region"; wind start radius ',                 &
+           cert_regime_wind_r, ' R_p)'
+      write(*,'(A)') '     the carrier and elemental transport rows are'// &
+           ' measured on both regions, all applicable cells and r >= the'//&
+           ' wind start radius;'
+      write(*,'(A)') '     the region above gates them and the other is'// &
+           ' reported. Every other row gates on the whole column.'
+      if (rep%region .eq. cert_region_in_wind .and. cert_gate_all_cells)   &
+         write(*,'(A)') '     this verdict is the WIND verdict, admitted'//&
+              ' where the all-cell verdict does not hold (the pass cap of'//&
+              ' the outer iteration, or a stationary evaluation)'
       if (cert_resid_tol_of_run .gt. 0.0d0)                                &
          write(*,'(A,ES9.2,A)') '     the run''s own "Resid tol" is ',     &
               cert_resid_tol_of_run, ', which is the SOLVER''s target'//   &
@@ -2768,26 +3046,39 @@
             case default;               st = 'UNAVAILABLE'
          end select
          if (rep%e(i)%status .eq. cert_evaluated) then
+            ! THE STATUS COLUMN OF A REGION-GATED ROW refers to the region
+            ! the verdict was taken on (rep%region): the wind after a wind
+            ! admission, and UNAVAILABLE where that region holds no
+            ! applicable cell. The pair lines below show both regions.
+            row_ok = rep%e(i)%within_tol
+            row_txt = merge('within  ', 'ABOVE   ', row_ok)
+            if (rep%e(i)%regime_gated) then
+               if (rep%region .eq. cert_region_in_wind) then
+                  row_ok    = rep%e(i)%within_wind
+                  row_avail = rep%e(i)%avail_wind .or.                     &
+                              rep%e(i)%unsourced_wind
+               else
+                  row_ok    = rep%e(i)%within_all
+                  row_avail = rep%e(i)%avail_all .or. rep%e(i)%unsourced_all
+               endif
+               row_txt = merge('within  ', 'ABOVE   ', row_ok)
+               if (.not. row_avail) row_txt = 'UNAVAILABLE'
+            endif
             write(*,'(A,A52,A,A14,A,ES10.3,A,ES10.3,A,I0,A,ES8.1,A,A)')    &
                  '   ', rep%e(i)%name, ' ', st,                            &
                  '  max=', rep%e(i)%row_max,                               &
                  '  vol=', rep%e(i)%row_vol,                               &
                  '  cell=', rep%e(i)%jworst,                               &
                  '  tol=', rep%e(i)%tol,                                   &
-                 '  ', merge('within  ', 'ABOVE   ',                       &
-                             rep%e(i)%within_tol)
+                 '  ', trim(row_txt)
             if (.not. rep%e(i)%finite)                                     &
                write(*,'(A)') '        the row is not a finite number'
             write(*,'(A,A)') '        scale: ', trim(rep%e(i)%units_floor)
-            ! WHICH PART OF A REGIME-GATED ROW DECIDED, so that max= above
-            ! is never read as the number the verdict was taken on.
-            if (rep%e(i)%regime_gated .and. rep%e(i)%jworst_gate .gt. 0)   &
-               write(*,'(A,ES10.3,A,ES9.2,A,ES10.3,A,I0,A)')               &
-                    '        gated at r >=', cert_regime_wind_r,          &
-                    ' against ', rep%e(i)%tol, ': ',                       &
-                    rep%e(i)%row_max_gate, ' at cell ',                    &
-                    rep%e(i)%jworst_gate,                                  &
-                    '; the cells below that radius are reported only'
+            ! THE TWO REGIONS OF A REGIME-GATED ROW SIDE BY SIDE, and which
+            ! of them gated, so that max= above is never read as the
+            ! number the verdict was taken on.
+            if (rep%e(i)%regime_gated)                                     &
+               call write_region_pair(rep%e(i), rep%region)
             ! WHICH CELL AND WHICH TOLERANCE TOOK THE VERDICT on a row
             ! whose tolerance is a function of the cell, so that a reader
             ! can tell the fixed gate from the rounding anchor.
@@ -3075,7 +3366,7 @@
       if (rep%certified) then
          write(*,'(A)') '   CERTIFIED: every active equation was '//       &
               'evaluated and is within its tolerance'
-         call write_wind_certification_line(rep)
+         call write_certified_region_line(rep)
       else
          write(*,'(A,I0,A)') '   NOT CERTIFIED: ', rep%n_failing,          &
               ' entry/entries of the inventory refuse it'
@@ -3085,12 +3376,20 @@
                     ': ', trim(rep%e(i)%reason)
             else if (rep%e(i)%status .eq. cert_evaluated .and.             &
                      .not. rep%e(i)%within_tol) then
-               if (rep%e(i)%regime_gated) then
-                  write(*,'(A,A,A,ES10.3,A,ES8.1,A,I0,A)') '     ',        &
-                       trim(rep%e(i)%name), ': gated row measure ',        &
-                       rep%e(i)%row_max_gate, ' above ', rep%e(i)%tol,     &
-                       ' at cell ', rep%e(i)%jworst_gate,                  &
-                       ' (a wind cell)'
+               if (rep%e(i)%regime_gated .and.                          &
+                   rep%e(i)%jworst_gate .eq. 0) then
+                  write(*,'(A,A,A,A)') '     ', trim(rep%e(i)%name),      &
+                       ': UNAVAILABLE -- ', trim(rep%e(i)%reason)
+               else if (rep%e(i)%regime_gated) then
+                  write(*,'(A,A,A,ES10.3,A,ES8.1,A,I0,A,ES12.5,A,A)')      &
+                       '     ', trim(rep%e(i)%name),                       &
+                       ': gated row measure ', rep%e(i)%row_max_gate,      &
+                       ' above ', rep%e(i)%tol, ' at cell ',               &
+                       rep%e(i)%jworst_gate, ' (r=',                       &
+                       r(rep%e(i)%jworst_gate), ', ',                      &
+                       trim(merge('all applicable cells',                  &
+                                  'the wind region     ',                  &
+                                  rep%region .eq. cert_region_all_cells))//')'
                else if (rep%e(i)%jbind .gt. 0) then
                   ! A row whose tolerance is a function of the cell names
                   ! the cell that REFUSED it, not the cell of its largest
@@ -3131,6 +3430,65 @@
       if (candidate_gate_report_on()) call write_candidate_gate_block(rep)
       write(*,'(A)') ' '
       end subroutine certification_report_write
+
+
+      subroutine write_region_pair(e, region)
+      ! ONE CARRIER OR ELEMENTAL TRANSPORT ROW ON THE TWO CERTIFICATION
+      ! REGIONS, in two lines (the format of EXHALE_v1.10): every applicable
+      ! physical cell, and the applicable cells with r >= cert_regime_wind_r,
+      ! each with its largest measure, the cell and radius that carry it and
+      ! whether the row is within its tolerance there; the region the
+      ! verdict was taken on (region) is marked "GATES" and the other
+      ! "reported".
+      type(cert_entry), intent(in) :: e
+      integer,          intent(in) :: region
+      character(len=24) :: lbl_wnd
+      write(lbl_wnd,'(A,F7.4)') 'cells r >=', cert_regime_wind_r
+      call write_region_line('all applicable cells', e%row_max_all,        &
+           e%jworst_all, e%within_all, e%unsourced_all,                    &
+           e%sustained_max_all, e%jsustained_all,                          &
+           region .eq. cert_region_all_cells)
+      call write_region_line(lbl_wnd, e%row_max_wind_gate,                 &
+           e%jworst_wind_gate, e%within_wind, e%unsourced_wind,            &
+           e%sustained_max_wind, e%jsustained_wind,                        &
+           region .eq. cert_region_in_wind)
+      contains
+         subroutine write_region_line(region_label, rmax, jw, within,      &
+                                      unsourced, smax, js, gates)
+         character(len=*), intent(in) :: region_label
+         real*8,           intent(in) :: rmax, smax
+         integer,          intent(in) :: jw, js
+         logical,          intent(in) :: within, unsourced, gates
+         character(len=8) :: role
+         role = 'reported'
+         if (gates) role = 'GATES'
+         if (jw .gt. 0) then
+            write(*,'(A,A24,A,ES10.3,A,I5,A,F9.5,A,A8,A,A)') '        ',   &
+                 region_label, ' max ', rmax, ' at cell ', jw, ' (r =',   &
+                 r(jw), ')  ', merge('within  ', 'ABOVE   ', within),      &
+                 '  ', trim(role)
+         else if (unsourced .and. js .gt. 0) then
+            write(*,'(A,A24,A,ES10.3,A,I5,A,F9.5,A,A)') '        ',        &
+                 region_label, ' not_applicable: absent and unsourced on'//&
+                 ' the region; sustained/floor max ', smax, ' at cell ',   &
+                 js, ' (r =', r(js), ')  ', trim(role)
+         else if (js .gt. 0) then
+            ! Every cell absent, but a source could sustain the species at
+            ! the absence floor (or the measure is not finite): UNAVAILABLE,
+            ! with the measure that refuses it.
+            write(*,'(A,A24,A,ES10.3,A,I5,A,F9.5,A,A,A,A)') '        ',     &
+                 region_label, ' absent but sourced; sustained/floor max ',&
+                 smax, ' at cell ', js, ' (r =', r(js), ')  ',             &
+                 'UNAVAILABLE', '  ', trim(role)
+         else
+            ! No applicable cell: the region is UNAVAILABLE, which is not a
+            ! measured excess, and it does not certify that region.
+            write(*,'(A,A24,A,A,A,A)') '        ', region_label,           &
+                 ' no applicable cell                          ',          &
+                 'UNAVAILABLE', '  ', trim(role)
+         endif
+         end subroutine write_region_line
+      end subroutine write_region_pair
 
 
       function candidate_gate_report_on() result(on)
@@ -3244,65 +3602,156 @@
       end subroutine append_refusal
 
 
-      function wind_certification_token(rep) result(tok)
-      ! The one word the state file carries beside certified=T when the
-      ! species rows of the state were gated in the wind and reported
-      ! below it. Empty when the state carries no such row, so a file of
-      ! the three-unknown route is unchanged.
+      logical function row_unavailable_in_selected_region(e) result(unav)
+      ! A measured region-gated row whose selected region holds no
+      ! applicable cell: it cannot be judged there and counts as an
+      ! unavailable equation, while its other region stays measured.
+      type(cert_entry), intent(in) :: e
+      unav = e%status .eq. cert_evaluated .and. e%regime_gated .and.       &
+             e%jworst_gate .eq. 0
+      ! A selected region on which the species is absent and unsourced is
+      ! not applicable, not unavailable.
+      if (cert_gate_all_cells) then
+         if (e%unsourced_all) unav = .false.
+      else
+         if (e%unsourced_wind) unav = .false.
+      endif
+      end function row_unavailable_in_selected_region
+
+
+      logical function has_region_gated_row(rep) result(has)
+      ! Whether the report carries an evaluated row whose gated cells are
+      ! the region's (the carrier and elemental transport rows).
       type(cert_report), intent(in) :: rep
-      character(len=32) :: tok
       integer :: i
-      tok = ''
+      has = .false.
       do i = 1, rep%n
-         if (rep%e(i)%status .ne. cert_evaluated) cycle
-         if (rep%e(i)%regime_gated) then
-            tok = 'certified_in_wind';  return
+         if (rep%e(i)%status .eq. cert_evaluated .and.                     &
+             rep%e(i)%regime_gated) then
+            has = .true.;  return
          endif
       enddo
-      end function wind_certification_token
+      end function has_region_gated_row
 
 
-      subroutine write_wind_certification_line(rep)
-      ! WHAT A CERTIFIED STATE WITH SPECIES ROWS IS CERTIFIED IN, in one
-      ! line: the species rows were judged in the wind alone, so the state
-      ! is certified there and its rows below the wind radius are a
-      ! measurement and not a claim. The worst of those reported measures
-      ! and its cell stand in the line, so that reading it is enough to
-      ! know how far the ungated part of the column is.
+      function certification_region_name() result(nm)
+      ! The plain name of the region the run selects, as the input key
+      ! spells it ("Certification region: all | wind").
+      character(len=8) :: nm
+      nm = 'all'
+      if (.not. cert_gate_all_cells) nm = 'wind'
+      end function certification_region_name
+
+
+      function certification_token(rep) result(tok)
+      ! THE WORD THE STATE FILE CARRIES BESIDE certified=T: the region the
+      ! verdict was taken on. certified_all_cells: every row was judged on
+      ! every applicable physical cell. certified_in_wind: the carrier and
+      ! elemental transport rows were judged on r >= cert_regime_wind_r and
+      ! reported below it ("Certification region: wind", or the wind verdict
+      ! admitted after an exhausted all-cell outer iteration). Empty when
+      ! the state carries no such row, so a file of the three-unknown route
+      ! is the one it always was.
       type(cert_report), intent(in) :: rep
-      real*8  :: worst
-      integer :: i, jw, ngated
+      character(len=32) :: tok
+      tok = ''
+      if (.not. has_region_gated_row(rep)) return
+      if (rep%region .eq. cert_region_in_wind) then
+         tok = 'certified_in_wind'
+      else
+         tok = 'certified_all_cells'
+      endif
+      end function certification_token
+
+
+      subroutine write_certified_region_line(rep)
+      ! WHAT A CERTIFIED STATE IS CERTIFIED ON, in one line (the wording of
+      ! EXHALE_v1.10): all applicable cells, or the wind region with the
+      ! worst carrier or elemental transport row below it (reported, not
+      ! gating) named with its measure, tolerance, cell and radius. Silent
+      ! on a state without such a row, whose whole column was judged.
+      type(cert_report), intent(in) :: rep
       character(len=52) :: nm
-      ngated = 0;  worst = -1.0d0;  jw = 0;  nm = ''
+      real*8  :: meas, tol
+      integer :: jw
+      if (.not. has_region_gated_row(rep)) return
+      if (rep%region .eq. cert_region_all_cells) then
+         write(*,'(A)') '   certified ON ALL CELLS: every row was judged'//&
+              ' on every applicable physical cell (certified_all_cells)'
+         return
+      endif
+      call certification_worst_below_wind(rep, nm, meas, tol, jw)
+      if (jw .gt. 0) then
+         write(*,'(A,F7.4,A,ES10.3,A,ES8.1,A,A,A,I0,A,F9.5)')               &
+              '   certified IN THE WIND, r >=', cert_regime_wind_r,        &
+              ' R_p (certified_in_wind); below it the rows are reported'// &
+              ' and do not gate: worst ', meas, ' against ', tol, ' (',    &
+              trim(nm), ') at cell ', jw, ', r =', r(jw)
+      else
+         write(*,'(A,F7.4,A)')                                             &
+              '   certified IN THE WIND, r >=', cert_regime_wind_r,        &
+              ' R_p (certified_in_wind); no applicable cell lies below it'
+      endif
+      end subroutine write_certified_region_line
+
+
+      subroutine certification_admit_wind_verdict(admitted)
+      ! The stationary outer iteration states whether the wind verdict may
+      ! stand for a refused all-cell verdict on the state it hands back
+      ! (cert_wind_verdict_admitted at its declaration says when).
+      logical, intent(in) :: admitted
+      cert_wind_verdict_admitted = admitted
+      end subroutine certification_admit_wind_verdict
+
+
+      subroutine certification_worst_below_wind(rep, nm, meas, tol, jw)
+      ! THE CARRIER OR ELEMENTAL TRANSPORT ROW THAT STANDS FURTHEST FROM ITS
+      ! TOLERANCE BELOW THE WIND START RADIUS, over the applicable cells with
+      ! r < cert_regime_wind_r: its name, its measure, its tolerance and its
+      ! cell (jw = 0: no such cell in any evaluated row).
+      type(cert_report), intent(in)  :: rep
+      character(len=52), intent(out) :: nm
+      real*8,            intent(out) :: meas, tol
+      integer,           intent(out) :: jw
+      real*8  :: worst
+      integer :: i
+      nm = '';  meas = 0.0d0;  tol = 0.0d0;  jw = 0;  worst = -1.0d0
       do i = 1, rep%n
          if (rep%e(i)%status .ne. cert_evaluated) cycle
          if (.not. rep%e(i)%regime_gated) cycle
-         ngated = ngated + 1
-         ! The reported part of the row is the whole column with the gated
-         ! cells taken out, layer and band together: the cell that binds
-         ! the element row of the candidate states sits in the band, so a
-         ! line that quoted the layer window alone would leave the largest
-         ! ungated measure of the state out of the report.
-         if (rep%e(i)%row_max_reported .gt. worst) then
-            worst = rep%e(i)%row_max_reported
-            jw    = rep%e(i)%jworst_reported
+         if (rep%e(i)%jworst_gate_blw .eq. 0) cycle
+         if (rep%e(i)%dist_gate_blw .gt. worst) then
+            worst = rep%e(i)%dist_gate_blw
             nm    = rep%e(i)%name
+            meas  = rep%e(i)%row_max_gate_blw
+            tol   = rep%e(i)%tol
+            jw    = rep%e(i)%jworst_gate_blw
          endif
       enddo
-      if (ngated .eq. 0) return
-      if (jw .gt. 0) then
-         write(*,'(A,ES9.2,A,ES10.3,A,A,A,I0,A,ES10.3)')                  &
-              '   certified IN THE WIND, r >=', cert_regime_wind_r,       &
-              '; the element and carrier rows below it are reported'//    &
-              ' and do not gate: worst ', worst, ' (', trim(nm),          &
-              ') at cell ', jw, ', r =', r(jw)
-      else
-         write(*,'(A,ES9.2,A)')                                           &
-              '   certified IN THE WIND, r >=', cert_regime_wind_r,       &
-              '; the element and carrier rows below it are reported'//    &
-              ' and do not gate: no cell below that radius'
+      end subroutine certification_worst_below_wind
+
+
+      subroutine certification_check_wind_start_radius()
+      ! "Wind start radius [R_p]" ON THE GRID OF THE RUN, once the grid
+      ! exists: above the inner boundary (the lower face of cell 1,
+      ! r_edg(0), the base level) and at or below the center of the
+      ! outermost cell, so the wind region holds at least one cell and is
+      ! not the whole column by accident of a radius below the base.
+      ! Anything else, a non-finite value included, stops the run with the
+      ! numbers.
+      real*8 :: r_inner
+      r_inner = r_edg(0)
+      if (.not. (cert_regime_wind_r .gt. r_inner .and.                     &
+                 cert_regime_wind_r .le. r(N))) then
+         write(*,'(A,ES14.6,A)') ' (certification) ERROR: "Wind start'//   &
+              ' radius [R_p]:', cert_regime_wind_r, '" is not inside the'//&
+              ' grid of this run.'
+         write(*,'(A,ES14.6,A,ES14.6,A)') '   It must be greater than the'//&
+              ' inner boundary radius', r_inner, ' and at most the'//       &
+              ' outermost cell center', r(N), ' [R_p]. Aborting.'
+         error stop 1
       endif
-      end subroutine write_wind_certification_line
+      end subroutine certification_check_wind_start_radius
 
 
       subroutine write_validity(name, n)
@@ -3461,6 +3910,12 @@
             return
          endif
       endif
+      ! The refusal is on the status. The measure reported with it is
+      ! energy_update_last_residual = |R|/N of the first refused cell, N
+      ! the norm of energy_semi_implicit (thermal_balance_norm: the energy
+      ! the step moves plus the arithmetic allowance, not the stored
+      ! thermal energy), huge for a cell refused on entry or by a
+      ! non-finite evaluation; no threshold is applied to it here.
       if (energy_update_last_status .ne. ENERGY_UPDATE_OK) then
          call step_refuse(verd, cert_step_energy, 9,                       &
               energy_update_last_cell, 3, energy_update_last_residual,     &

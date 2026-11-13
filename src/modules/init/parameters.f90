@@ -1224,6 +1224,31 @@
       ! Default <= 0 disables (legacy du-based stop, byte-identical).
       real*8  :: resid_th = -1.0d0
       integer :: N_resid  = 500
+      ! WHICH CELLS THE ELEMENTAL TRANSPORT AND CARRIER BALANCES ARE JUDGED
+      ! ON in the stationary certification ("Certification region: all|wind",
+      ! user decision 2026-11-12; certification.f90, gate_species_row).
+      ! .true. ("all", the default): every applicable physical cell, and the
+      ! stationary outer iteration runs until the whole column is within
+      ! tolerance. .false. ("wind"): the cells at r >= cert_regime_wind_r;
+      ! the cells below it are reported and do not gate.
+      logical :: cert_gate_all_cells = .true.
+      ! THE WIND START RADIUS [R_p] ("Wind start radius [R_p]: <r>", default
+      ! 1.2): where the wind region of the certification begins. Gating
+      ! under "Certification region: wind", the wind-level judgment of a
+      ! state the outer iteration ends with under "all", and the wind column
+      ! of the report. 1.2 is the radius above which the flow is transonic on
+      ! every case of the regression matrix. Checked against the grid
+      ! (certification_check_wind_start_radius) once the grid exists.
+      real*8  :: cert_regime_wind_r = 1.20d0
+      ! THE CAP OF STATIONARY OUTER PASSES ("JFNK max iterations: <n>",
+      ! integer >= 1, default 20): how many passes of the stationary outer
+      ! iteration (a hydrodynamic solve alternated with the element and
+      ! carrier composition updates, steady_wind_with_element_diffusion)
+      ! may run before the pass budget ends it. It is NOT a cap on the
+      ! Newton, Krylov or line-search iterations inside one pass. Replaces
+      ! the environment variable EXHALE_OUTER_PASSES (user decision
+      ! 2026-11-12), whose presence now stops the run (input_read).
+      integer :: jfnk_max_iter = 20
       ! THE STATE CHANGE OF THE MARCHING OVER ONE MONITOR WINDOW, the second
       ! half of the marching stop (EXHALE_main, the monitor block):
       !     chg_win = max over cells j = 1..N of |rho/rho_win - 1|,

@@ -315,19 +315,108 @@ Those tolerances are anchored by measurement and are not the solver's target
 | momentum | `1e-8` |
 | energy | `1e-6` |
 | local closure and the two level balances | `ieq_res_tol`, the tolerance the cell sweep already judges a root by |
-| element and carrier transport rows | `1e-5` for `r >= 1.20 R_p`; below that measured, reported and NOT gating |
+| element and carrier transport rows | `1e-5` on every applicable physical cell (`Certification region: all`, the default) or for `r >=` the wind start radius only (`Certification region: wind`; below it measured, reported and NOT gating) |
 | the time-discrete hydrodynamic row | `1.0`, diagnostic only |
 
-The element and carrier tolerance is a function of radius because the same
-balance is a cancellation of advective terms in the wind and of eddy and
-settling terms in the layer, and the two are not resolvable to one number:
-the same equation on the same state reads 2 to 11 times smaller in the wind.
-The band `1.10 <= r < 1.20` is reported and does not gate. An atomic
-three-unknown run certifies. A configuration carrying a species row (an
-element row from `He_diffusion`, a carrier or ionization-stage row) certifies
-on some states and not on others: `iontrans_metals` is accepted at its outer
-pass 15, and the LHS 1140 b He/H 2.09 closure state certifies (update log
-stage 3 sections 122, 125), while route B and He/H 0.65 end with an
+WHICH CELLS THE ELEMENT AND CARRIER ROWS ARE JUDGED ON is chosen in the
+input (user decision 2026-11-12):
+
+```
+Certification region: all          # default; or: wind
+Wind start radius [R_p]: 1.2       # default 1.2
+JFNK max iterations: 20            # default 20: the cap of STATIONARY OUTER PASSES
+```
+
+`JFNK max iterations` caps the passes of the stationary outer iteration (a
+hydrodynamic solve alternated with the element and carrier composition
+updates), not the Newton or Krylov iterations inside one pass
+(`EXHALE_JFNK_MAXIT` caps those of one solve). It replaced the environment
+variable `EXHALE_OUTER_PASSES` on 2026-11-12; a run whose environment still
+sets that variable stops at start and says so.
+
+- `all`: every applicable physical cell. A carrier row applies where its
+  species is not absolutely absent; an element row applies in cells 1..N,
+  cell 1 being the Dirichlet reservoir whose row is zero. The stationary
+  outer iteration continues until the whole column is within tolerance, and
+  the state is written `certified=T cert_reason=certified_all_cells`. When
+  the cap of stationary outer passes (`JFNK max iterations: <n>`, default
+  20) ends first and the state of the last pass (not a restored earlier
+  wind) is within tolerance on the wind region, the iteration is accepted
+  there: info 0, exit 0, the state written `certified=T
+  cert_reason=certified_in_wind cert_wind_r=<radius>`, and the console says
+  `(EXHALE_main) all-cell convergence was NOT reached in N outer passes;
+  the wind region is converged and the state is accepted there.` followed
+  by the wind-region line and the worst row below the wind start radius
+  (value, tolerance, cell, radius). Not within tolerance in the wind
+  either: `certified=F` as before. Another ending of the outer iteration
+  (no progress, a refused update) is a refusal as before. A stationary
+  evaluation (`Restart intent: stationary evaluate`) labels the stored pair
+  the same way: all-cell verdict, else wind verdict
+  (`certified_in_wind`, exit as for a certified evaluation), else refused.
+- `wind`: the rows gate at `r >=` the wind start radius and the cells below
+  are measured, reported and do not gate; acceptance as soon as the wind is
+  within tolerance, `certified_in_wind`. This was the only behavior before
+  2026-11-12; with the default radius it reproduces those runs.
+
+AVAILABILITY OF EACH REGION. Every element and carrier row is measured on
+both regions, each with its own availability (an applicable cell exists)
+and its own verdict, whatever region is selected. A region with no
+applicable cell is printed `UNAVAILABLE` (not a measured excess) and does
+not certify that region; the other region's result is still printed. A row
+or scale that is not finite, or a negative scale, is not a measurement and
+refuses. The report prints, for each such row, the two regions side by side
+(`all applicable cells` and `cells r >= <R_w>`, each with its maximum, cell,
+radius, `within`/`ABOVE`/`UNAVAILABLE`, and `GATES` or `reported`); the
+status column of the row's first line refers to the region the verdict was
+taken on. A wind start radius not above the base level or beyond the
+outermost cell center stops the run once the grid exists.
+
+A SPECIES ABSENT FROM A WHOLE REGION. A region in every cell of which a
+carrier is below its absence floor is NOT APPLICABLE for that row (it does
+not refuse) only where the carrier is also unsourced there: in every cell
+of the region the abundance its own production and incoming transport could
+sustain against its loss frequency is below the absence floor. Otherwise the
+region stays UNAVAILABLE and refuses; a region without cells (geometric
+absence) refuses as well. The pair line prints `not_applicable: absent and
+unsourced on the region; sustained/floor max <value> at cell <j>`.
+
+ACCEPTANCE AT OUTER PASS 0. A `Restart intent: stationary` run whose stored
+pair (sources rebuilt) is certified on the region in force takes no seed
+preparation, sweep or outer pass: it prints `(EXHALE_main) outer pass 0:
+ACCEPTED -- the stored pair of the loaded restart is within its tolerances
+on all applicable cells; no outer pass was taken.` (or `on the wind region
+r >= X R_p`), writes the stored pair with its certificate, info 0 (the
+physical stored pair is retained; boundary ghosts are rebuilt using the
+current boundary conditions). Under
+`all`, a stored pair that holds only on the wind region iterates; if the
+iteration spends its pass cap with a final state that fails the wind
+verdict, the stored pair is restored and written `certified_in_wind`
+(`the outer iteration did not improve on the loaded wind solution ...`).
+
+A WIND CLAIM CARRIES ITS RADIUS. A state written `certified=T
+cert_reason=certified_in_wind` also carries `cert_wind_r=<value in R_p>`
+(ES23.16) directly after the cert_reason token on the coupling line of
+`Hydro_ioniz.txt` and `Ion_species.txt` (and on the `adv_input_certified`
+line of the derived products). A loaded `certified_in_wind` file without it
+was written under the fixed-radius rule and is taken as 1.2 (the load says
+so). An evaluation judges the original claim on the region it names; where
+the claim's radius differs from the run's wind start radius (relative
+1e-12) it prints `original claim: NOT RE-JUDGED -- the file claims
+certified_in_wind for r >= X R_p; this run measures the wind region from
+Y R_p` and neither reproduces nor refutes it; the pair it records follows
+the run's own regions.
+
+Why the wind alone was the gate before: the same balance is a cancellation
+of advective terms in the wind and of eddy and settling terms in the layer,
+and the same equation on the same state read 2 to 11 times smaller in the
+wind (2026-09). An atomic three-unknown run certifies under either value. A
+configuration carrying a species row (an element row from `He_diffusion`, a
+carrier or ionization-stage row) certified on some states and not on others
+under `wind`: `iontrans_metals` was accepted at its outer pass 14 (golden
+run of 2026-11-09; its worst row below 1.2 R_p, `carrier balance He++`
+1.774e-5 at cell 251, r = 1.093, is above the tolerance, so that state is not
+an all-cell acceptance under the default `all`), and the LHS 1140 b He/H 2.09 closure state certified (update
+log stage 3 sections 122, 125), while route B and He/H 0.65 ended with an
 ionization-stage carrier row near its tolerance scale (section 126.4).
 
 **Marching acceptance and stationary diagnostics.** The default scientific
@@ -1676,7 +1765,6 @@ can be measured instead of argued. Read the exact behavior at the
 | `EXHALE_PTC_SER=1\|2` | accept a pseudo-transient step of the stationary solve when it is admissible (positive, finite, a chemical root in every cell) and no cell's density or total energy moves by more than `EXHALE_PTC_SER_MAX_CHANGE` (default 0.3) of itself, instead of asking for merit descent; the solve then hands back its last iterate. `=1` sets the pseudo-time by switched evolution relaxation (Kelley & Keyes 1998), `=2` doubles it on a full step. `EXHALE_PTC_SER_RNORM=<x>` (default 1e-3) returns to the merit line search once `||R||` is below `x`. The LHS 1140 b conduction chains ran `=2` | `steady_newton.f90` |
 | `EXHALE_DIFF_OMEGA=<w>` | the starting under-relaxation factor of the element step of the stationary outer iteration (default 0.5; the halving on a pass without progress stays). 1.0 was used on every LHS 1140 b chain after 2026-09-30 | `EXHALE_main.f90` |
 | `EXHALE_CARRIER_TRUST=<x>`, `EXHALE_CARRIER_TRUST_HOLD=<x>` | the movement bound of one carrier relaxation pass (default 1e-2), and the same bound HELD at `x` for every pass instead of being shortened and grown by the progress control | `EXHALE_main.f90` |
-| `EXHALE_OUTER_PASSES=<n>` | the cap of stationary outer passes (default 20) | `EXHALE_main.f90` |
 | `EXHALE_CONDUCTION_SCALE=<s>`, `EXHALE_INTERDIFF_ENTH_SCALE=<s>` | continuation factors in [0, 1] of the heat conduction and of the element interdiffusion enthalpy flux; they change the equations and are written into the `cond` / `interdiff_enth` tokens (see "Damp the base with viscosity and heat conduction" and "Restart a run") | `viscous_conduction.f90`, `binary_element_diffusion.f90` |
 | `EXHALE_EVAL_STATE_DUMP=1`, `EXHALE_BOUNDARY_TRACE=1`, `EXHALE_GHOST_RECORD=1` | write the state of the stationary evaluation and of the final certification at named points (`output/eval_state_dump.txt`), the base boundary trace, and one lower-ghost record for each evaluation (`output/ghost_record.txt`) | `EXHALE_main.f90`, `boundary_state_trace.f90` |
 | `EXHALE_GM_M=<n>` | the Krylov subspace size, overriding the literal 40 at the call site (40 / 80 / 160 were measured to give the same achieved residual) | `steady_newton.f90` |

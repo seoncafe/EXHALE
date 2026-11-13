@@ -836,19 +836,49 @@ are certified by the same numbers. The tolerances are
 $3\times10^{-12}$ for the mass row, $10^{-8}$ for momentum and $10^{-6}$ for
 energy, the level balances and the eliminated-species closures.
 
-\emph{The species rows are gated by regime.} An element row and a carrier row
-are judged against $10^{-5}$ for cells at $r \ge 1.20\,R_{\rm p}$ only; below
-that radius the row is measured and printed and does \emph{not} gate. The
-gate is anchored on the element operator's own stated floor and sits a decade
-above the discretization error a smooth manufactured column shows at the
-production spacing ($1.5\times10^{-6}$); the layer is excluded because its
-element fluxes are not conserved there at all (their radial spread over
-$r < 1.10$ is $9.8$ times the median), so no threshold means anything against
-them yet. The band $1.10 \le r < 1.20$ is likewise reported and does not
-gate. A state that passes with species rows present reports that it is
-certified \emph{in the wind}, and its state file records
-\texttt{cert\_reason=certified\_in\_wind}. The two radii are properties of
-the flow and are constants of \texttt{certification.f90}, not input keys.
+\emph{Which cells the species rows are judged on} is an input choice (user
+decision 2026-11-12): \texttt{Certification region:} \texttt{all} or
+\texttt{wind}, and
+\texttt{Wind start radius [R\_p]: <r>} (default 1.2). An element row and a
+carrier row are judged against $10^{-5}$. Under \texttt{all}, the default,
+every applicable physical cell gates (a carrier row where its species is not
+absolutely absent; an element row in cells $1..N$, cell 1 being the
+Dirichlet reservoir whose row is zero), the stationary outer iteration runs
+until the whole column is within tolerance, and the state file records
+\texttt{cert\_reason=certified\_all\_cells}. If the cap of stationary outer
+passes (\texttt{JFNK max iterations: <n>}, default 20) ends first, the state
+of the last pass is judged in the wind: within tolerance there it is recorded
+\texttt{certified=T cert\_reason=certified\_in\_wind}, the run says that the
+all-cell convergence was not reached and names the worst row below the wind
+radius, and the solve is reported successful at the wind level. A stationary
+evaluation labels a stored pair the same way. A wind claim carries its radius:
+the coupling line of the state files adds \texttt{cert\_wind\_r=<value>}
+(R$_{\rm p}$) after the \texttt{cert\_reason} token; a file without it was
+written under the fixed-radius rule and is read as 1.2, and an evaluation
+whose wind start radius differs from the claim's reports the claim as not
+re-judged. Each region has its own availability: a region with no
+applicable cell is printed UNAVAILABLE, is not a measured excess, and does
+not certify that region; a region on which a carrier is absent in every cell
+and unsourced (its production and incoming transport could not sustain it at
+the absence floor against its loss) is not applicable instead. A stationary
+restart whose stored pair is already certified on the region in force is
+accepted at outer pass 0 and written (the physical stored pair is retained;
+boundary ghosts are rebuilt using the current boundary conditions); under
+\texttt{all}, a loaded
+pair that holds only in the wind is restored and written
+\texttt{certified\_in\_wind} if the iteration's final state at the pass cap
+fails the wind verdict.
+Under \texttt{wind} only cells at $r$ at or above the wind start radius gate;
+below it the row is measured and printed and does \emph{not} gate, and a
+state that passes reports that it is certified \emph{in the wind}
+(\texttt{certified\_in\_wind}); this was the only rule before 2026-11-12. The
+tolerance is anchored on the element operator's own stated floor and sits a
+decade above the discretization error a smooth manufactured column shows at
+the production spacing ($1.5\times10^{-6}$); the layer was excluded in 2026-09
+because its element fluxes were not conserved there (their radial spread over
+$r < 1.10$ was $9.8$ times the median). The report prints, for each such
+row, the maximum over all applicable cells and over the wind side by side and
+marks which region gated.
 
 \emph{Exit statuses.}
 \begin{center}\small
@@ -954,7 +984,9 @@ solve touches, so the stationary route alternates: solve the wind at fixed
 transported composition, relax the composition to its own steady state in
 that wind, solve again (\texttt{steady\_wind\_with\_element\_diffusion},
 \texttt{EXHALE\_main.f90}). Each such round is an \emph{outer pass}; the cap
-is 20 passes (\texttt{EXHALE\_OUTER\_PASSES} overrides it), and a run with no
+is 20 passes (the input key \texttt{JFNK max iterations: <n>} sets it; the
+environment variable \texttt{EXHALE\_OUTER\_PASSES} it replaced on 2026-11-12
+now stops a run), and a run with no
 transported species has one pass, the wind solve alone. The element update is
 under-relaxed by a factor $\omega$ that starts at $0.5$
 (\texttt{EXHALE\_DIFF\_OMEGA}) with floor $0.125$, and the carrier update is
@@ -1152,8 +1184,6 @@ Variable & Effect \\
   stages certified in 14 passes from $0.5$ and not from $10^{-2}$). Also the
   way to continue from a pass snapshot at the bound its
   \texttt{\# pass\_snapshot} line records, which a restart does not inherit. \\
-\texttt{EXHALE\_OUTER\_PASSES=}$\langle n\rangle$ & The pass budget of the
-  stationary outer iteration (default 20). \\
 \midrule
 \texttt{EXHALE\_MAXSTEPS=}$\langle n\rangle$ & Deterministic step cap: leave
   the marching loop after $n$ steps and write the outputs. Separate from the
@@ -4201,8 +4231,9 @@ operator in force, which is not \texttt{rec\_method} alone while the
 PLM\,$\to$\,WENO3 continuation is armed; whether the state passed the
 stationary certification, with \texttt{cert\_reason=} beside it whenever the
 verdict is qualified (\texttt{no\_stationary\_claim} for a run that ended on
-a cap, \texttt{certified\_in\_wind} for a state whose species rows were gated
-at $r\ge1.20$ only; the states written \texttt{certified=F} on purpose name
+a cap, \texttt{certified\_all\_cells} for a state whose species rows were
+gated on every applicable cell, \texttt{certified\_in\_wind} for one whose
+species rows were gated at $r$ at or above the wind start radius only; the states written \texttt{certified=F} on purpose name
 what they are: \texttt{marching\_snapshot\_s<step>} for the periodic write of
 a marching run, measured by nothing at that step, \texttt{pass\_snapshot\_p<k>}
 for a pass state, \texttt{projected\_seed}, \texttt{option\_change\_seed} after

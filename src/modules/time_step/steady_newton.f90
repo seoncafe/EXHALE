@@ -140,7 +140,7 @@
                                         cert_tol_mass_at,                &
                                         cert_tol_momentum,               &
                                         cert_tol_energy,                 &
-                                        cert_regime_wind_r,              &
+                                        row_unavailable_in_selected_region, &
                                         certification_species_row_gate
 
       implicit none
@@ -6037,10 +6037,10 @@
       !   rows(3)  the largest carrier row over the same cells, which
       !            carrier_row_entry gates with cert_tol_carrier_at.
       !
-      ! THE TWO SPECIES ROWS ARE THE GATED PART OF THEIR COLUMN, r >=
-      ! cert_regime_wind_r, because that is the part their tolerance is a
-      ! statement about (the declaration of the two radii
-      ! in certification.f90 says why the rest is reported and does not
+      ! THE TWO SPECIES ROWS ARE THE GATED PART OF THEIR COLUMN, the
+      ! region "Certification region" names: every applicable cell ("all")
+      ! or r >= cert_regime_wind_r ("wind"; the declaration of the radii in
+      ! certification.f90 says why the rest is then reported and does not
       ! gate). The hydrodynamic row is the whole column, which is what its
       ! own tolerances are anchored on.
       !
@@ -8097,7 +8097,8 @@
          enddo
          if (.not. is_row) cycle
          n_read = n_read + 1
-         if (rep%e(i)%status .eq. cert_unavailable) then
+         if (rep%e(i)%status .eq. cert_unavailable .or.                  &
+             row_unavailable_in_selected_region(rep%e(i))) then
             ok = .false.;  none_measured = .true.
          else if (rep%e(i)%status .eq. cert_evaluated) then
             if (.not. rep%e(i)%within_tol .or. .not. rep%e(i)%finite) then

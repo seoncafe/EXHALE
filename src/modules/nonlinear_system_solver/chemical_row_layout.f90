@@ -187,6 +187,89 @@
 	end function helium_closure_allowance
 
 
+	pure real*8 function imposed_stage_sum_rounding_bound(n_terms) result(bound)
+	! THE ROUNDING BOUND OF AN IMPOSED STAGE PARTITION, in units of the
+	! element's nuclei (u = eps/2 the unit roundoff), for n_terms imposed
+	! fractions read from a stored or transported composition whose closing
+	! stage c (H I; the He I ground singlet n(He I) - n(He 2^3S) beside a
+	! carried 2^3S level; the He I total where the level is not carried) is
+	! at the rounding of the element total T.  It bounds two quantities,
+	! the excess s - 1 of the imposed fraction sum s and the deficit -c/N of
+	! the closing density against the computed total N (closing_stage_
+	! density_at_rounding), for the expressions this code evaluates:
+	!   * the closing stage was formed by the writer as T minus a weighted
+	!     sum of the n_terms other stages, weights 1, 2 or 3 (2 H2, 2 H2+,
+	!     3 H3+, 2 H2O): n_terms - 1 additions, at most P = 1 product by a
+	!     weight that is not a power of two (3 H3+; a factor 2 is exact) and
+	!     one subtraction, so |c_stored - c| <= (n_terms + P) u T';
+	!   * the He I ground singlet is a further difference n(He I) - n(He
+	!     2^3S) of two stored densities, S = 1 more rounding (and the He I
+	!     total already contains the level, so the element total is not
+	!     summed over the singlet separately);
+	!   * here: n_terms + 1 conversions n_i = f_i n, the total N of the
+	!     n_terms + 1 densities with its P weighted product (n_terms + P),
+	!     n_terms quotients n_i/N and n_terms - 1 additions of the fraction
+	!     sum.
+	! T' is the sum of the magnitudes, which exceeds T only by the admitted
+	! negative fixed terms, each >= -fraction_resolution, so T' <= T (1 + 6
+	! n_terms eps) and the excess enters at second order.  Adding the
+	! counts, |s - 1 + c/N| <= (5 n_terms + 2 P + S) u (1 + O(eps)) <=
+	! (5 n_terms + 3) u, and the closing density alone carries at most
+	! (n_terms + P + S + 2) u.  Both are below (5 n_terms + 1) eps =
+	! (10 n_terms + 2) u for n_terms >= 1, which is the bound used: the
+	! factor of about two over the count is the convention of
+	! ionization_stage_sum_rounding_bound (one eps per rounding).
+	! MEASURED: the upper ghost N+1 of the LHS 1140 b He/H 0.1 state written
+	! by v1.10 has n(He I) - n(He 2^3S) = -3.8 eps of its helium nuclei,
+	! within the 21 eps of n_terms = 4.
+	integer, intent(in) :: n_terms
+	bound = dble(5*n_terms + 1)*fraction_resolution
+	end function imposed_stage_sum_rounding_bound
+
+
+	pure subroutine closing_stage_density_at_rounding(closure, total,     &
+	                                                  n_terms, repaired,  &
+	                                                  within, deficit)
+	! THE SIGNED CLOSING-STAGE DENSITY OF AN IMPOSED PARTITION, BOUNDED ON
+	! THE POSITIVE ELEMENT TOTAL BEFORE IT IS ZEROED.  closure is the
+	! closing density as the cell holds it (it may be below zero by
+	! rounding), total the positive, finite element total N of the same
+	! cell, n_terms the number of imposed terms the closure completes.  A
+	! closure >= 0 is returned as it is.  A closure whose relative deficit
+	! -closure/total is at most imposed_stage_sum_rounding_bound(n_terms)
+	! is a rounding-sized deficit and is returned as zero.  A larger
+	! deficit is not rounding: within = .false., repaired = closure, and
+	! deficit = -closure/total - that bound (the excess in units of the
+	! element nuclei).  The bound is enforced on the density itself,
+	! because the fraction-sum check is a different floating-point
+	! evaluation and does not by itself bound the density that is zeroed
+	! (counterexample: a He sum 21 eps above one beside a ground singlet
+	! 21.625 eps below zero).  THE COMPARISON IS DIMENSIONLESS: the
+	! relative deficit is formed by one division and compared with the
+	! bound, so a subnormal total cannot round the admitted deficit upward
+	! (total 6e-310, closure -5e-324: 37 eps, refused); a quotient above
+	! the representable range is not finite and refuses.
+	real*8,  intent(in)  :: closure, total
+	integer, intent(in)  :: n_terms
+	real*8,  intent(out) :: repaired, deficit
+	logical, intent(out) :: within
+	real*8 :: rel, bnd
+	bnd      = imposed_stage_sum_rounding_bound(n_terms)
+	repaired = closure
+	deficit  = 0.0d0
+	within   = .true.
+	if (closure .ge. 0.0d0) return
+	rel = -closure/total
+	if (rel .le. bnd) then
+		repaired = 0.0d0
+		return
+	endif
+	! rel above the bound, or not finite (overflow of the quotient).
+	within  = .false.
+	deficit = rel - bnd
+	end subroutine closing_stage_density_at_rounding
+
+
 	pure integer function nuclei_of_species(slot, element_group) result(nu)
 	! Nuclei of the element of element_group (1 H, 2 He, 2 + e metal e)
 	! carried by one particle of the species in slot. The nuclear

@@ -465,10 +465,33 @@ estimate in ${\rm d}\Lambda/{\rm d}T$, which affects only the path, the
 safeguard owning the convergence.
 
 What is tested before the update is returned is the residual at the
-\emph{returned} temperature against $|R|/s$ with
-$s = |\rho e_{\rm old}|+\Delta t(|\mathcal{H}|+|\Lambda|)$, and admissibility; the
-cooling written back is $\Lambda(T_{\rm returned})$, evaluated there and not
-at a previous iterate. There is no clamp: a cell that does not meet the
+\emph{returned} temperature $T$, with the cooling evaluated there:
+\begin{equation}
+|R(T)| \le 10^{-9}\,N(T),\qquad
+N = |\varepsilon(T_{\rm old})-\varepsilon_{\rm old}|
+    + a\left(|\mathcal{H}|+|\Lambda(T)|\right) + E_{\rm arith}(T)/10^{-9},
+\label{eq:th:thermalnorm}
+\end{equation}
+(\texttt{thermal\_balance\_norm}). The first term is the caloric offset of the
+composition at the starting temperature, the second the gross radiative
+exchange of the step, and $E_{\rm arith}$ an allowance for the rounding of $R$
+(a bound under the cooling and equation-of-state evaluation assumptions
+stated in \texttt{energy\_semi\_implicit.f90}) as
+evaluated (the rounding of $\varepsilon(T)$, of the difference of two stored
+energies, of $a(\mathcal{H}-\Lambda)$, and of one unit in the last place of
+$T$). The stored thermal energy $\varepsilon_{\rm old}$ itself is \emph{not}
+in $N$: a tolerance on it admits the whole net change of a nearly balanced
+step, which an earlier rule did by accepting $T_{\rm old}$ unsolved, so that
+the output jumped where a cell crossed that threshold. The same $N$ is used
+at $T_{\rm old}$, at every trial and in the reported \texttt{res\_scaled}
+$=|R|/N$. Where heating and cooling cancel to a fraction $f$ of their sum the
+admitted defect is $10^{-9}/f$ of the net change, so $N$ is a declared
+approximation of the size of the step, not a relative bound of a strongly
+canceled net increment. A cell with a non-finite residual or norm, a zero
+norm, or an incoming temperature above the ceiling is refused; the iteration
+cap is 100 cooling evaluations. The cooling written back is
+$\Lambda(T_{\rm returned})$, evaluated there and not at a previous iterate.
+There is no clamp: a cell that does not meet the
 tolerance, that has no bracket, or that reaches the equation-of-state floor
 is a named failure, nothing is assembled from it, and the step controller
 retakes the step at half $\Delta t$ as in Sec.~\ref{sec:numerics:rk}. The floor is

@@ -9,6 +9,7 @@
                        coupling_state_fields,                            &
                        write_provenance_header,                          &
                        state_is_certified, state_certification_reason, &
+                       state_certification_wind_r,                       &
                        set_state_certified
       use, intrinsic :: iso_c_binding, only: c_char, c_int, c_null_char
       ! THE CONFIGURATION THE STATE IN THIS FILE IS A STATE OF. The block is
@@ -977,6 +978,7 @@
       real*8 :: mol_kept(1-Ng:N+Ng,4), oxy_kept(1-Ng:N+Ng,3)
       logical :: cert_kept, exact_written
       character(len=len(state_certification_reason)) :: reason_kept
+      real*8 :: wind_r_kept
       character(len=128) :: name, reason
       character(len=8192) :: root, temporary, published
       integer :: ih, ii, im, ios, k
@@ -1004,6 +1006,7 @@
       part_kept = n_part_cell1
       cert_kept = state_is_certified
       reason_kept = state_certification_reason
+      wind_r_kept = state_certification_wind_r
       if (thereis_mol) mol_kept = nmol_eq
       if (thereis_oxychem) oxy_kept = nox_eq
       he=0d0; hep=0d0; hepp=0d0; hetr=0d0; zero=0d0
@@ -1029,7 +1032,7 @@
       if (thereis_oxychem) nox_eq=oxy_kept
       call restore_caloric_mixture(mixture_kept)
       n_part_cell1=part_kept
-      call set_state_certified(cert_kept,trim(reason_kept))
+      call set_state_certified(cert_kept,trim(reason_kept),wind_r_kept)
       if (ih.ne.0.or.ii.ne.0.or..not.exact_written) &
          error stop 'marching snapshot incomplete; partial directory preserved'
       open(newunit=im,file=trim(temporary)//'/snapshot.txt',status='new', &
@@ -1128,6 +1131,7 @@
       character(len=96)  :: gen_name, gen_before, gen_retired
       character(len=8192) :: tmp_dir, gen_dir, ptr_file
       character(len=len(state_certification_reason)) :: hold_reason
+      real*8 :: hold_wind_r
       character(len=32) :: snap_reason
       logical :: hold_cert
       real*8, allocatable :: nmol_hold(:,:), nox_hold(:,:)
@@ -1162,6 +1166,7 @@
       ! ---- 1. the generation, written in the temporary directory ----
       hold_cert   = state_is_certified
       hold_reason = state_certification_reason
+      hold_wind_r = state_certification_wind_r
       write(snap_reason,'(A,I0)') 'pass_snapshot_p', pass_now
       call set_state_certified(.false., trim(snap_reason))
       if (thereis_mol)     nmol_hold = nmol_eq
@@ -1190,7 +1195,7 @@
 
       if (thereis_mol)     nmol_eq = nmol_hold
       if (thereis_oxychem) nox_eq  = nox_hold
-      call set_state_certified(hold_cert, trim(hold_reason))
+      call set_state_certified(hold_cert, trim(hold_reason), hold_wind_r)
 
       ios_m = -1
       if (ios_h .eq. 0 .and. ios_i .eq. 0) then
@@ -1381,6 +1386,7 @@
       type(adv_derived_state), intent(in), optional :: derived_state
       integer, dimension(0:4) :: nT, nc
       integer :: j, ist
+      character(len=23) :: wr_buf
 
       nT = 0;  nc = 0
       do j = 1-Ng,N+Ng
@@ -1440,9 +1446,19 @@
          ! The reason survives a certified state too: 'certified_in_wind'
          ! says the species rows below the wind radius were reported and
          ! did not gate.
+         ! A wind claim carries its radius (cert_wind_r=, as on the
+         ! coupling line).
+         if (trim(state_certification_reason) .eq. 'certified_in_wind') then
+            write(wr_buf,'(ES23.16)') state_certification_wind_r
+            write(unit,'(A)') '# adv_input_certified T the input state'//   &
+                     ' passed the stationary certification '//             &
+                     trim(state_certification_reason)//' cert_wind_r='//   &
+                     trim(adjustl(wr_buf))
+         else
          write(unit,'(A)') '# adv_input_certified T the input state'//      &
                      ' passed the stationary certification '//             &
                      trim(state_certification_reason)
+         endif
       else if (len_trim(state_certification_reason) .gt. 0) then
          write(unit,'(A)') '# adv_input_certified F '//                     &
                      trim(state_certification_reason)//                     &
@@ -1713,8 +1729,7 @@
            'mol-ion return R6R9R11' /)
       real*8 :: dr_cm, absph(n_fuv_band), absen(n_fuv_band)
       real*8 :: heat_col(n_fuv_band), bond_col(n_fuv_band)
-      real*8 :: nph_b, relerr, worst, e_lw_abs, e_lw_in, ph_lw
-      real*8 :: NH2_out_lw, tau_out_lw
+      real*8 :: nph_b, relerr, worst, e_lw_abs, e_lw_in
       ! The G4 ledger.  cont_ph and cont_beam carry the H2O and OH continuum
       ! alone -- the part of a band that must close cell by cell -- while
       ! absph and absen carry every rated absorber, so in the shared
@@ -1724,11 +1739,10 @@
       real*8 :: cont_ph(n_fuv_band), cont_beam(n_fuv_band)
       real*8 :: beam_loss(n_fuv_band), tr_line_in(n_fuv_band)
       real*8 :: unrated(n_fuv_band), unrated_f(n_fuv_band)
-      real*8 :: a_cell, dtau_col, dn_h2o, dn_oh, dn_h2, dn_co
       ! How far the H2O density written here has moved from the one the
       ! photon field was built on, as a fraction of the cell's own column
       ! increment, and where the worst cell of the column is.
-      real*8 :: drift_worst, drift_r, dstate
+      real*8 :: drift_worst, drift_r
       ! Line-centre H I Ly-alpha depth of the state this file writes, for the
       ! B2 beam transmission.
       real*8, dimension(1-Ng:N+Ng) :: tau_lya_col

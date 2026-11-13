@@ -401,6 +401,7 @@
       private
 
       public :: photochemical_transport_step
+      public :: sustained_abundance_over_floor
       public :: relax_photochemical_composition
       ! WHAT ENDED A CARRIER RELAXATION PASS, in words.  The pass advances
       ! the carriers at a fixed wind under a bound on how far the
@@ -4186,7 +4187,7 @@
       subroutine carrier_steady_residual(rho, v, f_sp, rcmax,            &
                                          jworst, icworst, rvol, rlegacy, &
                                          res_out, terms_out, absent_out, &
-                                         base_face_flux)
+                                         base_face_flux, sustained_out)
       use, intrinsic :: ieee_arithmetic, only: ieee_value, ieee_quiet_nan
       real(dp), dimension(1-Ng:N+Ng),           intent(in) :: rho, v
       real(dp), dimension(1-Ng:N+Ng,n_species), intent(in) :: f_sp
@@ -4211,6 +4212,10 @@
       ! atmosphere through r_edg(0).
       real(dp), dimension(n_carrier_max,2), intent(out), optional ::     &
                                                  base_face_flux
+      ! The abundance each carrier's own sources could sustain in each
+      ! cell, over the absence floor (carrier_residual, sustained_out).
+      real(dp), dimension(1:N,n_carrier_max), intent(out), optional ::   &
+                                                 sustained_out
 
       real(dp), dimension(1-Ng:N+Ng,n_carrier_max) :: fc, Dco
       real(dp), dimension(1-Ng:N+Ng) :: ntot, TK, mbar, geff
@@ -4288,33 +4293,15 @@
       endif
       call carrier_photolysis(rho, TK, f_sp)
       call carrier_signal_rate(v, TK, mbar, sigrate)
-      if (present(absent_out) .and. present(base_face_flux)) then
-         call carrier_residual(fc, fc, nrho, wfac, dt_big, rp, rep, msum, &
-                               Frho, .true.,                              &
-                               Agrd, Bdrf, updrf, nH_free, nO_free,       &
-                               nC_free, sigrate, res, Jf, dJl, dJr,       &
-                               rnorm_unused, absent_out = absent_out,     &
-                               base_face_out = base_face_flux)
-      else if (present(absent_out)) then
-         call carrier_residual(fc, fc, nrho, wfac, dt_big, rp, rep, msum, &
-                               Frho, .true.,                              &
-                               Agrd, Bdrf, updrf, nH_free, nO_free,       &
-                               nC_free, sigrate, res, Jf, dJl, dJr,       &
-                               rnorm_unused, absent_out = absent_out)
-      else if (present(base_face_flux)) then
-         call carrier_residual(fc, fc, nrho, wfac, dt_big, rp, rep, msum, &
-                               Frho, .true.,                              &
-                               Agrd, Bdrf, updrf, nH_free, nO_free,       &
-                               nC_free, sigrate, res, Jf, dJl, dJr,       &
-                               rnorm_unused,                              &
-                               base_face_out = base_face_flux)
-      else
-         call carrier_residual(fc, fc, nrho, wfac, dt_big, rp, rep, msum, &
-                               Frho, .true.,                              &
-                               Agrd, Bdrf, updrf, nH_free, nO_free,       &
-                               nC_free, sigrate, res, Jf, dJl, dJr,       &
-                               rnorm_unused)
-      endif
+      ! Every optional output is passed through as it stands: an absent
+      ! actual argument reaches carrier_residual absent.
+      call carrier_residual(fc, fc, nrho, wfac, dt_big, rp, rep, msum,    &
+                            Frho, .true.,                                 &
+                            Agrd, Bdrf, updrf, nH_free, nO_free,          &
+                            nC_free, sigrate, res, Jf, dJl, dJr,          &
+                            rnorm_unused, absent_out = absent_out,        &
+                            base_face_out = base_face_flux,               &
+                            sustained_out = sustained_out)
 
       ! The stationary residual is normalized by the physical row terms,
       ! not the full hydrogen signal-speed bound. The measured discrepancy
@@ -6856,12 +6843,85 @@
       ! face-flux derivatives the Jacobian needs.  rnorm is the largest
       ! RELATIVE row imbalance, built the way composition_residual builds
       ! its own: the row divided by the sum of the magnitudes of its terms.
+      pure function sustained_abundance_over_floor(n_c, prod, loss,      &
+                                                 face_terms, floor_n)   &
+                                                 result(ratio)
+      ! THE ABUNDANCE A CARRIER'S OWN SOURCES COULD SUSTAIN IN A CELL, OVER
+      ! THE ABSENCE FLOOR floor_n = carrier_absent_fraction*nfl:
+      !   (prod + inflow)/((loss + outflow)/n_c)/floor_n,
+      ! with face_terms the four face terms of the row's transport
+      ! divergence (diffusive inner and outer, advective inner and outer;
+      ! volumetric rates, positive out of the cell). A negative face term is
+      ! an inflow and counts with the production; a positive one is an
+      ! outflow and counts with the chemical loss. A species in balance
+      ! reads n_c/floor_n; above 1 the sources outweigh all losses at the
+      ! floor. The loss frequency is exact for losses of first order in
+      ! n_c, the outflows included. For a positive second-order loss and
+      ! fixed production, evaluating the loss frequency below the floor is
+      ! conservative for this test.
+      !
+      ! PRECONDITIONS AND RESULTS. n_c, prod and loss are nonnegative and
+      ! floor_n is positive, every argument finite; any argument that is
+      ! not a finite number, a negative n_c, prod or loss, or a floor_n
+      ! that is not positive gives NaN (refusing). 0 with no production and
+      ! no inflow; huge where a source or inflow is nonzero but n_c or the
+      ! total loss is zero, or where a sum of rates or the ratio exceeds
+      ! the representable range (refusing). THE RATIO IS FORMED IN SCALED
+      ! ARITHMETIC: each positive factor is split into its fraction in
+      ! [0.5, 1) and its binary exponent, the fractions are combined (a
+      ! number in [0.25, 4]) and the exponents added as integers, so no
+      ! intermediate product can underflow to zero or overflow; the result
+      ! is scale(fraction, exponent), saturated to huge above the range. A
+      ! result below the range rounds toward zero, which is correct for the
+      ! comparison with one it is read by.
+      use, intrinsic :: ieee_arithmetic, only: ieee_value, ieee_quiet_nan, &
+                                               ieee_is_finite
+      real(dp), intent(in) :: n_c, prod, loss, face_terms(4), floor_n
+      real(dp) :: ratio, src_in, loss_out, mant
+      integer  :: k, ex
+      if (.not. (ieee_is_finite(n_c) .and. ieee_is_finite(prod) .and.    &
+                 ieee_is_finite(loss) .and. ieee_is_finite(floor_n) .and. &
+                 all(ieee_is_finite(face_terms))) .or.                     &
+          n_c .lt. 0.0d0 .or. prod .lt. 0.0d0 .or. loss .lt. 0.0d0 .or.   &
+          .not. (floor_n .gt. 0.0d0)) then
+         ratio = ieee_value(1.0d0, ieee_quiet_nan)
+         return
+      endif
+      src_in   = prod
+      loss_out = loss
+      do k = 1, 4
+         src_in   = src_in   + max(0.0d0, -face_terms(k))
+         loss_out = loss_out + max(0.0d0,  face_terms(k))
+      enddo
+      if (src_in .le. 0.0d0) then
+         ratio = 0.0d0
+      else if (.not. (ieee_is_finite(src_in) .and.                        &
+                      ieee_is_finite(loss_out))) then
+         ! A sum of rates above the representable range: refusing.
+         ratio = huge(1.0d0)
+      else if (n_c .gt. 0.0d0 .and. loss_out .gt. 0.0d0) then
+         mant = fraction(n_c)*fraction(src_in)                            &
+                /(fraction(loss_out)*fraction(floor_n))
+         ex   = exponent(n_c) + exponent(src_in)                          &
+                - exponent(loss_out) - exponent(floor_n)
+         if (ex + exponent(mant) .gt. maxexponent(1.0d0)) then
+            ratio = huge(1.0d0)
+         else
+            ratio = scale(mant, ex)
+         endif
+      else
+         ratio = huge(1.0d0)
+      endif
+      end function sustained_abundance_over_floor
+
+
       subroutine carrier_residual(fc, fc_old, nrho, wfac, dt_phys, rp,   &
                                   rep, msum, Frho, advect, Agrd, Bdrf,   &
                                   updrf,                                 &
                                   nH_free, nO_free, nC_free, sigrate,    &
                                   res, Jf, dJl, dJr, rnorm, rnorm_phys,   &
-                                  absent_out, base_face_out, merit_scale)
+                                  absent_out, base_face_out, merit_scale, &
+                                  sustained_out)
       ! advect: whether the row carries the material advective term.  The
       ! MARCHING rows do not, because the advection of a carrier is the
       ! divergence of the hydrodynamic face mass flux and is taken with the
@@ -6928,6 +6988,28 @@
       ! radiative part of the loss: the scale below is their sum and the
       ! dump reports them one by one.
       real(dp) :: srcp(n_carrier_max), srcl(n_carrier_max)
+      ! THE ABUNDANCE A CARRIER'S OWN SOURCES COULD SUSTAIN IN A CELL, over
+      ! the absence floor carrier_absent_fraction*nfl that the absence mark
+      ! above reads: (production + incoming transport) of the row divided by
+      ! its loss frequency, (chemical loss + outgoing transport)/n_c, the
+      ! terms the row itself is formed from. The four face terms of the
+      ! divergence (diffusive and advective, inner and outer face) are split
+      ! by sign: a negative face term is an inflow and counts with the
+      ! sources, a positive one is an outflow and counts with the losses, so
+      ! that in a wind, where advection out of the cell can be a trace
+      ! ion's main loss, a balanced species reads n_c/floor. Below 1 the
+      ! carrier is UNSOURCED in that cell: whatever its sources are, they
+      ! cannot hold it at the absence floor; above 1 the sources outweigh
+      ! all losses at the floor. 0 where the cell has no source and no
+      ! inflow; huge where a source or inflow is nonzero but the total loss
+      ! frequency is zero or cannot be formed (n_c = 0, or no chemical loss
+      ! and no outflow); NaN where a term is not finite. The loss frequency
+      ! is exact for losses of first order in n_c, the advective and
+      ! diffusive outflows included; a chemical loss channel of second
+      ! order in n_c contributes to it in proportion to n_c, which at an
+      ! abundance below the absence floor is negligible.
+      real(dp), dimension(1:N,n_carrier_max), optional, intent(out) ::    &
+                                                          sustained_out
       real(dp) :: srcph(n_carrier_max)
       real(dp) :: srch2c(n_h2chan)
       real(dp) :: Kj, sL, sR, dsc, dph, rr, nfl, nref
@@ -7181,6 +7263,23 @@
             ! or incoming flux could raise the carrier.  That is a choice.
             if (present(absent_out))                                     &
                absent_out(j,ic) = (nc(ic) .lt. carrier_absent_fraction*nfl)
+            if (present(sustained_out)) then
+               ! The four face terms of the divergence: diffusive inner and
+               ! outer, advective inner and outer (zero without advection).
+               if (advect) then
+                  sustained_out(j,ic) = sustained_abundance_over_floor(   &
+                       nc(ic), srcp(ic), srcl(ic),                       &
+                       [-Kj*sL*Jf(j-1,ic), Kj*sR*Jf(j,ic),               &
+                        advfin(j,ic), advfout(j,ic)],                    &
+                       carrier_absent_fraction*nfl)
+               else
+                  sustained_out(j,ic) = sustained_abundance_over_floor(   &
+                       nc(ic), srcp(ic), srcl(ic),                       &
+                       [-Kj*sL*Jf(j-1,ic), Kj*sR*Jf(j,ic),               &
+                        0.0d0, 0.0d0],                                   &
+                       carrier_absent_fraction*nfl)
+               endif
+            endif
             dsc = dsc + carrier_absent_fraction*nfl                      &
                        *max(1.0d0/dt_phys(j), sigrate(j))
             ! THE PHYSICAL SCALE TAKES THE SIGNAL RATE ALONE.  The step form

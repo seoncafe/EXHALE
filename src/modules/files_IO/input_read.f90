@@ -99,6 +99,28 @@
    ! set live there too, because that is where the comparison is made.
 
    contains
+
+
+   subroutine refuse_retired_outer_pass_variable
+   ! THE PASS CAP IS AN INPUT KEY (user decision 2026-11-12). A run whose
+   ! environment still names EXHALE_OUTER_PASSES -- set to anything, the
+   ! empty string included -- was written for the variable and would
+   ! otherwise run silently with the key's cap. Called first in the
+   ! program, before configure_run_paths creates or probes any directory,
+   ! so the refusal leaves no file behind.
+   integer :: st
+   call get_environment_variable('EXHALE_OUTER_PASSES', status = st)
+   if (st .ne. 1) then
+      write(*,*) '(input_read) ERROR: the environment variable'//          &
+                 ' EXHALE_OUTER_PASSES is set. It was replaced on'
+      write(*,*) '  2026-11-12 by the input key "JFNK max iterations: <n>"'// &
+                 ' (the cap of stationary outer passes, default 20).'
+      write(*,*) '  Put the cap into input.inp and unset the variable.'//   &
+                 ' Aborting.'
+      error stop 1
+   endif
+   end subroutine refuse_retired_outer_pass_variable
+
       
    subroutine input_read
    real*8,  dimension(n_fuv_band) :: band_flux_sed
@@ -184,6 +206,7 @@
       'Base IR field', 'Molecular IR bands', 'Molecular reaction heat',       &
       'H2 double ionization', 'H2 neutral dissociation',                     &
       'Conduction', 'Resid tol',                                             &
+      'Certification region', 'Wind start radius', 'JFNK max iterations',    &
       'Resid norm', 'Flux spread tol', 'CFL', 'Transonic IC',            &
       'Hot Parker IC', 'IC mode',                                            &
       'Newton solver', 'Brent solver', 'Run mode', 'Restart intent',       &
@@ -1440,6 +1463,55 @@
 				! instead of du (<= 0 disables; legacy du-based stop).
 				str = get_word(line, 3);  read(str,*) resid_th
 				write(*,'(A,ES9.2)') ' (input_read) Residual-based convergence, tol =', resid_th
+			else if (lbl_match(line, 'Certification region')) then
+				! "Certification region: all|wind", DEFAULT all (user
+				! decision 2026-11-12) -- the cells on which the stationary
+				! certification judges the elemental transport and carrier
+				! balances. all: every applicable physical cell, and the
+				! stationary outer iteration runs until the whole column is
+				! within tolerance; a state its pass budget ends with, within
+				! tolerance in the wind alone, is certified in the wind.
+				! wind: the cells at r >= "Wind start radius", the cells below
+				! reported only. Any other word stops the run.
+				str = get_word(line, 3)
+				if (str .eq. 'all' .or. str .eq. 'All') then
+					cert_gate_all_cells = .true.
+				else if (str .eq. 'wind' .or. str .eq. 'Wind') then
+					cert_gate_all_cells = .false.
+				else
+					write(*,*) '(input_read) ERROR: "Certification region: '// &
+					           trim(str)//'"'
+					write(*,*) '  is not a value this key takes. It takes all'
+					write(*,*) '  (every applicable physical cell, the default)'
+					write(*,*) '  or wind (r >= "Wind start radius"). Aborting.'
+					error stop 1
+				endif
+			else if (lbl_match(line, 'JFNK max iterations')) then
+				! "JFNK max iterations: <n>", DEFAULT 20 -- the cap of
+				! STATIONARY OUTER PASSES (parameters.f90, jfnk_max_iter), not
+				! of the Newton or Krylov iterations inside one pass. An
+				! integer >= 1; anything else stops the run.
+				str = get_word(line, 4)
+				read(str,*,iostat=ios) jfnk_max_iter
+				if (ios .ne. 0 .or. verify(trim(str), '0123456789') .ne. 0 &
+				    .or. jfnk_max_iter .lt. 1) then
+					write(*,*) '(input_read) ERROR: "JFNK max iterations: '// &
+					           trim(str)//'" is not an integer >= 1 (the'
+					write(*,*) '  cap of stationary outer passes). Aborting.'
+					error stop 1
+				endif
+			else if (lbl_match(line, 'Wind start radius')) then
+				! "Wind start radius [R_p]: <r>", DEFAULT 1.2 -- where the
+				! wind region of the certification begins. A value that is
+				! not a number stops the run here; one outside the grid stops
+				! it once the grid exists (certification_check_wind_start_
+				! radius).
+				str = get_word(line, 5);  read(str,*,iostat=ios) cert_regime_wind_r
+				if (ios .ne. 0) then
+					write(*,*) '(input_read) ERROR: "Wind start radius [R_p]: '// &
+					           trim(str)//'" is not a number. Aborting.'
+					error stop 1
+				endif
 			else if (lbl_match(line, 'Resid norm')) then
 				! RETIRED (section 145). The residual norm is the maximum over
 				! cells of a cell's own scaled residual and has no second

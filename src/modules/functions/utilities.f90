@@ -25,18 +25,31 @@
    ! apart. Empty
    ! for a certified state and for a refusal on the entries themselves.
    character(len=32), save :: state_certification_reason = ''
+   ! THE WIND START RADIUS A certified_in_wind CLAIM WAS MADE AT [R_p]: a
+   ! wind certification claim carries its radius, written on the coupling
+   ! line as cert_wind_r= directly after the cert_reason token. 0 for every
+   ! other pair.
+   real*8, save :: state_certification_wind_r = 0.0d0
 
 	contains
 
-   subroutine set_state_certified(flag, reason)
+   subroutine set_state_certified(flag, reason, wind_r)
    ! Set by the certification contexts (certification.f90) and by the
    ! run's own adoption of a loaded claim; every other reader takes it. The
    ! pass state writer (publish_pass_state_generation) sets the pair of the
    ! pass snapshot for its own write and puts the run's pair back after it.
+   ! wind_r: the wind start radius of a certified_in_wind claim (a loaded
+   ! claim keeps its own); absent, the run's own (cert_regime_wind_r).
    logical,          intent(in) :: flag
    character(len=*), intent(in) :: reason
+   real*8, optional, intent(in) :: wind_r
    state_is_certified         = flag
    state_certification_reason = reason
+   state_certification_wind_r = 0.0d0
+   if (flag .and. trim(reason) .eq. 'certified_in_wind') then
+      state_certification_wind_r = cert_regime_wind_r
+      if (present(wind_r)) state_certification_wind_r = wind_r
+   endif
    end subroutine set_state_certified
 
 
@@ -193,7 +206,8 @@
       logical, intent(in), optional :: certification_first
       character(len=512) :: fields
       character(len=1) :: s, c
-      character(len=48) :: why
+      character(len=96) :: why
+      character(len=23) :: wbuf
       character(len=32) :: ptr
       character(len=64) :: mtok
       character(len=32) :: tbuf
@@ -222,6 +236,13 @@
       why = ''
       if (len_trim(state_certification_reason) .gt. 0)                    &
          why = ' cert_reason='//trim(state_certification_reason)
+      ! A wind certification claim carries its radius, directly after the
+      ! cert_reason token (user decision 2026-11-12).
+      if (state_is_certified .and.                                        &
+          trim(state_certification_reason) .eq. 'certified_in_wind') then
+         write(wbuf,'(ES23.16)') state_certification_wind_r
+         why = trim(why)//' cert_wind_r='//trim(adjustl(wbuf))
+      endif
       ! mode / t_phys: WHICH OF THE THREE RUN STATES PRODUCED THIS STATE.
       ! A state written by an initialization or continuation run is a
       ! relaxation

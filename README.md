@@ -293,10 +293,35 @@ requirements. A zero-speed quasi-hydrostatic set has zero velocity span.
   tolerances are anchored by measurement, not inherited from the solver's own
   target: mass 3e-12, momentum 1e-8, energy 1e-6, the closure and the level
   balances at the tolerance the cell sweep already judges a root by, and the
-  element and carrier rows at 1e-5 for `r >= 1.20 R_p`, the rows below that
-  reported and not gating, because the same balance is a cancellation of
-  advective terms in the wind and of eddy and settling terms in the layer and
-  is not resolvable to one number in both. The certification is a
+  element and carrier rows at 1e-5. Which cells those two rows are judged on
+  is `Certification region: all|wind` (user decision 2026-11-12). `all`, the
+  default: every applicable physical cell (a carrier row where its species
+  is not absolutely absent; an element row in cells 1..N, cell 1 being the
+  Dirichlet reservoir whose row is zero), and the stationary outer iteration
+  runs until the whole column is within tolerance; the state file then
+  reads `certified=T cert_reason=certified_all_cells`. If the cap of
+  stationary outer passes (`JFNK max iterations: <n>`, default 20; it
+  replaced the variable `EXHALE_OUTER_PASSES`, whose presence now stops the
+  run) ends first, the state of the last pass is judged in the wind: within
+  tolerance there it is written `certified=T cert_reason=certified_in_wind
+  cert_wind_r=<radius>` (a wind claim carries its radius), the run says
+  that the all-cell convergence was not reached and names the worst row
+  below the wind radius, and the solve is reported successful at the wind
+  level (info 0, exit 0); otherwise `certified=F`. A stationary evaluation
+  labels a stored pair the same way. Each region has its own availability:
+  a region with no applicable cell is printed UNAVAILABLE and does not
+  certify that region, except a region on which a carrier is absent in
+  every cell AND unsourced (its sources could not sustain it at the absence
+  floor), which is not applicable. A stationary restart whose stored pair
+  is already certified on the region in force is accepted at outer pass 0
+  and written: the physical stored pair is retained; boundary ghosts are
+  rebuilt using the current boundary conditions. `wind`: the
+  rows gate at `r >=` the wind start radius only, the cells below are
+  reported (the behavior before 2026-11-12, `certified_in_wind`). `Wind
+  start radius [R_p]: <r>` (default 1.2) sets that radius; a value not above
+  the base level or beyond the outermost cell center stops the run. The
+  report prints, for every such row, the maximum over all applicable cells
+  and over the wind side by side and marks which one gated. The certification is a
   DIAGNOSTIC alongside the default marching profile acceptance. Use the
   default K=3 complete-profile bands in both trees; no
   stationary root, observable-change budget or slow-chemistry wait is an
@@ -824,7 +849,7 @@ the Markdown memos of the development record.
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-11-09 22:51 KST
+Last updated: 2026-11-13 14:17 KST
 
 
 ### Regression references (2026-11-09)

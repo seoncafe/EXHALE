@@ -15,7 +15,8 @@
       use IC_load, only: ic_coupling_present, ic_sec_ion_active,          &
                         ic_rec_method, ic_run_mode, ic_run_mode_present,  &
                         ic_t_phys, ic_t_phys_present, ic_certified,       &
-                        ic_cert_reason, carrier_rows_entered_newton
+                        ic_cert_reason, ic_cert_wind_r,                   &
+                        carrier_rows_entered_newton
       use setup_report
       use eval_time_step
       use energy_semi_implicit
@@ -60,7 +61,6 @@
       use diffusive_photochemistry, only: photochemical_transport_step,   &
                                           carrier_enthalpy_active,      &
                                           carrier_enthalpy_divergence_of_state,&
-                                          carrier_verdict,              &
                                           carrier_interval_covered,     &
                                           carrier_interval_exhausted,   &
                                           carrier_exhausted_record,     &
@@ -191,6 +191,8 @@
                                attempted_step_note_inner_error,          &
                                n_error_estimates_unresolved
       use certification, only: cert_report, cert_context_stationary,     &
+                               cert_region_in_wind,                      &
+                               row_unavailable_in_selected_region,       &
                                returned_state_disposition,               &
                                nonfinite_state_restore,                  &
                                nonfinite_restore_none,                   &
@@ -208,6 +210,9 @@
                                certification_note_stationarity_claim,    &
                                certification_note_stationary_solve_failed, &
                                certification_stop_uncertified,           &
+                               certification_admit_wind_verdict,         &
+                               certification_worst_below_wind,           &
+                               certification_check_wind_start_radius,    &
                                certification_reports_side_by_side, &
                                carrier_certificate_of_state,       &
                                carrier_certificate_worst,          &
@@ -338,6 +343,10 @@
       ! search evaluations keep separate ledgers.
       type(ioniz_eq_ledger) :: last_sweep
       type(cert_report)     :: cert_now
+      ! Whether the last stationary outer iteration ended on its pass cap
+      ! (steady_wind_with_element_diffusion), for the restore of a loaded
+      ! wind solution the iteration did not improve on.
+      logical               :: outer_ended_at_pass_cap = .false.
       integer               :: n_no_root_now = 0
       logical               :: cert_first = .true.
       logical               :: cert_was_certified = .false.
@@ -346,6 +355,7 @@
       ! written with a pair of its own (the periodic write of the loop).
       logical               :: cert_pair_kept
       character(len=32)     :: cert_reason_kept, snapshot_reason
+      real*8                :: cert_wind_r_kept
 
       ! Face mass-flux time series (env EXHALE_FACE_MASS_FLUX_SERIES = step interval,
       ! 0 = off).  One line per sampled step: the Riemann FACE mass flux
@@ -411,7 +421,7 @@
       real*8, allocatable :: Ytry3(:), Jvd(:), vdir(:), Ddet(:), Drdet(:)
       real*8, dimension(:,:), allocatable :: f_sp_w
       integer :: nbitdiff_b, nbitdiff_c, nvj_det, nbitdiff_ctrl
-      real*8  :: dmax_b, dmax_c, det_rs, det_sc_ctrl
+      real*8  :: det_rs
       ! The replay's distance in each row class, and the cell and the slot
       ! that carry it: three numbers say where a residual moved, one does
       ! not.
@@ -429,7 +439,7 @@
       ! --- lightweight phase profiler (gated by env EXHALE_PROFILE=1) ---
       logical :: do_profile = .false.
       integer :: jj_ec
-      real*8  :: tp_step0, tp_a, tp_ion = 0.0d0, tp_hyd = 0.0d0, tp_tot = 0.0d0
+      real*8  :: tp_step0, tp_a, tp_ion = 0.0d0, tp_tot = 0.0d0
       ! finer phases of the marching step (EXHALE_PROFILE=1): the three RK
       ! stages together, the carrier transport operator, the semi-implicit
       ! energy update, and everything else by difference.
@@ -547,10 +557,10 @@
       ! 20 times below the measured hot-Uranus handoff limit of 0.2 on the
       ! retired H2-mixing-ratio measure. Successful limited updates may
       ! enlarge it; failed wind solves shrink it. EXHALE_CARRIER_TRUST
-      ! overrides this diagnostic bound and EXHALE_OUTER_PASSES the pass
-      ! cap (Update_EXHALE stage 3 section 163).
+      ! overrides this diagnostic bound (Update_EXHALE stage 3 section 163).
+      ! The cap of stationary outer passes is the input key "JFNK max
+      ! iterations" (jfnk_max_iter, global_parameters).
       real*8  :: carrier_trust = 1.0d-2
-      integer :: outer_pass_cap = 20
 
       integer :: crc_j, crc_ic, cdl_j, cdl_ic
       ! R3: the movement-bound diagnostics reported beside the two cells
@@ -603,7 +613,6 @@
       ! full step held aside while the two halves are taken).
       type(attempted_step_checkpoint) :: as_chk, as_entry, as_full
       type(attempted_step_verdict)    :: as_verd, as_verd_full
-      type(carrier_verdict)           :: as_cv
       real*8, dimension(:,:), allocatable :: L_hyd, u_err_full, u_hyd
       ! THE FULL-PASS STATE THE COMPARISON IS TAKEN AGAINST, on every row
       ! class of the estimate: the conservative rows, the species
@@ -665,8 +674,7 @@
       ! from the entry composition the step restored): counted for the
       ! final report, so a refusal never passes silently in either mode.
       integer :: n_element_refused_init = 0
-      real*8  :: as_frac_done
-      integer :: as_nsub, as_carrier_status
+      integer :: as_carrier_status
       ! The outcome of the element operation of the attempt
       ! (element_step_* codes of binary_element_diffusion).
       integer :: as_element_status
@@ -928,6 +936,9 @@
       character(len=32) :: csm_x_env
       
       
+      ! The retired pass-cap variable stops the run before anything is
+      ! created or probed on disk.
+      call refuse_retired_outer_pass_variable
       ! Read planetary parameters from file
       call configure_run_paths
       call input_read
@@ -1036,6 +1047,8 @@
 
       ! Initialize simulations
       call init(W,u,f_sp)
+      ! "Wind start radius [R_p]" against the grid init has just built.
+      call certification_check_wind_start_radius()
       ! The identity of this run, which names the generations of its pass
       ! state (publish_pass_state_generation, write_output.f90).
       call establish_run_identity()
@@ -1089,7 +1102,9 @@
          ! DOES measure the state overwrites both fields with what it found
          ! (certification_evaluate -> set_state_certified), so no success
          ! token outlives the state or the model it was made under.
-         if (do_load_IC) call set_state_certified(ic_certified, ic_cert_reason)
+         if (do_load_IC) call set_state_certified(ic_certified,           &
+                                                  ic_cert_reason,         &
+                                                  ic_cert_wind_r)
          ! The ghost rows of W are still load_IC's placeholders (cell 1's
          ! state): Apply_BC writes the ghosts of the conserved array only.
          ! The boundary state it derived is the primitive array it held.
@@ -1742,18 +1757,21 @@
       ! for the whole run.
       carrier_transport_stop_on_failure = .false.
 
-      ! Staged secondary ionization: the SvS85 coupling starts applied only if
-      ! "Secondary_ionization: Immediate" was set; otherwise it is switched on
-      ! after the wind first converges without it (see the stage flip below).
+      ! The SvS85 coupling starts applied by default ("Secondary_ionization:
+      ! True" or "Immediate", the default since 2026-10-09). With
+      ! "Secondary_ionization: Staged", it is enabled once the marching has
+      ! settled outside the PLM and lambda-ramp stages (the stage flip below).
       !
       ! The staging is a startup device, not a statement about the physics:
       ! from a cold IC the base feedback of the coupling amplifies the startup
       ! transient into a runaway, so the wind is first relaxed without it. A
-      ! "Do only PP" run relaxes nothing -- it loads a wind that was itself
-      ! converged WITH the coupling, leaves the loop after one pass, and then
-      ! post-processes it, and post_process_adv runs every PH_heat_HHe call with
-      ! the coupling applied (it is armed unconditionally after the loop). Left
-      ! staged, the one ionization_equilibrium call of such a run would use a
+      ! "Do only PP" run loads a wind that was itself converged WITH the
+      ! coupling and runs the time loop once: one integration step is
+      ! attempted and adopted (in physical mode it also advances t_phys),
+      ! the loop exits, and the adopted state is post-processed;
+      ! post_process_adv runs every PH_heat_HHe call with the coupling
+      ! applied (it is enabled in the assignment below). Left staged, the
+      ! ionization sweeps of that step would use a
       ! different photoionization rate than the post-process beside it, and its
       ! Hydro_ioniz/Ion_species files would not be the equilibrium state the
       ! _adv files correct. So arm it here, exactly as the env-driven bypass
@@ -4141,6 +4159,7 @@
                   ! the run's pair is put back after the write.
                   cert_pair_kept   = state_is_certified
                   cert_reason_kept = state_certification_reason
+                  cert_wind_r_kept = state_certification_wind_r
                   write(snapshot_reason,'(A,I0)') 'marching_snapshot_s',     &
                         marching_step
                   call set_state_certified(.false., trim(snapshot_reason))
@@ -4149,7 +4168,8 @@
                                     nheiTR,nm,'eq',                      &
                                     conserved_u=u, conserved_f=f_sp)
                   call set_state_certified(cert_pair_kept,                   &
-                                           trim(cert_reason_kept))
+                                           trim(cert_reason_kept),         &
+                                           cert_wind_r_kept)
                                    
             endif     
             
@@ -4633,12 +4653,40 @@
       if (ic_certified) then
          write(*,'(A,A)') '   original claim of the file: certified=T'//    &
               ' cert_reason=', trim(ic_cert_reason)
-         if (rep_stored%certified) then
+         ! A claim is reproduced on the region it was made on (the rule of
+         ! EXHALE_v1.10): a file certified_in_wind claims the wind region,
+         ! any other certified file (certified_all_cells, or no token from
+         ! an older writer) the whole column. The pair RECORDED is the
+         ! stored pair's own verdict: under "Certification region: all" the
+         ! all-cell verdict (certified_all_cells), else the wind verdict
+         ! (certified_in_wind, labeled, not refused), else a refusal (exit 2
+         ! when the input claimed certification; an unclaimed snapshot
+         ! retains the diagnostic evaluation status); under "wind" the wind
+         ! verdict; a state with no
+         ! region-gated row on the whole column (stationary_state_of_the_
+         ! loaded_restart states the rule where it is applied).
+         ! A WIND CLAIM CARRIES ITS RADIUS (cert_wind_r). Where it differs
+         ! from this run's wind start radius (relative 1e-12) the wind
+         ! region this run measures is not the one the claim names, so the
+         ! claim is neither reproduced nor refuted; the recorded pair
+         ! follows this run's own regions as stated above.
+         if (trim(ic_cert_reason) .eq. 'certified_in_wind' .and.           &
+             abs(ic_cert_wind_r - cert_regime_wind_r) .gt.                 &
+             1.0d-12*cert_regime_wind_r) then
+            write(*,'(A,F0.4,A,F0.4,A)') '   original claim: NOT'//        &
+                 ' RE-JUDGED -- the file claims certified_in_wind for'//   &
+                 ' r >= ', ic_cert_wind_r, ' R_p; this run measures the'// &
+                 ' wind region from ', cert_regime_wind_r, ' R_p'
+         else if (rep_stored%certified_all .or.                            &
+             (trim(ic_cert_reason) .eq. 'certified_in_wind' .and.          &
+              rep_stored%certified_wind)) then
             write(*,'(A)') '   original claim: REPRODUCED -- the'//         &
-                 ' certification of the stored pair certifies it'
+                 ' certification of the stored pair certifies it on the'//&
+                 ' region the claim names'
          else
             write(*,'(A)') '   original claim: NOT REPRODUCED -- the'//     &
-                 ' certification of the stored pair refuses it'
+                 ' certification of the stored pair refuses it on the'//  &
+                 ' region the claim names'
          endif
       else
          write(*,'(A,A)') '   original claim of the file: certified=F'//    &
@@ -4647,8 +4695,16 @@
               ' no stationary claim, so nothing is reproduced or refused'
       endif
       if (rep_stored%certified) then
-         write(*,'(A)') '   stored pair verdict: CERTIFIED -- every'//      &
-              ' active equation of the inventory is within its tolerance'
+         if (rep_stored%region .eq. cert_region_in_wind .and.               &
+             cert_gate_all_cells) then
+            write(*,'(A)') '   stored pair verdict: CERTIFIED IN THE WIND'//&
+                 ' -- the all-cell verdict does not hold; every active'//  &
+                 ' equation is within its tolerance on the wind region'
+         else
+            write(*,'(A)') '   stored pair verdict: CERTIFIED -- every'//   &
+                 ' active equation of the inventory is within its'//       &
+                 ' tolerance'
+         endif
       else
          write(*,'(A)') '   stored pair verdict: NOT CERTIFIED -- the'//    &
               ' certification report of the stored pair names the entries'
@@ -5800,6 +5856,9 @@
       ! the verdict, and the one after a composition sweep, reported only.
       type(cert_report) :: cert_stored, cert_swept
       logical :: swept_projection_refused
+      real*8, dimension(3,1-Ng:N+Ng)         :: u_stored_kept
+      real*8, dimension(1-Ng:N+Ng,n_species) :: f_sp_stored_kept
+
 
       write(*,'(A)') ' (EXHALE_main) Restart intent: stationary -- the'//   &
            ' loaded state is measured as it stands; no CFL step is taken.'
@@ -5837,6 +5896,11 @@
       f_sp_loaded = f_sp
       p_loaded    = p
       T_loaded    = T
+      ! The stored pair itself, kept apart from u_loaded and f_sp_loaded,
+      ! which the open-face seed blend below changes: what is restored when
+      ! the outer iteration does not improve on a loaded wind solution.
+      u_stored_kept    = u
+      f_sp_stored_kept = f_sp
       call evaluation_state_dump('loaded', u_loaded, f_sp_loaded,        &
                                  p_loaded, T_loaded)
 
@@ -5898,9 +5962,32 @@
       ! status says. A relaxation snapshot claimed nothing, and measuring it
       ! refuses nothing.
       call certification_note_stationarity_claim(ic_certified)
+      ! THE PAIR AN EVALUATION RECORDS (user decision 2026-11-12). Under
+      ! "Certification region: all" a stored pair that is not converged on
+      ! all cells but is converged on the wind region is LABELED
+      ! wind-converged, not refused: all-cell verdict -> certified_all_cells;
+      ! else wind verdict -> certified_in_wind, with the exit status of a
+      ! certified evaluation; else the verdict refuses it. An unsuccessful
+      ! evaluation exits 2 when the input claimed certification; an
+      ! unclaimed snapshot retains the diagnostic evaluation status. An
+      ! evaluation takes no outer iteration, so the wind verdict is admitted
+      ! directly (certification_admit_wind_verdict), and the header written
+      ! and the console agree. Under "wind", and for a state with no
+      ! region-gated row, the verdict is the run's region as before.
+      if (stationary_evaluate_only)                                         &
+         call certification_admit_wind_verdict(.true.)
       call certification_evaluate(cert_context_stationary, u, Rres, f_sp,   &
                resid_th, n_cells_without_chemical_root(last_sweep%acc_n),   &
                .true., cert_stored)
+      call certification_admit_wind_verdict(.false.)
+      if (stationary_evaluate_only .and. cert_gate_all_cells .and.          &
+          cert_stored%certified .and. .not. cert_stored%certified_all .and. &
+          cert_stored%region .eq. cert_region_in_wind) then
+         write(*,'(A)') ' (EXHALE_main) the all-cell verdict does not hold'//&
+              ' for the stored pair; the wind region is certified and the'//&
+              ' pair is recorded there.'
+         call write_wind_acceptance_details(cert_stored)
+      endif
       ! THE MASS FLUX THE SAME OPERATOR PUTS THROUGH EVERY FACE OF THE SAME
       ! STATE. On a stationary state r_f^2 (rho v)_f is the wind's own flux
       ! at every face; the budget is reported beside the hydrodynamic rows
@@ -6026,6 +6113,45 @@
          stop
       endif
 
+      ! (2a) ACCEPTANCE AT OUTER PASS 0 (user decision 2026-11-12). A stored
+      ! pair that, with this run's sources rebuilt, is certified on the
+      ! region in force ("all": the all-cell verdict; "wind": the wind
+      ! verdict; no region-gated row: the whole column) is the solution:
+      ! no seed preparation, no composition sweep and no outer pass is
+      ! taken, and the stored pair is written as it stands (the loaded
+      ! conserved state and composition) with the certificate measured
+      ! above, info 0. Under "all", a stored pair that holds only on the
+      ! wind region is not accepted here; the iteration below aims at all
+      ! cells, and the stored pair stands behind it (after the solve).
+      if (cert_stored%certified) then
+         if (cert_stored%region .eq. cert_region_in_wind) then
+            write(*,'(A,F7.4,A)') ' (EXHALE_main) outer pass 0: ACCEPTED'//&
+                 ' -- the stored pair of the loaded restart is within its'//&
+                 ' tolerances on the wind region r >=', cert_regime_wind_r, &
+                 ' R_p; no outer pass was taken.'
+         else
+            write(*,'(A)') ' (EXHALE_main) outer pass 0: ACCEPTED -- the'// &
+                 ' stored pair of the loaded restart is within its'//       &
+                 ' tolerances on all applicable cells; no outer pass was'// &
+                 ' taken.'
+         endif
+         call certification_note_stationarity_claim(.true.)
+         call certification_note_stationary_solve_failed(.false.)
+         call write_run_counter_report
+         call element_census_reservoir('output (stationary restart,'//     &
+                                       ' outer pass 0)', rho, f_sp)
+         call molecular_carrier_densities_from_state(rho,f_sp)
+         call boundary_gas_state_from_conserved
+         call write_output(rho,v,p,T,heat,cool,eta,                         &
+                           nhi,nhii,nhei,nheii,nheiii,nheiTR,nm,'eq',       &
+                           conserved_u=u, conserved_f=f_sp)
+         call write_resolved_config
+         write(*,'(A)') ' (EXHALE_main) Restart intent: stationary --'//    &
+              ' the stationary solve returned info = 0; output written.'
+         call certification_stop_uncertified
+         stop
+      endif
+
       ! (2b) THE HYDROGEN PARTITION OF THE BASE CELLS OF AN OPEN FACE RUNS
       ! CONTINUOUSLY FROM THE GHOST'S TO THE LOADED INTERIOR'S. With the base
       ! face open (base_h2_composition_imposed) the lower ghosts carry the
@@ -6146,6 +6272,40 @@
       call certification_note_stationary_solve_failed(info_jfnk .ne. 0)
       call certify_the_state_to_be_written(info_jfnk .eq. 0,              &
            'stationary_restart_final_certification')
+      ! THE LOADED WIND SOLUTION IS NOT REPLACED BY A WORSE STATE (user
+      ! decision 2026-11-12). Under "all", where the stored pair held the
+      ! wind verdict but not the all-cell one and the outer iteration
+      ! spent its pass cap with a final state that fails the wind verdict,
+      ! the stored pair is restored and written, certified in the wind.
+      ! Only the loaded stored pair is restored this way; an intermediate
+      ! restored iterate stays not admitted.
+      if (cert_gate_all_cells .and. outer_ended_at_pass_cap .and.         &
+          info_jfnk .ne. 0 .and. cert_stored%certified_wind .and.        &
+          .not. cert_stored%certified_all .and.                           &
+          .not. cert_now%certified_wind) then
+         write(*,'(A)') ' (EXHALE_main) the outer iteration did not'//     &
+              ' improve on the loaded wind solution: its final state'//   &
+              ' fails the wind verdict, which the loaded stored pair'//   &
+              ' holds; the stored pair is restored and written.'
+         u    = u_stored_kept
+         f_sp = f_sp_stored_kept
+         rho = u(1,:)
+         call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,          &
+                                    nheiii,nheiTR,nm,ne,n_tot)
+         call Apply_BC(u)
+         call U_to_W(u,W)
+         rho = W(1,:);  v = W(2,:);  p = W(3,:)
+         call get_species_densities(rho,f_sp,nhi,nhii,nhei,nheii,          &
+                                    nheiii,nheiTR,nm,ne,n_tot)
+         call comp_T_from_p(p,n_tot,ne,T)
+         info_jfnk = 0
+         call certification_note_stationary_solve_failed(.false.)
+         call certification_admit_wind_verdict(.true.)
+         call certify_the_state_to_be_written(.true.,                     &
+              'stationary_restart_loaded_wind_solution')
+         call certification_admit_wind_verdict(.false.)
+         call write_wind_acceptance_details(cert_now)
+      endif
       call boundary_gas_state_from_conserved
       call write_output(rho,v,p,T,heat,cool,eta,                            &
                         nhi,nhii,nhei,nheii,nheiii,nheiTR,nm,'eq',          &
@@ -6160,6 +6320,33 @@
       call certification_stop_uncertified
       stop
       end subroutine stationary_state_of_the_loaded_restart
+
+
+      subroutine write_wind_acceptance_details(rep)
+      ! THE TWO LINES THAT FOLLOW A WIND-REGION ACCEPTANCE under
+      ! "Certification region: all" (the pass-cap admission, the record of
+      ! an evaluation, and the restore of a loaded wind solution): the wind
+      ! region it was taken on, and the worst carrier or elemental transport
+      ! row below the wind start radius, reported and not gating.
+      type(cert_report), intent(in) :: rep
+      character(len=52) :: wb_name
+      real*8  :: wb_meas, wb_tol
+      integer :: wb_cell
+      call certification_worst_below_wind(rep, wb_name, wb_meas, wb_tol,   &
+                                          wb_cell)
+      write(*,'(A,F7.4,A)') '    every row is within its tolerance on'//   &
+           ' the wind region r >=', cert_regime_wind_r, ' R_p'//           &
+           ' (certified_in_wind).'
+      if (wb_cell .gt. 0) then
+         write(*,'(A,A,A,ES10.3,A,ES8.1,A,I0,A,F9.5,A)') '    worst'//     &
+              ' row below the wind start radius: ', trim(wb_name),         &
+              ', measure ', wb_meas, ' against ', wb_tol, ' at cell ',     &
+              wb_cell, ', r =', r(wb_cell), ' R_p (reported, not gating)'
+      else
+         write(*,'(A)') '    no applicable cell lies below the wind'//     &
+              ' start radius.'
+      endif
+      end subroutine write_wind_acceptance_details
 
 
       subroutine composition_sweep_movement_of_the_stored_pair(u_stored,   &
@@ -7184,7 +7371,9 @@
                          n_cunav .eq. 0))
          do ic_c = 1, crep%n
             if (crep%e(ic_c)%name(1:16) .ne. 'carrier balance ') cycle
-            if (crep%e(ic_c)%status .ne. cert_unavailable) cycle
+            if (crep%e(ic_c)%status .ne. cert_unavailable .and.          &
+                .not. row_unavailable_in_selected_region(crep%e(ic_c)))   &
+               cycle
             write(*,'(A,A,A,A)') '            unavailable: ',             &
                  trim(crep%e(ic_c)%name(17:)), ' -- ',                    &
                  trim(crep%e(ic_c)%reason)
@@ -7301,11 +7490,14 @@
       !        refreshed state of the pass;
       !   the pass budget ends uncertified                  -> 1: the
       !        refreshed state of the last solve, or the converged wind
-      !        restored where that solve failed;
+      !        restored where that solve failed; under "Certification
+      !        region: all", 0 where the refreshed state of the last pass is
+      !        within tolerance in the wind (certified_in_wind);
       !   the run has already taken its EXHALE_JFNK_MAXIT solve -> 1: the
       !        state the routine was called with, untouched.
-      ! No caller separates 1 from 2, and every ending but the first is a
-      ! refusal: none of those states is accepted.
+      ! No caller separates 1 from 2, and every ending but the first and
+      ! the wind-level judgment is a refusal: none of those states is
+      ! accepted.
       !
       ! A nonzero hydrodynamic flag alone does not end the alternation:
       ! a valid returned wind can still support a productive composition
@@ -7314,9 +7506,10 @@
       !
       ! WHAT CONTROLS THE PASSES. The quantity the joint acceptance waits on
       ! is the worst gated species row of the certification: the elemental
-      ! and carrier balances are judged in the wind, r >= cert_regime_wind_r,
-      ! and driving that measure down is the whole purpose of the
-      ! alternation. A pass that leaves it where it was is not by itself a
+      ! and carrier balances are judged on the region "Certification
+      ! region" names (every applicable cell by default, or the wind,
+      ! r >= cert_regime_wind_r), and driving that measure down is the
+      ! whole purpose of the alternation. A pass that leaves it where it was is not by itself a
       ! stalled alternation, because a composition still far from the fixed
       ! point of its own operator changes the wind that row is a residual
       ! of; so a pass is counted as one without progress only where the
@@ -7667,6 +7860,10 @@
          return
       endif
       n_stationary_solves_run = n_stationary_solves_run + 1
+      ! No wind verdict stands for an all-cell one until this iteration
+      ! spends its pass cap and admits it (below the pass loop).
+      call certification_admit_wind_verdict(.false.)
+      outer_ended_at_pass_cap = .false.
       if (allocated(u_call_entry)) deallocate(u_call_entry, f_sp_call_entry)
       allocate(u_call_entry(3,1-Ng:N+Ng), f_sp_call_entry(1-Ng:N+Ng,n_species))
       u_call_entry    = u
@@ -7711,10 +7908,6 @@
       ! output only.
       call get_environment_variable('EXHALE_STAGE_EXPORT', diag_env)
       stage_export_on = (trim(diag_env) .eq. '1')
-      ! EXHALE_OUTER_PASSES: Overrides the outer-pass cap when set. Unset retains the initialized cap;
-      ! can change returned state.
-      call get_environment_variable('EXHALE_OUTER_PASSES', diag_env)
-      if (len_trim(diag_env) .gt. 0) read(diag_env,*) outer_pass_cap
       ! The bound one pass may move the carriers by is shortened by the
       ! progress control below; the run's own setting is left where a later
       ! entry can read it.
@@ -7758,7 +7951,7 @@
       entry_why   = 0
       species_alternated = he_diffusion .or.                              &
                            (transported_rows_exist() .and. .not. block_now)
-      pass_cap      = merge(outer_pass_cap, 1, species_alternated)
+      pass_cap      = merge(jfnk_max_iter, 1, species_alternated)
       outer_ending  = outer_running
       hydro_info    = 0
       wind_conv_held = .false.;  wind_restored = .false.
@@ -8117,7 +8310,8 @@
          prog_cell  = 0
          hydro_worst_dist = 0.0d0
          do icert = 1, cert_now%n
-            if (cert_now%e(icert)%status .eq. cert_unavailable) then
+            if (cert_now%e(icert)%status .eq. cert_unavailable .or.       &
+                row_unavailable_in_selected_region(cert_now%e(icert))) then
                n_unjudged = n_unjudged + 1
                prog_worst = huge(1.0d0)
                prog_cell  = 0
@@ -9474,6 +9668,32 @@
       ! chosen against an equation and a cell.
       outer_ending = outer_pass_budget
       jfnk_info    = 1
+      outer_ended_at_pass_cap = .true.
+      ! THE WIND REGION OF THE STATE HANDED BACK (user decision 2026-11-12).
+      ! Under "Certification region: all" the state of the last pass is
+      ! judged on the wind region as well; within tolerance there, the
+      ! iteration ends as a wind-region acceptance (info 0, as an acceptance
+      ! under "wind") and the certification of the state written records
+      ! certified_in_wind. A restored wind is not the state the last
+      ! certification measured, so it is not admitted (the rule of
+      ! EXHALE_v1.10).
+      if (cert_gate_all_cells .and. .not. wind_restored .and.             &
+          cert_now%certified_wind) then
+         jfnk_info = 0
+         call certification_admit_wind_verdict(.true.)
+         ! The verdict the certification of the state written will take,
+         ! stated on this pass's report so that its print reads it.
+         cert_now%region    = cert_region_in_wind
+         cert_now%certified = .true.
+         cert_now%n_failing = cert_now%n_failing_wind
+         write(*,'(A,I0,A)') ' (EXHALE_main) all-cell convergence was NOT'//&
+              ' reached in ', pass_cap, ' outer passes; the wind region'// &
+              ' is converged and the state is accepted there.'
+         call write_wind_acceptance_details(cert_now)
+         call certification_report_write(cert_now,                        &
+              'state of the last outer pass, accepted on the wind region')
+         return
+      endif
       if (wind_restored) write(*,'(A,I0,A)') ' (EXHALE_main) the solve'//  &
            ' of the last pass failed; the state handed back is the wind'// &
            ' converged on pass ', pass_wind_conv, ', restored with its'//  &

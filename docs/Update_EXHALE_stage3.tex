@@ -8898,6 +8898,11 @@ closure paragraph) state the held n\_H; rebuilt without LaTeX errors, the
 physics document (103 pages; page 74 inspected) and the manual (125; pages 10
 and 83 inspected).
 
+Later finding (section 183): examined descendants of the He/H remappings
+made before this fix retain a metal/H imprint. Section 183 records the
+affected examples and measured offsets; it does not establish a universal
+upper bound.
+
 \subsection{108. The EUV that matches the observed EW reaches He/H 1e5 (2026-10-06)}\label{108-the-euv-that-matches-the-observed-ew-reaches-heh-1e5-2026-10-06}
 
 The He/H ascent of section 102 above 1e4 at fixed s = 1.14 (the s that matched
@@ -14057,6 +14062,520 @@ state. Both runner headers and README regression text are updated;
 v1.10\textquotesingle s HOWTO no longer claims its harness is absent. The Markdown log and
 its generated TeX/PDF twin are synchronized. Detailed report:
 \texttt{golden\_refresh\_step2\_20261109\_codex.md} in v1.10 \texttt{md/briefs/}.
+
+\subsection{183. Imprint of the section-107 mapper defect on metal/H, and the mapper clock of a new initial state (2026-11-11)}\label{183-imprint-of-the-section-107-mapper-defect-on-metalh-and-the-mapper-clock-of-a-new-initial-state-2026-11-11}
+
+Records: \texttt{EXHALE\_v1.10/scratch\_cno\_offset\_origin\_20261111/} (\texttt{NOTES.txt},
+\texttt{cno\_offset.py}, \texttt{step\_test.py}, \texttt{trace\_ancestry.py} and their outputs) and
+its \texttt{codex\_check/} (\texttt{measurements.txt}, \texttt{uniform\_measurements.txt},
+\texttt{admission\_and\_conditions.txt}, \texttt{independent\_check.py}, \texttt{check\_uniform.py});
+the clock fix in its \texttt{mapper\_time\_fix/} (\texttt{verify\_mapper\_clock.py},
+\texttt{verification.txt}). The measured quantity is the C, N and O nucleus count
+over the hydrogen nucleus count of a cell, normalized by the \texttt{\#\ reservoir}
+value of the file, minus 1. \texttt{cno\_offset.py} sums the atomic stages only and
+omits C and O held in OH, H2O and CO; that is valid here because oxygen
+chemistry is off in every state examined (\texttt{oxychem=F}, no such column).
+
+\textbf{Imprint in existing states.} Before the fix of section 107 (2026-10-06),
+\texttt{map\_state\_to\_grid.py\ -\/-reservoir\ He/H} multiplied HeH+ by
+k = (new He/H)/(old He/H) with the helium columns. With
+a = (k - 1) n(HeH+)/n\_H of the source cell, the reservoir-normalized metal/H
+of that cell changed by the factor 1/(1 + a), a relative change
+-a/(1 + a). Successive mapping steps multiply the reservoir-normalized
+metal/H ratios by 1/(1 + a\_j); their relative changes do not add exactly.
+The imprint is present in the examined descendants of the historical He/H
+remappings (2026-10-04/05), including the He/H 14, 5.0, 1.2 and 0.1
+campaign seeds. Traced examples, under
+\texttt{EXHALE\_v1.00/LHS1140b/models/.P2/ew\_fit/}, include \texttt{route\_heh\_high}, the
+examined \texttt{phase5} states with He/H other than 2.09, and the examined
+\texttt{route\_xuv\_scaled} rungs at He/H \textless= 0.65. A later uniform reset or
+independent elemental transport can alter the imprint. The examined He/H
+2.09 campaign seed has no He/H remapping step in its traced ancestry. The
+measured starting offsets of the campaign start states (\texttt{snapshots/c0000})
+are:
+
+{\def\LTcaptype{none} % do not increment counter
+{\small
+\begin{longtable}[]{@{}lll@{}}
+\toprule\noalign{}
+He/H & largest offset & at r \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+14 & -1.04e-6 & 5.90 R0 \\
+1.2 & +9.4e-8 & 7.0 R0 \\
+0.1 & +2.7e-7 & 8.3 R0 \\
+2.09 & none from this cause & \\
+\end{longtable}
+}
+}
+
+The formula was checked at two steps. HeH5.0 -\textgreater{} HeH10.0 (k = 2.00005)
+created -4.4995e-7, against -a = -4.4995e-7; the largest difference from
+-a/(1 + a) is 1.7e-13. HeH0.2 -\textgreater{} HeH0.1 (k = 0.49994) created +2.5853e-8;
+the largest difference from -a/(1 + a) is 1.6e-12.
+
+\textbf{Why it persists.} With \texttt{He\_metal\_diffusion} off, the metal nuclei follow
+the hydrogen ratio of each cell (\texttt{binary\_element\_diffusion.f90}
+\texttt{project\_elements}, v1.10 lines 3357-3363, v1.00 lines 3332-3338). The
+metal/H ratio is not independently advected, so the inherited radial
+imprint persists. Between the examined starting and late snapshots of the
+campaign marches (58 to 99 chunks of 50,000 steps), the maximum absolute
+C/N/O offset change was approximately 1.6e-9. In the sampled He/H 2.09
+snapshots, the N offset change at r = 1.0045 R0 was -1.7e-11 after chunk 1,
+-1.7e-10 after 10, -8.0e-10 after 46, and -1.58e-9 after 93. These sampled
+changes are consistent with accumulated rounding, but the responsible
+operation has not been identified.
+
+\textbf{Size.} Among the examined campaign start states, the largest absolute
+relative C/N/O offset is approximately 1.04e-6. This is not an upper bound
+for the historical ladders: the saved \texttt{route\_heh\_high/HeH30.0/k01} and
+\texttt{HeH80.0/k01} states have maximum absolute C offsets of approximately
+2.10e-6 and 4.18e-6. The running campaign packets are unchanged. The effect
+of correcting the seed on the evolving gas profiles has not been measured in
+a rerun.
+
+\textbf{Correction for new initial states.} The correction is one mapping with
+\texttt{-\/-uniform\ -\/-reservoir} for the metals with a positive recorded reservoir
+(C, N, O in these cases). In the tested same-grid mappings, uniform metal rescaling
+preserves n\_H and He/H relative to the mapping without the correction. The
+largest measured absolute relative metal/H deviation from the target was
+approximately 6.1e-16. On the He/H 14 start state, the maximum absolute
+relative changes in rho, T and n\_e were approximately 5.60e-10, 1.77e-10 and
+4.61e-10, respectively; pressure and velocity were unchanged. The corrected
+state is a new initial state, and earlier exact checkpoints are not reused
+with it.
+
+\textbf{Mapper clock of a new initial state.} The mapper wrote its own
+\texttt{\#\ coupling:} line as \texttt{mode=init\ t\_phys=0\ certified=F\ cert\_reason=mapped\_seed\ ...} but copied the \texttt{\#\ t\_phys{[}s{]}} line of both
+source files verbatim. A source reached at t \textgreater{} 0 therefore gave a file with
+two clocks that disagree: 75132.3512502113 s against 0 for the He/H 0.1
+campaign start state, 664297.2047571308 s against 0 for the He/H 14 state of
+chunk 99. The He/H 14 start state is at t = 0 and was not affected.
+
+The rule the consumers require: in every state the code writes, the
+\texttt{\#\ t\_phys{[}s{]}} line is t\_phys only in mode=phys and 0 otherwise (v1.10
+\texttt{load\_IC.f90:1445-1449}, v1.00 \texttt{:1708-1712}), and the coupling line carries
+\texttt{t\_phys=} only in mode=phys (\texttt{utilities.f90:225-238}). \texttt{load\_IC} takes the
+coupling field first and reads the \texttt{\#\ t\_phys{[}s{]}} line only when the
+coupling line has none (v1.10 \texttt{load\_IC.f90:1867-1879}, \texttt{:2694-2699}), and a
+mode=init state starts the run at t = 0 (\texttt{EXHALE\_main.f90:1894-1913}). The
+tree checker \texttt{LHS1140b/tools/marching\_acceptance.py:308-312} refuses a file
+whose two clocks disagree; \texttt{march\_case.py} admits a seed through it (\texttt{:511})
+and takes the start time of a chunk from the \texttt{\#\ t\_phys{[}s{]}} line first
+(\texttt{:1016-1017}, \texttt{:1070-1071}), so a kept source time would also have been
+the reference of the chunk clock test \texttt{t\ \textgreater{}\ t\_ic} (\texttt{:749}) for a run whose
+clock starts at 0. A mapped state is a new initial state, so every clock it
+carries is 0.
+
+Fix (\texttt{src/utils/map\_state\_to\_grid.py}, both trees, byte-identical): each
+existing \texttt{t\_phys{[}s{]}} record in either output file is rewritten as
+\texttt{\#\ t\_phys{[}s{]}\ 0.0000000000000000E+00}, with the source value preserved as
+\texttt{\#\ mapped-from-t\_phys{[}s{]}\ \textless{}value\textgreater{}}, the pattern of the
+\texttt{\#\ mapped-from-coupling:} line. Missing clock records are not added by this
+change: a source without either clock record gives a file without one, and
+the marching checker then needs an explicitly supplied zero time
+(\texttt{-\/-time\ PATH=0}). The Fortran metadata parser and the marching checker do
+not interpret the new provenance record as a state clock. Data rows are
+unchanged.
+
+After the initial clock fix, the mapper required a separate \texttt{\#} token for
+metadata clocks and the exact \texttt{\#\ coupling:} prefix for coupling records.
+\texttt{\#t\_phys{[}s{]}\ \textless{}t\textgreater{}} was therefore copied with the source
+time (the checker reads it and refuses the file), and \texttt{\#coupling:\ ...} or
+\texttt{\#\ \ coupling:\ ...}, which \texttt{load\_IC.f90} accepts as the coupling record
+(\texttt{comment\_field\_is}, v1.10 \texttt{:556}, \texttt{:2707-2723}), kept \texttt{mode=phys} and the
+source time while the metadata clock became 0. Both records are now
+recognized by the first token of the comment body after the \texttt{\#} and any
+white space, and the provenance values are taken from the same token list;
+the output records are written in the canonical single-space form.
+
+Tests (\texttt{src/tests/state\_mapper/state\_mapper\_tests.py}). Section 7: a
+manufactured source at t = 75132.3512502113 s is mapped; in each output
+file the test requires one zero metadata clock, its provenance record, a
+coupling \texttt{t\_phys=0} and agreement of the two clocks (11 assertions; the
+mapper before the fix fails 6). Section 7b maps sources with
+\texttt{\#t\_phys{[}s{]}\ \textless{}t\textgreater{}}, \texttt{\#\ t\_phys{[}s{]}\ \textless{}t\textgreater{}}, a tab-separated clock,
+\texttt{\#coupling:\ ...}, \texttt{\#\ \ coupling:\ ...}, the normal coupling form, no metadata
+clock, no coupling line, and neither record, and checks both output files.
+It requires a canonical zero-valued output record for every source clock
+record, its source value
+as provenance, agreement wherever both clocks exist, and no clock or
+coupling record where the source has none (for a source with neither, the
+checker finds no clock; 112 assertions). The mapper before the fix fails 58
+of them; the initial clock-fix version (SHA256 94f050dd...) fails 24. Full
+Python mapper suite with the final mapper: v1.10 230 PASS, 0 FAIL (two
+stored-state cases skipped, not in that tree); v1.00 237 PASS, 0 FAIL. The
+suites that run EXHALE.x were not run.
+
+Measured on real files (\texttt{mapper\_time\_fix/verification.txt}), with
+\texttt{-\/-uniform\ -\/-reservoir} C/H, N/H, O/H at the values of each source\textquotesingle s own
+\texttt{\#\ reservoir} line: the He/H 0.1 start state and the He/H 14 chunk-99 state
+mapped by the old mapper are refused by the tree checker ("the two clocks
+disagree"); mapped by the fixed mapper they are admitted at t = 0. The He/H
+14 start state is admitted with either. For all three, the data rows of the
+old and fixed products are identical, and the final mapper reproduces the
+fixed products byte for byte; metal/H is uniform to 5.5e-16 (14, start),
+6.0e-16 (14, chunk 99) and 4.7e-16 (0.1, start), against 1.04e-6, 1.04e-6
+and 2.7e-7 without the correction; n\_H and He/H equal those of the mapping
+without the correction (relative difference 0); pressure and velocity
+unchanged; the maximum absolute relative changes in rho and T are
+approximately 5.6e-10 and 1.8e-10 (14, start), 4.1e-10 and 1.4e-10 (14,
+chunk 99), 2.9e-9 and 4.9e-10 (0.1, start). Loading a mapped file in
+EXHALE.x was not run.
+
+\textbf{Acceptance checker correction.} \texttt{frozen\_gamma} in
+\texttt{EXHALE\_v1.10/LHS1140b/tools/marching\_acceptance.py} counted He 2\^{}3S twice
+because \texttt{HeI} already includes that population (\texttt{write\_output.f90:945},
+\texttt{composition.f90:48}). \texttt{HeITR} is now excluded from the particle sums. On
+the physical cells of the four campaign \texttt{snapshots/c0000} states, maximum
+absolute gamma changes are approximately 5.94e-13 (He/H 14), 4.8117e-8
+(1.2), 4.87e-12 (2.09), and 3.9238e-9 (0.1). The maximum across these
+starting states is 4.8117e-8. By comparison, the maximum across the examined
+late states c0099, c0090, c0093 and c0058 is 5.4000e-10. Starting states and
+promoted late IC files must not be conflated. The checker copies inside
+running packets are unchanged. The synthetic-profile checker tests
+(\texttt{test\_marching\_acceptance.py}) returned 46 PASS and 0 FAIL with plotting
+disabled. Production acceptance verdicts were not reevaluated.
+
+\subsection{184. Two source comments and the helium line of the inventory report (2026-11-12)}\label{184-two-source-comments-and-the-helium-line-of-the-inventory-report-2026-11-12}
+
+Found while comparing the current v1.00 and v1.10 sources; none of the changes below alters
+an equation or a stored result.
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{v1.10, \texttt{diffusive\_photochemistry.f90}, \texttt{carrier\_transport\_stop\_on\_failure}.} The comment
+  said that production keeps the operator\textquotesingle s own stop on. The marching loop of
+  \texttt{EXHALE\_main.f90} writes \texttt{.false.} at startup, because the attempted-step controller reads
+  the refusal; the comment now says so, as the v1.00 comment already did. The comment of
+  \texttt{carrier\_transport\_stops\_suppressed} ("zero in every production run") was wrong for the
+  same reason and is corrected.
+\item
+  \textbf{v1.00, \texttt{EXHALE\_main.f90}, secondary ionization.} The comment said the coupling starts
+  applied only with \texttt{Secondary\_ionization:\ Immediate}. Applied from step 0 has been the
+  default since 2026-10-09 (section 127; \texttt{parameters.f90}, \texttt{sec\_ion\_immediate\ =\ .true.});
+  \texttt{Staged} is the option. The comment now states this, as in v1.10.
+\item
+  \textbf{v1.10, \texttt{element\_inventory.f90}, \texttt{element\_inventory\_report}.} The report (printed only
+  with \texttt{EXHALE\_INVENTORY\_REPORT=1}) skipped helium in every case, so a helium carrier-budget
+  breach was computed but not printed when He 2\^{}3S or HeH+ is carried. Helium is now skipped
+  only when no cell carries a helium species, the case in which helium has no carrier budget.
+  The v1.00 report prints helium unconditionally and is unchanged.
+\item
+  \textbf{v1.10, regional convergence, field ids.} \texttt{regional\_state\_sample} (\texttt{EXHALE\_main.f90})
+  sized its arrays with the literal 46 (= 6 + \texttt{n\_species}) and labeled the regional mass,
+  thermal-energy and mass-flow quantities 47, 48, 49; \texttt{regional\_convergence.f90} and the test
+  driver repeated 47-49. Module \texttt{regional\_convergence} now defines the ids once from
+  \texttt{n\_species} (\texttt{n\_cell\_fields}, \texttt{field\_mass\_inventory}, \texttt{field\_thermal\_energy\_inventory},
+  \texttt{field\_mass\_flow}, \texttt{n\_regional\_fields}, with \texttt{field\_velocity} and \texttt{n\_fluid\_fields} for the
+  scale rule), and every user takes them from there. The values are unchanged (46, 47, 48,
+  49); the csv still records the integer field ids. The plot script reads no field id.
+\item
+  \textbf{v1.10, \texttt{regional\_state\_sample}, hydrogen nuclei.} \texttt{sum(f\_sp(jj,1:2))} is now
+  \texttt{f\_sp(jj,isp\_HI)+f\_sp(jj,isp\_HII)} (\texttt{species\_table}; the indices are 1 and 2).
+\item
+  \textbf{v1.10, \texttt{regional\_state\_sample}, sound speed (marker D04 of
+  \texttt{comment\_revision\_20261027.md}).} The literal \texttt{5d0/3d0} is now \texttt{gamma\_ad}, bitwise the same
+  value. The marker is replaced by the validity statement: atomic gas only, because the
+  regional keys are refused in a molecular run (\texttt{EXHALE\_main.f90:954-957}), so the caloric
+  mixture is inactive and \texttt{adiabatic\_index\_from\_state} returns \texttt{gamma\_ad} in every cell.
+\item
+  \textbf{Both trees, \texttt{EXHALE\_main.f90}, \texttt{Do\ only\ PP} comment (marker D22).} The comment said such
+  a run relaxes nothing. It runs the time loop once: one integration step is attempted and
+  adopted (in physical mode \texttt{t\_phys} advances), then the loop exits and the adopted state is
+  post-processed. The comment now says so; it also no longer speaks of a single ionization
+  call, and the v1.00 copy no longer says the coupling is switched on after the loop (the
+  \texttt{sec\_ion\_active} assignment below the comment enables it). The marker is removed and D04,
+  D22 are marked resolved in both copies of \texttt{comment\_revision\_20261027.md}.
+\item
+  \textbf{v1.00, unused declarations.} Removed from \texttt{write\_oxygen\_chemistry} (\texttt{write\_output.f90}):
+  \texttt{ph\_lw}, \texttt{NH2\_out\_lw}, \texttt{tau\_out\_lw}, \texttt{a\_cell}, \texttt{dtau\_col}, \texttt{dn\_h2o}, \texttt{dn\_oh}, \texttt{dn\_h2},
+  \texttt{dn\_co}, \texttt{dstate} (their computation lives in \texttt{util\_ion\_eq.f90}, which declares its own).
+  Removed from \texttt{EXHALE\_main.f90}: \texttt{dmax\_b}, \texttt{dmax\_c}, \texttt{det\_sc\_ctrl}, \texttt{tp\_hyd}, \texttt{as\_cv},
+  \texttt{as\_frac\_done}, \texttt{as\_nsub}, and the import of \texttt{carrier\_verdict} (used only by \texttt{as\_cv}; also
+  removed from the v1.10 import). The declaration lines now match v1.10.
+\end{itemize}
+
+Checked: the first three items, \texttt{ifx\ -syntax-only} on their three files (no message). The
+others, \texttt{ifx\ -syntax-only\ -fpp\ -warn\ unused} (ifx 2026.1.1, modules written to a scratch
+directory, \texttt{build/} untouched) on every edited Fortran file, before and after. v1.10: no
+message from \texttt{regional\_convergence.f90} or the test driver; \texttt{EXHALE\_main.f90} keeps only the
+two unused imports \texttt{n\_step\_rejections}, \texttt{n\_error\_estimates\_unresolved}, as before. v1.00: the
+17 remarks of the removed names are gone; left are the same two imports and the unused dummy
+\texttt{eta} of \texttt{write\_output}. A standalone check confirms \texttt{gamma\_ad} equals \texttt{5d0/3d0} bitwise and
+the field ids are 46-49; the regional-convergence test (\texttt{src/tests/regional\_convergence/run.py},
+25 scenarios) passes. Neither tree was rebuilt, so the installed executables predate these
+edits; the edits change no computed value, and the report change of \texttt{element\_inventory.f90}
+is not yet in a binary.
+
+\subsection{185. v1.10: H3+ cooling outside its published temperature interval is reported, not a certification refusal (2026-11-12)}\label{185-v110-h3-cooling-outside-its-published-temperature-interval-is-reported-not-a-certification-refusal-2026-11-12}
+
+User decision (2026-11-12): the v1.10 certificate treats H3+ cooling outside its published
+temperature interval as v1.00 does, as a reported flag. This carries out the decision of
+2026-11-05 (keep the treatment, document the applicability limit, flag the affected cells).
+
+Before: \texttt{certification\_report\_verdict} (\texttt{src/modules/time\_step/certification.f90}, v1.10 only)
+set \texttt{certified\ =\ .false.} for a molecular state when the H3+ state map was missing, or when any
+cell carrying H3+ was outside the LTE table (20-5000 K), outside the non-LTE rows (300-5000 K),
+or had a nonfinite argument. The same condition appeared in the candidate-rule text.
+
+Now: the state map is still computed and printed (its heading reads "temperature applicability
+reported, not a refusal"); cells outside the intervals do not change the verdict. A nonfinite
+argument still refuses. The cooling itself is unchanged (\texttt{h3p\_cooling.f90}: above 5000 K the
+5000 K emission is held; outside 300-5000 K the nearest non-LTE row is used), and the chemical
+rate coefficients of H3+ never had a temperature gate. \texttt{README.md} (P7) and \texttt{README\_HOWTO.md}
+state the new rule. The cooling expressions and equation residuals are unchanged. Certification may now
+terminate the outer iteration earlier, so the written final iterate can differ from a run that
+continued after meeting the numerical row tolerances.
+
+What prompted it: the He/H = 1e5 stationary solve of LHS 1140 b with the installed v1.10 binary
+(\texttt{EXHALE\_v1.10/scratch\_heh1e5\_stationary\_20261112/from\_k05\_state/}) ended with all 16
+certification rows within tolerance (worst gated species row 1.3e-9 of 1e-5) and
+\texttt{certified=F}, the report naming only the H3+ temperature interval: 131 of 500 cells carry H3+
+above 5000 K (maximum 6822 K). The v1.00 binary certified the same start
+(\texttt{EXHALE\_v1.00/scratch\_heh1e5\_stationary\_20261112/from\_v110\_state/}).
+
+Checked (2026-11-12): a test binary of the edited v1.10 source (ifx 2026.1.1, built on lart2 in
+\texttt{EXHALE\_v1.10/scratch\_h3p\_flag\_not\_refusal\_20261112/tree/}, sha256 \texttt{d21c2e14...}; the installed
+\texttt{EXHALE\_v1.10/EXHALE.x} is not rebuilt) reran the same He/H = 1e5 solve from byte-identical
+inputs (\texttt{.../rerun\_from\_k05\_state/}, lart4, 12 threads beside three campaign runs): info 0,
+\texttt{certified=T}, accepted at outer pass 6 (743 s), the first pass whose worst gated species row
+(9.0e-6) is below 1e-5. The printed rows of passes 1-6 equal those of the run with the
+installed binary. Against the start: T 1.95e-4 dex, rho 1.39e-4 dex, v 2.5e-4; Mdot 7.8341e7
+g/s. The report still lists the 131 cells above 5000 K, under the heading "temperature
+applicability reported, not a refusal". The code reading found no other consumer of the H3+
+state map outside \texttt{certification.f90}. v1.00 needed no change.
+
+Installed (2026-11-12, user instruction): \texttt{EXHALE\_v1.10/EXHALE.x} rebuilt in the tree on lart4
+with ifx 2026.1.1 (\texttt{make}, pinned toolchain, \texttt{make\ -q} clean afterwards), sha256 \texttt{d3bc6eb5...}.
+It also contains the non-numerical edits of section 184. The previous installed binary
+(\texttt{d4c8e4d8...}, the one the v1.10 goldens of section 182 were measured with) is kept as
+\texttt{EXHALE\_v1.10/scratch\_h3p\_flag\_not\_refusal\_20261112/EXHALE\_installed\_before\_d4c8e4d8.x}.
+The regression matrix was not rerun with the new binary.
+
+\subsection{186. Certification region, wind start radius and outer-pass cap as input keys; pass-0 acceptance; absent carriers; rounding of the imposed closing stage (2026-11-12/13)}\label{186-certification-region-wind-start-radius-and-outer-pass-cap-as-input-keys-pass-0-acceptance-absent-carriers-rounding-of-the-imposed-closing-stage-2026-11-1213}
+
+User decisions of 2026-11-12, made in v1.00 and v1.10 with the same keys, tokens, logic and
+console text. The shared routines are textually identical in the two trees apart from internal
+field names.
+
+\textbf{Input keys.}
+
+\begin{itemize}
+\tightlist
+\item
+  \texttt{Certification\ region:\ all\ \textbar{}\ wind} (default \texttt{all}). The carrier balance rows and the elemental
+  transport rows are measured on two regions, all applicable physical cells and the cells at
+  r \textgreater= the wind start radius; the region named by the key gates them and the other is reported.
+  Every other row (hydrodynamic mass, momentum and energy, level balances, eliminated-species
+  closure, stage nucleus sums, lower boundary closure) gates on the whole column under both
+  options.
+\item
+  \texttt{Wind\ start\ radius\ {[}R\_p{]}:\ \textless{}r\textgreater{}} (default 1.2). It replaces the constant \texttt{cert\_regime\_wind\_r} of
+  \texttt{certification.f90}; a radius at or below the inner boundary, outside the grid, or not finite
+  stops the run (\texttt{certification\_check\_wind\_start\_radius}).
+\item
+  \texttt{JFNK\ max\ iterations:\ \textless{}n\textgreater{}} (default 20): the cap of stationary outer passes, not of the Newton
+  or Krylov iterations inside one pass. It replaces the environment variable
+  \texttt{EXHALE\_OUTER\_PASSES}. A run that finds the variable present, also with an empty value, stops
+  before any output is created (\texttt{refuse\_retired\_outer\_pass\_variable}, the first call of the
+  program). The test scripts, \texttt{backup/regression/run\_check.sh} (the \texttt{outer\_passes} file is gone;
+  \texttt{iontrans\_metals} carries 90 and \texttt{carrier\_model\_a\_newton} carries 12 in \texttt{input.inp}),
+  \texttt{src/utils/element\_flux\_closure.py} and \texttt{LHS1140b/models/run\_case.sh} (and \texttt{run\_campaign.sh}
+  in v1.00) use the key; \texttt{run\_case.sh} refuses a case whose \texttt{input.inp} lacks it. Frozen campaign
+  and scan directories keep their own binaries and are unchanged.
+\end{itemize}
+
+\textbf{What a certified state records.} \texttt{cert\_reason=certified\_all\_cells} when the verdict was taken
+on all applicable cells; \texttt{cert\_reason=certified\_in\_wind\ cert\_wind\_r=\textless{}radius,\ ES23.16\textgreater{}} when it
+was taken on the wind region. A state with no region-gated row carries no token. A file that
+claims \texttt{certified\_in\_wind} without a radius was written under the fixed-radius rule and is read
+as r \textgreater= 1.2 R\_p. A loaded claim is judged on the region it names; when its radius differs from
+the run\textquotesingle s, the claim is reported NOT RE-JUDGED.
+
+\textbf{Rules of the outer iteration.}
+
+\begin{itemize}
+\tightlist
+\item
+  \texttt{wind}: acceptance as soon as the wind region is within tolerance (the behavior of v1.00
+  before this change).
+\item
+  \texttt{all}: the iteration continues until all applicable cells are within tolerance. When the pass
+  cap is reached without that, the state actually written is judged on the wind region and, if
+  within tolerance there, written \texttt{certified=T\ cert\_reason=certified\_in\_wind} (info 0), with the
+  worst row below the wind start radius named on the console.
+\item
+  Pass 0: a \texttt{Restart\ intent:\ stationary} run whose stored pair, with this run\textquotesingle s sources rebuilt,
+  is certified on the region in force is accepted at outer pass 0: no seed preparation, no
+  composition sweep, no outer pass. The physical stored pair is retained; boundary ghosts are
+  rebuilt using the current boundary conditions. Before this change the H/H2 open-face seed
+  blend and the first sweep always moved the first cell (measured in v1.10 at He/H 1e4: stored
+  pair H2 row 2.0e-6, after the sweep 0.914 at cell 1), and a certified state needed 9 passes to
+  be accepted again.
+\item
+  Under \texttt{all}, a stored pair that holds only the wind verdict iterates; if the pass cap ends
+  with a state that fails the wind verdict, the loaded stored pair is restored and written
+  \texttt{certified\_in\_wind}.
+\item
+  \texttt{Restart\ intent:\ stationary\ evaluate} under \texttt{all} records the all-cell verdict, else the wind
+  verdict (labeled, not refused), else \texttt{certified=F}.
+\end{itemize}
+
+\textbf{A region in which a carrier is absent from every cell.} A region without any cell certifies
+nothing (unavailable). A region with cells, in all of which the carrier is below
+\texttt{carrier\_absent\_fraction} of its element reservoir, is not applicable when the abundance its
+sources could sustain is also below that floor in every cell:
+n\_c (production + incoming transport) / (chemical loss + outgoing transport) / floor \textless{} 1
+(\texttt{sustained\_abundance\_over\_floor}, formed in scaled arithmetic so that no intermediate product
+underflows). Otherwise the region is unavailable and the report prints the measure and its
+cell. Outgoing transport counts as a loss: measured on the v1.10 He/H 1e4 state at r \textgreater= 1.5 R\_p,
+H3+ has (production + inflow)/(chemical loss) between 1.0 and 82.7 while
+(production + inflow)/(chemical loss + outflow) is 1.000000 in all 231 cells; the measure is
+0.661 at its worst cell and the region is not applicable.
+
+\textbf{Defects corrected on the way.}
+
+\begin{itemize}
+\tightlist
+\item
+  v1.10 wrote certified states without any \texttt{cert\_reason} (\texttt{gate\_species\_row} reset
+  \texttt{regime\_gated} before the token was formed), and its pass-progress measure read the
+  whole-column row maximum instead of the gated one.
+\item
+  Imposed transported fractions (\texttt{ionization\_equilibrium.f90}): the check refused the v1.10
+  He/H 0.1 scan state in v1.00 for a He I ground fraction 3.8 eps below zero in an upper ghost
+  cell (allowance 4 eps on a sum whose own rounding is larger). The allowance is now
+  \texttt{imposed\_stage\_sum\_rounding\_bound(n)\ =\ (5n+1)\ eps}, derived for the expressions evaluated,
+  and \texttt{closing\_stage\_density\_at\_rounding} bounds the signed closing density relative to the
+  positive element total by the same number before setting it to zero; a larger deficit
+  refuses. Transported stages are not changed. The production flags flush subnormal numbers to
+  zero, so the bound is stated for normal-range totals.
+\end{itemize}
+
+\textbf{Checked} (scratch builds of the final source, lart4, 12 threads; two readers agreed, review
+record \texttt{EXHALE\_v1.10/scratch\_cert\_region\_option\_20261112/codex\_review/REVIEW\_MEMO.txt}):
+
+{\def\LTcaptype{none} % do not increment counter
+{\small
+\begin{longtable}[]{@{}ll@{}}
+\toprule\noalign{}
+run (LHS 1140 b, fixed XUV scale of the scan) & result \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+v1.00 He/H 14, \texttt{wind}, scan start & accepted at pass 13, \texttt{certified\_in\_wind}; data bitwise equal to the run of the binary before this change \\
+v1.00 He/H 14, \texttt{all}, scan start & accepted at pass 14, \texttt{certified\_all\_cells} (worst row 1.70e-5 at pass 13, 8.85e-6 at pass 14, He+ carrier, cell 29) \\
+v1.00 He/H 14, \texttt{all}, cap 13 & wind label at the cap; data equal to the \texttt{wind} run \\
+v1.00 reload of the wind-only state, \texttt{all} & iterates, \texttt{certified\_all\_cells} at pass 12; with cap 1 the loaded pair is restored and written \texttt{certified\_in\_wind} \\
+v1.00, v1.10 reload of a certified state & accepted at pass 0 (1-2 s) \\
+v1.10 He/H 1e4, \texttt{all}, scan start & accepted at pass 9, \texttt{certified\_all\_cells}; data bitwise equal to the run before this change \\
+v1.10 He/H 14, \texttt{wind}, 60 passes (earlier scratch build) & not accepted: He++ carrier row 1.48e-2 at cell 217, r = 1.2006 R\_p \\
+v1.00 He/H 0.1, scan start s 2.53 k00 (earlier scratch build) & passes the input check; no stationary solution: info 1, then the outer boundary cells 500-502 find no chemical root \\
+\end{longtable}
+}
+}
+
+Certification driver 207 (v1.00) and 210 (v1.10) assertions pass, the closing-stage rounding
+test 17, with debug and with production flags. Not exercised by a v1.10 run: the wind label at
+the pass cap, the restoration of the loaded pair, and the wind record of an evaluation under
+\texttt{all} (no v1.10 state holds the wind verdict alone); the same code ran in v1.00. Not run: the
+regression matrix. Under the default \texttt{all}, \texttt{backup/regression/iontrans\_metals} of v1.00 is
+accepted at pass 15 instead of 14 and differs from its golden by at most 7.6e-5 (measured with
+an earlier scratch build; within the 1e-3 tolerance, not bitwise); goldens are not refreshed.
+
+\textbf{Installed} (2026-11-13, lart4, ifx 2026.1.1, \texttt{make} in the tree, \texttt{make\ -q} clean, no
+warnings): \texttt{EXHALE\_v1.00/EXHALE.x} sha256 \texttt{9a9673b6...} (previous \texttt{a296fed2...} kept as
+\texttt{EXHALE\_v1.00/scratch\_cert\_region\_option\_20261112/EXHALE\_installed\_before\_a296fed2.x}) and
+\texttt{EXHALE\_v1.10/EXHALE.x} sha256 \texttt{c9ffa198...} (previous \texttt{d3bc6eb5...} kept as
+\texttt{EXHALE\_v1.10/scratch\_cert\_region\_option\_20261112/EXHALE\_installed\_before\_d3bc6eb5.x}). The
+installed binaries differ from the reviewed scratch builds \texttt{f7927cdc...} and \texttt{e3fab0fd...} by
+one comment and the build stamp; each repeated a pass-0 reload with output data equal to the
+scratch build\textquotesingle s (\texttt{runs\_final2/I1\_installed\_reload\_wind}, \texttt{runs\_v110/p1\_installed\_reload\_all}).
+The golden outputs of section 182 were measured with the binaries before sections 184-186.
+
+\textbf{Stationary range found on 2026-11-12} (binaries before this section, scan start states,
+no fit of the equivalent width; \texttt{EXHALE\_v1.10/scratch\_jfnk\_heh\_sequence\_20261112/SUMMARY.txt}):
+v1.00 certified in the wind at He/H 1e5, 1e4, 1e3, 100, 14, 5.0, 2.09 and 1.2; v1.10 certified
+on all cells at 1e5, 1e4, 1e3 and 100 and failed at 14.
+
+\subsection{187. Acceptance of the semi-implicit energy solve judged on the step\textquotesingle s own balance, not on the stored energy (2026-11-13)}\label{187-acceptance-of-the-semi-implicit-energy-solve-judged-on-the-steps-own-balance-not-on-the-stored-energy-2026-11-13}
+
+A defect of \texttt{src/modules/time\_step/energy\_semi\_implicit.f90}, found and corrected in
+EXHALE\_v1.20 (records \texttt{EXHALE\_v1.20/scratch\_thermal\_acceptance\_20261113/}, five review rounds)
+and ported on 2026-11-13 to v1.00 and v1.10, both of which carried the same rule.
+
+\textbf{The defect.} The solve returned T\_old without solving when
+\textbar R(T\_old)\textbar{} \textless= 1e-9 (\textbar u\_old\textbar{} + a(\textbar heat\textbar{} + \textbar cool\textbar)), a scale that contains the stored thermal
+energy. In a nearly balanced cell the net temperature change of one step is of that relative
+size, so it was dropped, with a consistent sign, and the output of the step jumped when a cell
+crossed the threshold. Measured in v1.20 (LHS 1140 b, He/H 1.2, CFL 0.30): about half of the
+cell solves kept T\_old, and the crossing of one cell started a disturbance of the base mass flux
+of normalized amplitude 3.7e-3, which the corrected rule reduces to 4.5e-6.
+
+\textbf{The correction.} T is accepted when \textbar R(T)\textbar{} \textless= 1e-9 N(T), with
+N = \textbar u(T\_start, c\_new) - u\_old\textbar{} + a(\textbar heat\textbar{} + \textbar cool(T)\textbar) + E\_arith/1e-9
+(\texttt{thermal\_balance\_norm}): the caloric offset at the starting temperature, the gross radiative
+exchange of the step, and an allowance for the rounding of R. No stored energy and no constant
+floor enter. The same norm is used at entry, at every trial and in the stored scale. A balance
+that is not finite or has no positive norm is refused (reason 8), an entry above the temperature
+ceiling is refused (reason 9), and the iteration cap is 100 (60 before). \texttt{res\_scaled} in reports
+now means \textbar R\textbar/N. Files: \texttt{modules/time\_step/energy\_semi\_implicit.f90} and
+\texttt{modules/states/caloric\_eos.f90} (three rounding-bound routines), identical to the v1.20 text in
+both trees; comments in \texttt{attempted\_step.f90} and \texttt{certification.f90};
+\texttt{tests/energy\_update}, new \texttt{tests/thermal\_acceptance}; \texttt{docs/physics\_overview/thermal.tex}
+("Advancing the temperature"). The local name \texttt{R0} of the old routine, which hid the planetary
+radius \texttt{R0} of \texttt{global\_parameters}, is gone with the old text.
+
+\textbf{Scope.} The routine is called only from the coupled source step of the marching loop. The
+stationary (JFNK) route does not call it: the He/H 14 \texttt{wind} solve of v1.00 and the He/H 1e4
+\texttt{all} solve of v1.10 are bitwise unchanged.
+
+\textbf{Checked} (scratch builds, lart4): thermal acceptance driver 120 assertions, the existing
+energy, conduction-floor, coupled-source and certification drivers (v1.00 389 in total, v1.10
+272 and 210), with production and with bounds-checked objects, no failure. Regression cases run
+with the scratch binaries, against goldens that the binaries before this change reproduce
+bitwise (v1.10, lart4):
+
+{\def\LTcaptype{none} % do not increment counter
+{\small
+\begin{longtable}[]{@{}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-8\tabcolsep)/4\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-8\tabcolsep)/4\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-8\tabcolsep)/4\relax}>{\raggedright\arraybackslash}p{\dimexpr(\linewidth-8\tabcolsep)/4\relax}@{}}
+\toprule\noalign{}
+case & verdict of \texttt{run\_check.sh} & largest relative difference & max abs(dlog10 rho), abs(dlog10 T), abs(dv) {[}cm/s{]} \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+\texttt{wasp\_full} & within 1e-3 & 4.5e-5 & 1.5e-6, 1.5e-6, 2.6 \\
+\texttt{lower\_profile} & within 1e-3 & 3.2e-4 & 9.2e-6, 9.9e-6, 10.6 \\
+\texttt{mol\_carrier} & FAIL & 6.0e-3 (v1.00), 8.7e-3 (v1.10) & 1.7e-6, 1.8e-6, 2.2 \\
+\texttt{mol\_diffusion} & FAIL & 3.5e-2 & 3.0e-6, 1.9e-6, 2.2 \\
+\end{longtable}
+}
+}
+
+The two failures are set by one cell each in the quasi-hydrostatic layer at r = 1.07 R\_p, where
+the speed itself is 0.08 and 0.5 cm/s (changes of 5e-4 to 7e-4 and 1.8e-2 cm/s) against a largest
+speed of about 1e6 cm/s. The other twelve default cases were not run. The goldens are not
+refreshed: \texttt{mol\_carrier} and \texttt{mol\_diffusion} fail \texttt{make\ check} until they are.
+
+\textbf{Installed} (2026-11-13, lart4, ifx 2026.1.1, full rebuild \texttt{make\ -B}, \texttt{make\ -q} clean, no
+warnings): \texttt{EXHALE\_v1.00/EXHALE.x} sha256 \texttt{0ce71ed7...} and \texttt{EXHALE\_v1.10/EXHALE.x} sha256
+\texttt{3ae802a8...}; the binaries of section 186 are kept as
+\texttt{scratch\_cert\_region\_option\_20261112/EXHALE\_installed\_before\_9a9673b6.x} (v1.00) and
+\texttt{EXHALE\_installed\_before\_c9ffa198.x} (v1.10). An incremental \texttt{make} of v1.10 first failed
+because a source copied with its older modification time was not recompiled; the full rebuild
+gives the same binary as the corrected incremental one.
+
+Also on 2026-11-13: the certification test driver \texttt{src/tests/certification/certification\_contexts.f90}
+of both trees kept the ionization rate arrays allocated for a 20-cell grid while later groups
+ran on larger grids (an out-of-bounds read that only a bounds-checked build stops); the arrays
+are now discarded when the grid changes (\texttt{discard\_rates\_of\_another\_grid}), 207 and 210
+assertions pass with bounds checking.
 
 \appendix
 \input{Update_EXHALE_appendix}
