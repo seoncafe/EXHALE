@@ -746,7 +746,11 @@ the boundary's one branch of nonzero width, the supersonic-outflow transition,
 sits decades from any operating point, so nothing has to be smoothed for it). Each
 unknown is scaled by its own cell's state ($\rho$, $\rho(|v|+c_s)$, $E$),
 so that no cell sets another's scale; the momentum scale uses the fastest
-signal speed because $\rho v$ itself vanishes wherever the flow reverses. This
+signal speed because $\rho v$ itself vanishes wherever the flow reverses. The
+solve starts from a pseudo-transient continuation whose pseudo-time step
+follows the switched-evolution-relaxation (SER) rule (Kelley \& Keyes 1998),
+accepts its steps by a non-monotone line search over a Grippo window, and is
+globalized by a scaled trust region (\path{steady_newton.f90}). This
 reaches residual levels unattainable by marching at a small fraction of the cost:
 WASP-121b converges in 8 Newton iterations ($\sim$200 marching-steps of cost,
 vs.\ $>$35{,}000 insufficient marching steps), HD189733b in 33\,s where marching
@@ -1394,7 +1398,41 @@ Variable & Effect \\
   next $n$ assemblies of the stationary residual, so that a reader sharing
   no arithmetic with the code can rebuild each cell's balance
   (\path{conservation_budget.f90}, whose header states the four momentum
-  branches and the sign of the gravitational work). \\
+  branches and the sign of the gravitational work). Written to
+  \path{output/conservation_budget_<nnnn>.txt}, every real at seventeen
+  significant digits: for each cell the face areas, the cell volume, both
+  faces of all three conserved variables, the face potentials and the cell
+  potential, the gravitational work the energy-flux difference carries
+  inside it, the face pressures or the equilibrium-pressure departures the
+  momentum branch in force uses, the explicit and transport sources, the
+  radiative heating and cooling, and the assembled rows. Schema~3 adds, for
+  the upper face of each row, the left and right face states $(\rho,v,p)$
+  the Riemann problem was solved on, the well-balanced pressure data
+  (\texttt{wb\_dp\_eq}, \texttt{wb\_dev\_L}, \texttt{wb\_dev\_R} and the
+  jump \texttt{dp\_WB} the Roe flux uses), the central mass transport
+  $\tfrac12(F_L+F_R)$, the part of the numerical mass flux the pressure jump
+  carries (the production \texttt{Num\_flux} minus the same call with the
+  jump set to zero: an attribution, not a flux; NaN where the flux is not
+  Roe or the option is off) and the recomputed \texttt{Num\_flux} mass flux;
+  for each cell $|R_{\rm mass}|$, the scale the stationary solve divides it
+  by, their ratio and the signed running sum of $V R_{\rm mass}$ over the
+  physical cells; and a header block for the base: the reservoir, the
+  interior state the base condition reads at the face (the first cell's own
+  constant-density equilibrium under \texttt{Well balanced: True}, its
+  hydrostatic isentrope otherwise), the characteristic face velocity, both
+  states of face~0, the numerical base mass flow and the wind-window flux.
+  The run's outputs are bitwise the same with the export on or off; absent
+  or \texttt{0}, nothing is written and no file is opened.
+  \path{EXHALE_conservation_budget.py} (repository root) reads the file,
+  rebuilds each row from the exported terms alone, and reports assembly
+  consistency (an arithmetic tolerance) and stationarity (the
+  certification's tolerance) separately. \\
+\texttt{EXHALE\_REACTION\_HEAT\_RECIPIENTS=0} & Control run for
+  \texttt{Molecular reaction heat} (Table~\ref{tab:inp-opt}): put the
+  product-state recipients of the molecular reaction heat back where the
+  ledger had them before (prompt deposit) and restore the total density as
+  the third body of the H$_2$ association pair, so the whole correction is
+  measured at once. It changes no enthalpy. \\
 \texttt{EXHALE\_EVAL\_STATE\_DUMP=1} & Write the state and the
   composition-derived module state (particle and electron counts) at named
   points of the stationary evaluation and of the final certification to
@@ -1791,7 +1829,26 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   ledger (the charge exchange in its own channel,
   \texttt{heat\_charge\_exchange}). Needs \texttt{Molecular chemistry}, so an
   atomic run is unaffected
-  to the bit. Writes the column \texttt{heat\_mol\_chem} to
+  to the bit.
+  \\
+  & &  Each channel deposits what its measured product state leaves to
+  translation and no more: the dissociative recombinations of H$_2^+$ and
+  HeH$^+$ leave one H atom in $n=2$ (10.199\,eV of electronic excitation,
+  handed to the H($n{=}2$) population when the run carries one and otherwise
+  radiated) and return 0.749 and 1.554\,eV to the gas; the H$_3^+$
+  recombination leaves 2.4795\,eV as vibrational energy of the H$_2$
+  fragment (the mean of $v=5$ and 6, where the measured distribution peaks);
+  and the 4.478\,eV of the three-body association H\,$+$\,H\,$+$\,M is
+  internal energy of the new molecule. The two internal shares branch
+  between radiation and heat through the vibrational quench fraction
+  $(1+n_{\rm cr}/n)^{-1}$ (Hollenbach \& McKee 1979), formed from the
+  all-level radiative rate of the 302-level H$_2$ ladder against published
+  collisional rates for each of the three colliders H, H$_2$ and He. The
+  association itself uses the collider-resolved rate coefficient, not the
+  $M=$\,H$_2$ coefficient on the total density.
+  \texttt{EXHALE\_REACTION\_HEAT\_RECIPIENTS=0} restores the older
+  prompt-deposit behavior and the total density as the third body, for a
+  control run (Table~\ref{tab:env}). Writes the column \texttt{heat\_mol\_chem} to
   \texttt{output/Heating\_breakdown.txt}
   (\path{src/modules/lower_atmosphere/molecular_reaction_heat.f90},
   \texttt{Update\_EXHALE\_stage1} Sec.~141). \\
@@ -2131,7 +2188,9 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   first-order flux. It applies to both reconstructions and to the
   PLM\,$\to$\,WENO3 continuation. Turning it on \emph{moves every result}: the
   pressure/gravity pair is in every run, and the two discretizations are both
-  second-order consistent with neither a subset of the other. It is stated in
+  second-order consistent with neither a subset of the other. It is a
+  measurement option: the species-row stationary solves do not improve under
+  it. It is stated in
   \texttt{EXHALE\_setup.out} and \texttt{EXHALE\_resolved.out}, and written
   as the option token \texttt{wellbal}
   in a state file's \texttt{\# options} line, where \texttt{Restart option
@@ -2447,7 +2506,12 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   with $T=p/(n_{\rm tot}+n_e)$ of the new composition and $E$ rebuilt from its
   caloric equation of state, the kinetic part unchanged. A route through the
   iteration and not an equation set: a stationary state is stationary under
-  either. Any other word stops the run. \\
+  either, and the energy each held-pressure update adds is printed at every
+  pass. Why it exists: at a base many decades subsonic, a pressure step of
+  $10^{-4}$ against the reservoir drives a face mass flux decades above the
+  wind's into the next solve, and holding the pressure removes that step.
+  On the LHS\,1140\,b molecular states it removes the base step but does not
+  by itself make the next solve converge. Any other word stops the run. \\
 \texttt{Ionization transport:} & \texttt{True}/\texttt{False}
   (def.\ \texttt{False}) & Carry the ionization state with the flow:
   $x({\rm H\,II}) = n({\rm H\,II})/n_{\rm H}$, $x({\rm He\,II})$ and
@@ -2598,7 +2662,8 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
 \texttt{Caloric EOS:} & \texttt{ladder} $|$ \texttt{monatomic}
   (def.\ \texttt{ladder}) & The caloric equation of state. \texttt{ladder}:
   every atom, ion and electron stores $\tfrac32 kT$ and H$_2$ its
-  rovibrational energy (the Roueff et al.\ 2019 ladder), so $\gamma_{\rm eff}$
+  rovibrational energy (the observed 302-level ladder of Roueff et al.\
+  2019), so $\gamma_{\rm eff}$
   depends on composition and $T$; in an 80\% H$_2$ layer that is not $5/3$.
   \texttt{monatomic}: H$_2$ too stores $\tfrac32 kT$ and $\gamma=5/3$
   everywhere, kept as a \emph{comparison} option for a published model whose
@@ -2693,6 +2758,15 @@ history line. A factor outside it is a physics change and must be named like
 any other token. A value this code never wrote is refused even when named.
 The run log and \texttt{EXHALE\_setup.out} print the factor in
 \texttt{ES13.6}, and the report names a legacy-token migration.
+
+\paragraph{The mass density a restart reads.}\label{sec:restartdensity}
+The two state files state the mass density twice: the \texttt{rho} column,
+and the species densities that weigh it. The conserved variable is the
+authority. The density is read from its own column and the loaded species
+are projected onto it, so the state a restart evaluates is the state the
+file names to the last bit, whatever mass closure the written composition
+carries; the departure between the two is reported on every restart
+(\path{load_IC.f90}).
 
 \subsection{\texttt{metals.inp}: trace-metal abundances}
 \texttt{metals.inp} is \emph{optional}: if absent, the run is metals-off (H/He
@@ -3204,7 +3278,8 @@ $\mathrm{O(^1D)+H_2\to OH+H}$, \\
 $\mathrm{H_2O}+h\nu\to\mathrm{OH+H}\,/\,\mathrm{H_2+O(^1D)}\,/\,\mathrm{O+H+H}$,
 \quad $\mathrm{OH}+h\nu\to\mathrm{O+H}$.
 \end{center}
-Every coefficient is transcribed from a named evaluation with its validity
+Every coefficient is transcribed from a named evaluation (Baulch et al.\
+2005 and the IUPAC evaluations) with its validity
 range at the code site, and the reverse of each two-body pair is generated by
 detailed balance against a NIST-JANAF Shomate table rather than transcribed
 independently: the pairs run close to cancellation on a hot base, where an
