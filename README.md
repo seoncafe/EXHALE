@@ -32,7 +32,7 @@ saved profiles over the required flow-crossing interval when making a
 physical-time marching claim. The default marching acceptance criterion in
 v1.00 and v1.10 uses K=3 flow-crossing times; ordinary solver termination
 does not automatically apply it.
-The checker `LHS1140b/tools/marching_acceptance.py` requires full-window ranges of at most
+The criterion requires full-window ranges of at most
 0.004 dex in T and rho in every physical cell. Velocity spans must be at
 most 1 percent of the minimum speed in cells that keep one sign and remain
 at Mach 0.01 or above; the remaining cells use 1 percent of the maximum
@@ -47,22 +47,19 @@ This is EXHALE v1.10. This
 README and [`README_HOWTO.md`](README_HOWTO.md) are the v1.00 files with what
 differs in v1.10 added where it applies, in a sentence that begins "v1.10:"
 or names the version; the differences are collected in
-[Changes in v1.10](#changes-in-v110) below and recorded change by change in
-[`md/changes_v100_to_v110_20261017.md`](md/changes_v100_to_v110_20261017.md).
+[Changes in v1.10](#changes-in-v110) below.
 Where a v1.10 sentence and the inherited text disagree, the v1.10 sentence
 holds. Numbers quoted in the inherited text are v1.00 measurements and were
 not measured again on v1.10 unless a v1.10 sentence says so. A document,
 script or example that exists only in the v1.00 tree is named by its path
 there, `../EXHALE_v1.00/...`, which resolves where the two trees sit side by
-side, as they do in the development workspace.
+side.
 
 ---
 
 ## Changes in v1.10
 
-The table summarizes [`md/changes_v100_to_v110_20261017.md`](md/changes_v100_to_v110_20261017.md),
-which compares the committed heads of the two branches against their common
-origin, the v1.00 copy of 2026-10-12 (`provenance/source_copy.json`). Each
+Each
 row was checked again against the v1.10 source on 2026-10-27 in the file it
 names, except where it says otherwise; line numbers are not quoted because
 the source has moved since.
@@ -78,12 +75,6 @@ the source has moved since.
 | P7 | The certification report maps the cells that carry H3+ outside the validity range of the H3+ cooling (20-5000 K in LTE, 300-5000 K for the non-LTE rows); the map is a flag and does not refuse certification (only a nonfinite argument does) | `certification.f90`, `src/modules/lower_atmosphere/h3p_cooling.f90` | molecular certification |
 | P8 | Regional stabilization, a finite-duration criterion for physical-time marching (below) | `src/modules/time_step/regional_convergence.f90` | off; `Regional convergence: True` |
 | P9 | Reuse of the stellar photoionization and heating rates of a cell whose inputs are bitwise equal inside a held composition (speed only) | `src/modules/radiation/util_ion_eq.f90` | off; `EXHALE_HELD_STELLAR_RATE_REUSE=1` |
-
-The 21 error corrections of the change record (E1-E21) were applied to
-v1.00 as well on 2026-10-17 (its section 7), except the parts that belong to
-P1 and P3 (the boundary record of E7, the v1.10 form of E9, the H2+, H3+ and
-HeH+ pins of E1, the helium budget of E11, the carrier mask of E12, the
-exclusion of transported rows in E14); they are not v1.10 differences.
 
 Inputs that only v1.10 reads: `Regional convergence` and the 23 further
 `Regional ...` keys (all in `known_keys` of `input_read.f90`, parsed by
@@ -159,10 +150,7 @@ mass-flow limits override the common `Regional inventory limit` and
 `Regional ...` keys are rejected.
 
 These are proposed finite-duration criteria, not universal physical accuracy
-bounds or a proof that oscillations remain bounded indefinitely. See
-[the definitions](md/CONVERGENCE_LEVELS.md),
-[the default-setting rationale](md/PROPOSAL_20261016_upper_focused_regional_defaults.md),
-and [the completed-results assessment](md/REVIEW_20261016_completed_results_convergence_conditions.md).
+bounds or a proof that oscillations remain bounded indefinitely.
 
 ### Progress output and plots
 
@@ -214,10 +202,6 @@ An unclosed boundary cannot establish a certified stationary solution.
 This implementation does not establish stationary solutions for every
 historical input state.
 
-The boundary design and validation record are in the
-[design](md/DESIGN_20261012_stationary_boundary_closure.md),
-[integration report](md/IMPLEMENTATION_20261012_stationary_boundary_chemistry.md),
-and [boundary analysis](md/stationary_boundary_thermochemistry_efficient_analysis.md).
 Optional fixed-state stellar-rate reuse is implemented in `util_ion_eq.f90`;
 it is a computational option with restricted reuse conditions, not new physics.
 
@@ -226,11 +210,6 @@ it is a computational option with restricted reuse conditions, not new physics.
 - Build the current source explicitly. Existing executables and workflow
   snapshots may represent earlier source revisions; their presence does not
   show that the latest source was compiled.
-- `make check` uses the native `backup/regression/run_check.sh`. The complete
-  16-case harness and goldens were installed on 2026-11-09. The runner and
-  comparator match v1.00; the references are outputs of this tree's binary.
-  `make test` runs the available scientific suites and can execute model cases;
-  it is not a documentation-only check.
 - As in v1.00: `Max steps` and `EXHALE_MAXSTEPS` set separate limits. Likewise,
   `EXHALE_MARCH_FLUX_TH` controls marching stabilization, whereas `Flux spread
   tol` controls stationary acceptance. Do not treat them as interchangeable.
@@ -241,19 +220,9 @@ it is a computational option with restricted reuse conditions, not new physics.
   hooks, the expected-failure and invalid-input test rows, and their drivers
   and fixtures. Real failure detection, retry, rollback and the rejection of
   invalid inputs remain. The proposed input migrations are not implemented.
-  The [options and cleanup review](md/environment_variable_options_survey_20261016.md)
-  lists the removed names and the decisions; check the actual reader for the
+  Check the actual reader for the
   interface supported by a particular executable. Workflow snapshots and
   executables built before that date still contain the removed controls.
-
-The development tree originated from the October 12, 2026 v1.00 copy, recorded
-in `provenance/source_copy.json`. Historical source, input, and executable
-records are retained under `provenance/`; calculations use `runs/` and workflow
-records use `workflows/`. These local development artifacts and the linked
-`md/` reports are not in the git remote and are not distributed with a source
-checkout. The [handoff](md/HANDOFF_20261015_marching_goal_active.md) records
-the user-directed calculation hold; the word "active" in its historical
-filename is not an instruction to resume calculations.
 
 ---
 
@@ -487,8 +456,7 @@ filename is not an instruction to resume calculations.
   `Outer radius [R_p]:` (on `wasp_full_newton`, measured before update log
   stage 3 section 138 changed the columns, the default Roche L1 face,
   1.574 R_p at Mach 0.95, moves rho and v by up to 15-17% near 1.31 R_p and
-  log10 Mdot by 0.01 against an outer face at 2 R_p;
-  `../EXHALE_v1.00/md/outer_boundary_subsonic_review_20261009.md` section 5)
+  log10 Mdot by 0.01 against an outer face at 2 R_p)
 - `Composition update holds: pressure` (default `energy`): where the
   stationary solve alternates a hydrodynamic solve with the fixed-wind
   element and carrier relaxations, the composition update keeps the density,
@@ -501,7 +469,6 @@ filename is not an instruction to resume calculations.
   a fixed point both values leave the state unchanged, and the energy each
   update adds is printed at every pass. On the LHS 1140 b molecular states it
   removes the base step but does not by itself make the next solve converge
-  (`../EXHALE_v1.00/md/lhs1140b_composition_update_pressure_20260924.md`)
 - `Well balanced: True` (default False) carries the departure from each
   cell's own local hydrostatic equilibrium through the reconstruction, the
   Riemann jumps and the pressure force, so a discrete hydrostatic
@@ -622,12 +589,7 @@ filename is not an instruction to resume calculations.
   density` is then unnecessary, and a pair that disagrees by more than 1% is
   refused at startup rather than one of the two silently winning
 - OpenMP parallelization of the cell sweeps, bitwise identical to the serial
-  result: the suite `src/tests/thread_count_identity` runs 200 steps of the
-  metals-on regression case at 1 and 8 threads and compares every data line
-  (it found, and the tree fixed on 2026-09-26, a shared scratch variable of
-  the metal sweep that made metals-on runs between 2026-09-25 and that fix
-  depend on the thread count). v1.10: the suite is in this tree, but it was
-  not run for this README; the identity above is the v1.00 measurement
+  result
 
 **Tooling**
 
@@ -663,14 +625,6 @@ filename is not an instruction to resume calculations.
   result that uses it reports `f`. For LHS 1140 b He 10830 the code is
   `LHS1140b/he10830_equivalent_width.py` (`broaden_excess`,
   `width_matching_fwhm_kms`, `width_matched_product`, CLI `--width-matched`)
-  and `../EXHALE_v1.00/LHS1140b/models/.P1/fiducial_conduction/ew_of_state.sh`, whose
-  `EW_NONTHERMAL_KERNEL=width_match` adds `EW_kernel=` and `fwhm_kms=` to
-  `EW.txt` (`EW=` stays the unbroadened value); the script evaluates the state
-  with `Restart intent: stationary evaluate`, stages its
-  `conserved_state.txt` and records the written state's certificate as
-  `written_state`. v1.10: the same script with its root set to this tree is
-  `LHS1140b/ew_of_state.sh`, beside `LHS1140b/he10830_equivalent_width.py`
-  and `LHS1140b/winered_hires_y.sh` (added to this tree on 2026-10-27)
 - Lower atmosphere from Photochem with a two-way coupling:
   `src/utils/photochem_to_lower_profile.py` writes the lower-atmosphere profile
   and, with `--conducted-heat-flux F` (default 0, profile unchanged), solves
@@ -727,32 +681,7 @@ filename is not an instruction to resume calculations.
   consistency, whose tolerance is arithmetic, and stationarity, whose
   tolerance is the certification's
 - Python loaders (`examples/exhale_io.py`) driven by the `# columns` schema
-  header every output file carries; a regression harness over a
-  seventeen-case physics matrix (`make check`, bitwise first, else within a
-  stated relative tolerance); and 61 assertion suites (every executable `src/tests/*/run.sh`)
-  plus the standalone `element_census_tests`, `diffusion_tests` and
-  `residual_determinism` (`make test`), which print
-  one `PASS|FAIL <name> measured= reference= tol=` line per assertion.
-  Suites of the stage-3 physics: `conducted_heat_column` (the column energy
-  balance under the conducted heat: the zero-flux identity, a manufactured
-  column against its analytic solution, the energy budget, the published
-  V-T rates, the band transfer options), `low_energy_electron_degradation`
-  (the 10.2-30 eV partition against the authors' tables),
-  `ionization_stage_enthalpy_flux` (the enthalpy the carried stages move
-  relative to their element), `helium_metastable_transport` (the carried
-  He 2^3S level: simplex, write-back, local limit, source ledger, a
-  manufactured column), `adv_element_velocity` (the `_adv` rows stepped on
-  each element's nuclei velocity), `state_mapper` (`map_state_to_grid.py`, including
-  the first refined cell and the reservoir rescaling) and
-  `element_flux_closure` (the closure's window, its resume rule and the
-  conducted-flux residual); the exact-factor tokens and the
-  stored-pair evaluate are rows of `grid_and_gates`. The native regression
-  harness now runs this tree's 16 default cases against its own refreshed
-  goldens. Separately, `src/tests/` holds 67 executable suites (counted 2026-10-27), the 61 of
-  v1.00, `named_input_output`, and the v1.10 suites
-  `molecular_element_enthalpy`, `molecular_ion_constraints`,
-  `molecular_ion_inventory`, `molecular_ion_transport` and
-  `regional_convergence`
+  header every output file carries
 - A restart is a contract, not a file copy. Both state files carry a
   `restart_schema 1` metadata block (reservoir, species columns, grid,
   constants, twenty-six option switches, physical time, source), and a load whose
@@ -853,7 +782,6 @@ filename is not an instruction to resume calculations.
   factor of the next pass, which a restart does not inherit
   (`EXHALE_CARRIER_TRUST`, `EXHALE_DIFF_OMEGA` pass them back). Until
   2026-09-29 the pair was `output/{Hydro_ioniz,Ion_species}_last_pass.txt`
-  (`../EXHALE_v1.00/md/Update_EXHALE_stage3.md` section 33)
 - The advection-corrected `_adv` profiles the analysis and transit tools read
   say row by row what they are: two validity fields, `adv_T_status` and
   `adv_comp_status`, for the temperature and the composition separately, and
@@ -923,19 +851,12 @@ git clone https://github.com/seoncafe/EXHALE
 cd EXHALE
 git checkout v1.10                      # v1.10: this tree is branch v1.10
 make                                    # ifx; use make FC=gfortran or FC=ifort to override
-make check                              # native golden comparison over the case matrix
-make test                               # the assertion suites (physics, grid and gates, ...)
 ```
-The Makefile selects `ifx` from `PATH` by default. On this machine, the
-installed build uses `/data/opt/oneapi_2026.1.1/setvars.sh`, the pinned
-`/data/opt/oneapi_2026.1.1/compiler/2026.1/bin/ifx` (2026.1.1), the
-matching `MKLROOT`, and the conda-forge GCC link driver. A login shell may
-select a different `ifx`; pin the compiler and library paths when reproducing
-that installed executable. The Makefile fixes the Wind-AE source and link
+The Makefile selects `ifx` from `PATH` by default. The Makefile fixes the Wind-AE source and link
 object order explicitly and rejects a source-list mismatch. The Intel build
 links MKL with
 `-qmkl=sequential`. With `make FC=gfortran`, it uses OpenBLAS from the compiler's
-prefix when available (as with the conda-forge gfortran 16.2 on this machine),
+prefix when available,
 records that path in the rpath, and otherwise links the system `-llapack`
 (`make LAPACK_LIBS='...'` overrides). OpenBLAS runs its own thread pool,
 independent of OpenMP and by default as wide as the machine: at startup the
@@ -983,8 +904,8 @@ For a physical-time marching result, set `Run mode: phys`, retain
 profile snapshots, and measure the full radial temperature, density, and
 velocity bands over the required flow-crossing window. The executable's
 `Run mode: init` default is an initialization route, not a scientific
-acceptance criterion. Both versions use the external K=3 profile
-checker as the default acceptance test; ordinary solver stops do not automatically satisfy that test.
+acceptance criterion. Both versions use the K=3 profile
+criterion as the default acceptance test; ordinary solver stops do not automatically satisfy that test.
 Check that the outer face is supersonic before treating the mass-loss rate
 as quantitative, because a subsonic outer boundary can influence it.
 
@@ -1020,7 +941,7 @@ schemas, convergence recipes, post-processing) is in
   manual is one higher than in v1.00; the chapters after it, with their
   examples and numbers, are v1.00 material
 - [`../EXHALE_v1.00/docs/Update_EXHALE_stage3.pdf`](../EXHALE_v1.00/docs/Update_EXHALE_stage3.pdf): the current
-  update log (stage 3, from 2026-09-23; source `../EXHALE_v1.00/md/Update_EXHALE_stage3.md`).
+  update log (stage 3, from 2026-09-23).
   It carries the code-size appendix against the original ATES and the list of
   source inherited unchanged from it (`../EXHALE_v1.00/docs/Update_EXHALE_appendix.tex`,
   measured 2026-10-05, after section 102, with `src/utils/codesize.py`: 236
@@ -1028,9 +949,7 @@ schemas, convergence recipes, post-processing) is in
   [`../EXHALE_v1.00/docs/Update_EXHALE_stage2.pdf`](../EXHALE_v1.00/docs/Update_EXHALE_stage2.pdf): sections
   1-17 (2026-09-05 to 09-22);
   [`../EXHALE_v1.00/docs/Update_EXHALE_stage1.pdf`](../EXHALE_v1.00/docs/Update_EXHALE_stage1.pdf): sections 1-171, the dated changelog against
-  the original ATES. v1.10 keeps no update log of its own; its development
-  record is the dated reports in `md/` (a working-copy directory, not in the
-  git remote), starting from `md/changes_v100_to_v110_20261017.md`
+  the original ATES. v1.10 keeps no update log of its own
 - [`../EXHALE_v1.00/examples/README.md`](../EXHALE_v1.00/examples/README.md): what each of the numbered
   example configurations demonstrates, and the exact lines it adds
 - [`../EXHALE_v1.00/README_photochem.md`](../EXHALE_v1.00/README_photochem.md): the Photochem build the
@@ -1070,9 +989,12 @@ schemas, convergence recipes, post-processing) is in
 
 `docs/` holds further typeset notes on individual investigations, and `md/`
 the Markdown memos of the development record. v1.10: this tree's `docs/`
-holds only the user manual and the physics document, with their sources and
-figures (and `docs/defect_fixes_20261027/`); the further notes are in
-`../EXHALE_v1.00/docs/`, and `md/` holds the v1.10 development reports.
+holds the user manual and the physics document, with their sources and
+figures, the notes `docs/jfnk_march_jfnk_lhs1140b`,
+`docs/marching_acceleration_20261109` and `docs/stationary_vs_marching_lhs1140b`
+(`.tex` and `.pdf`, class `docs/my_memo.cls`), `docs/compare_vulcan_photochem.py`
+and `docs/defect_fixes_20261027/`; the further notes are in
+`../EXHALE_v1.00/docs/`.
 
 ---
 
@@ -1131,21 +1053,5 @@ figures (and `docs/defect_fixes_20261027/`); the further notes are in
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-11-13 14:17 KST
-
-
-### Regression references (2026-11-09)
-
-The native `backup/regression/` harness contains all 16 default cases and
-references refreshed once at the end of the reviewed change series. Runs
-used this tree's installed ifx 2026.1.1 binary, one thread on lart2. The runner
-and comparator are identical in both versions, but each golden comes from
-its own version: molecular-ion transport and written heating diagnostics
-differ between the trees. The capped cases are relaxation snapshots, not
-accepted physical solutions. `iontrans_metals` is a labeled code-path control
-with a subsonic L1 outer face; a physical 2 R_p stored state is still pending.
-`oxygen_chemistry` is outside the default list and its old golden is unchanged.
-The original references and migration records are preserved in
-`EXHALE_v1.10/scratch_golden_refresh_step2_20261109/` at the workspace root.
-See the shared update log, `EXHALE_v1.00/md/Update_EXHALE_stage3.md`, section 182.
+Last updated: 2026-11-13 15:08 KST
 
