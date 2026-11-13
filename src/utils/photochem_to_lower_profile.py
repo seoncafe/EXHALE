@@ -196,7 +196,8 @@ def write_flux_file(args, path, transmission=None):
 #               [0, 1] (the projected area of a hemisphere is uniform in
 #               mu), mean mu 1/2;
 #   xi_w = 1/4  the planet average: diurnal factor 1/2, mu as above.
-# Per model (`per_model`, what each code assumes by itself, the default):
+# Per model (`per_model`, what each code assumes by itself; the default is
+# `wind`, see --face-geometry):
 #   Photochem: photon_flux * diurnal_fac at one zenith angle
 #     (photochem_common.f90:311; diurnal_fac 0.5, photochem_types.f90:399;
 #     the zenith is --zenith, 48 deg), i.e. 0.5 cos(48 deg) F = 0.335 F on
@@ -648,8 +649,7 @@ def write_face_radiation_record(args, geometry, xi_wind, face, face_note,
     path = os.path.join(args.run_dir, 'wind_face_radiation.txt')
     g = geometry
     with open(path, 'w') as f:
-        f.write('# radiation through the matching face'
-                ' (md/matching_face_radiation_python_20261010.md)\n')
+        f.write('# radiation through the matching face\n')
         f.write('# face_geometry %s\n' % g['name'])
         f.write('# wind_dilution %s\n' % ('%.6g' % xi_wind
                                           if xi_wind is not None else 'none'))
@@ -1944,20 +1944,18 @@ def main():
                     help='solar zenith angle of Photochem [deg] (default 48);'
                          ' under --face-geometry wind the convention sets it'
                          ' and stating it is refused')
-    # DEFAULT `wind` (user decision 2026-10-10): the column models take the
-    # stellar energy the wind's input states (2D approximate method ->
-    # dayside_dilution), one convention for every flux crossing the face.
-    # `per_model` reproduces runs made before that date.
+    # DEFAULT `wind`: the column models take the stellar energy the wind's
+    # input states (2D approximate method -> dayside_dilution), one
+    # convention for every flux crossing the face. `per_model` keeps each
+    # column model's own convention.
     ap.add_argument('--face-geometry', default='wind',
                     choices=FACE_GEOMETRIES,
                     help='how the column models take the stellar beam:'
-                         ' per_model (before 2026-10-10; Photochem 0.5 F at --zenith,'
+                         ' per_model (Photochem 0.5 F at --zenith,'
                          ' the climate model F/4 over its zenith quadrature,'
                          ' each code\'s own convention) or wind (default; both take'
                          ' the wind\'s dayside dilution xi_w F per unit face'
-                         ' area with the angular distribution it implies;'
-                         ' md/matching_face_radiation_python_20261010.md'
-                         ' section 2)')
+                         ' area with the angular distribution it implies)')
     ap.add_argument('--wind-dilution', type=float, default=None,
                     help='the wind\'s dayside dilution xi_w (1, 0.5 or'
                          ' 0.25; EXHALE_setup.out "Dayside dilution") for'
@@ -1965,8 +1963,9 @@ def main():
                          ' --wind-face-optical-depth the file states it')
     ap.add_argument('--wind-face-optical-depth', default=None,
                     help='the wind\'s radial optical depth at the matching'
-                         ' face below 120.1 nm (format: md/matching_face_'
-                         'radiation_python_20261010.md section 3). Given, the'
+                         ' face below 120.1 nm (a file whose first line is'
+                         ' "# EXHALE wind_face_optical_depth 1"; format in'
+                         ' read_wind_face_optical_depth). Given, the'
                          ' spectrum Photochem and the climate model take is'
                          ' attenuated by it at each model\'s own slant, and'
                          ' the X-rays it transmits below the climate model\'s'
@@ -1975,9 +1974,7 @@ def main():
                          ' (default), the spectrum is the star\'s')
     ap.add_argument('--toa', type=float, default=None,
                     help='REFUSED: the model top is the matching level'
-                         ' (its top face at --p-match; user decision'
-                         ' 2026-10-07, md/AN_overlap_structural_design_'
-                         '20261008.md). Kept only to say so')
+                         ' (its top face at --p-match). Kept only to say so')
     ap.add_argument('--p-top-bar', type=float, default=None,
                     help='REFUSED, for the reason --toa is')
     ap.add_argument('--trial-flux-H2', type=float, default=None,
@@ -2096,8 +2093,7 @@ def main():
     if args.toa is not None or args.p_top_bar is not None:
         sch.refuse('--toa/--p-top-bar: the model top is the matching level '
                    '(its top face at --p-match %.3e bar); a top above it is '
-                   'the overlap the matching surface removes '
-                   '(md/AN_overlap_structural_design_20261008.md). Remove '
+                   'the overlap the matching surface removes. Remove '
                    'the option' % args.p_match)
     if args.trial_flux_H2 is not None and args.trial_flux_H == 0.0:
         sch.refuse('--trial-flux-H2 without an elemental --trial-flux-H')
