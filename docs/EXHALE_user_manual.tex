@@ -66,6 +66,114 @@ this document is the practical user guide.
 \tableofcontents
 \input{v110_user_updates}
 
+% Two further subsections of the section "What changed in v1.10".
+\subsection{Further details of the regional test}\label{sec:v110-regional-details}
+
+\path{examples/regional_convergence/Salz.inp} (HD\,209458\,b after Salz et
+al.\ 2016) and \path{examples/regional_convergence/Huang.inp} (WASP-121\,b,
+case B of Huang et al.\ 2023, run with \path{Huang_metals.inp} copied to
+\texttt{metals.inp}) are complete physical inputs; their headers say how to
+run them. The reconstruction allowed is one scheme from the first step,
+\texttt{Reconstruction scheme: WENO3} or \texttt{PLM} alone: the two-stage
+\texttt{PLM+WENO3} with its \texttt{du\_th [PLM,WENO3]} hand-off and the
+environment variable \path{EXHALE_UPDATE_MAP} are refused.
+\texttt{Secondary\_ionization: True} (the default) and \texttt{False} are
+allowed; \texttt{Staged} is refused.
+
+\texttt{Regional validation windows} accepts 4 to 32 and
+\texttt{Regional confirmation factor} 2 to 4 (defaults 4 and 2, hence eight
+consecutive windows). \texttt{Regional settling seconds} defaults to zero.
+Unsupported combinations stop at startup.
+
+The monitor samples every accepted step. The mass flow it tests is the
+numerical face mass flux combined with the Runge--Kutta weights of the
+accepted step; the regional internal energy excludes the kinetic energy.
+Density, pressure and temperature are measured relative to themselves, the
+velocity relative to the local sound speed, and the electron, total and
+species number densities relative to the hydrogen-nucleus density; the regional
+mass and internal-energy inventories are relative to themselves and the mass
+flow relative to $4\pi\rho c_s r^2$ at the top of its region. The limits are
+therefore not relative tolerances on every rare species or on a nearly zero
+velocity. They are proposed finite-duration criteria, not universal accuracy
+bounds, and a pass is not a proof that oscillations remain bounded
+indefinitely. A small change over time alone does not establish stationary
+convergence.
+
+\subsection{Source changes against v1.00 (P1--P9)}\label{sec:v110-changes}
+
+What v1.10 does that v1.00 does not. Each item was checked against the v1.10
+source on 2026-10-27 in the file it names, except where it says otherwise.
+\begin{description}
+\item[P1] Thermochemical closure at the stationary lower boundary: the ghost
+  composition and \texttt{Apply\_BC(rho, T)} are iterated to one fixed point
+  (composition to $10^{-11}$, $dT/T$ and $d\rho/\rho$ to 128 machine
+  epsilons, at most 60 iterations, scalar Aitken relaxation factor at most
+  16), and a closure that fails is a refusal. The certification gains the
+  entry ``lower boundary thermochemical closure''; the base boundary models
+  become \path{..._face_at_level_v6} and
+  \path{..._face_at_level_discrete_equilibrium_v7} (v1.00: \texttt{v4},
+  \texttt{v5}). On in the Newton and stationary route and in every
+  final-state certification; no input key
+  (\path{src/modules/states/stationary_boundary_chemistry.f90},
+  \path{reservoir_composition.f90}, \path{base_boundary.f90},
+  \path{src/modules/time_step/steady_newton.f90}, which calls
+  \texttt{stationary\_ghost\_state}; \path{certification.f90} queries its
+  result).
+\item[P2] The state a run writes is certified after its sources and lower
+  ghosts are rebuilt from it (\texttt{certify\_the\_state\_to\_be\_written},
+  called on the marched, direct steady and stationary-restart output routes),
+  so the written heating, cooling and ghosts are those of the certified state
+  (\path{src/EXHALE_main.f90}; always on).
+\item[P3] H$_2^+$, H$_3^+$ and HeH$^+$ are transported carriers beside H$_2$
+  (and OH, H$_2$O and CO with oxygen chemistry), with zero relative molecular
+  diffusion, the same eddy mixing, and the hydrogen and helium nucleus budgets
+  as constraints; this widens \texttt{Molecular carrier transport: True}
+  (\path{diffusive_photochemistry.f90}, \path{element_inventory.f90}).
+\item[P4] \texttt{Ionization transport: True} with \texttt{Coupled carrier
+  solve: True} is accepted in a molecular gas, where the ion stages are Newton
+  carrier rows; it stays refused in an atomic gas, and \texttt{On stall}
+  stays refused (\path{input_read.f90}; opt-in).
+\item[P5] The enthalpy flux of the element carriers is taken from the actual
+  step flux, including the helium share of HeH$^+$ (with \texttt{He\_diffusion},
+  the interdiffusion enthalpy and carrier transport; not checked again on
+  2026-10-27; whether v1.00 counted it twice was not determined;
+  \path{diffusive_photochemistry.f90}, \path{steady_residual.f90}).
+\item[P6] The carrier and elemental transport rows of the certification are
+  judged on a selectable region, \texttt{Certification region: all} (default)
+  or \texttt{wind} with \texttt{Wind start radius [R\_p]:} (default 1.2);
+  every other row gates on the whole column (\S\ref{sec:newton}, the
+  certification; \path{certification.f90}, \path{EXHALE_main.f90},
+  \path{input_read.f90}).
+\item[P7] The certification report maps the cells that carry H$_3^+$ outside
+  the validity range of the H$_3^+$ cooling (20--5000\,K in LTE, 300--5000\,K
+  for the non-LTE rows); the map is a flag and does not refuse certification
+  (only a nonfinite argument does; \path{certification.f90},
+  \path{h3p_cooling.f90}).
+\item[P8] Regional stabilization, the finite-duration criterion for
+  physical-time marching of \S\ref{sec:v110-user} (off;
+  \texttt{Regional convergence: True};
+  \path{src/modules/time_step/regional_convergence.f90}).
+\item[P9] Reuse of the stellar photoionization and heating rates of a cell
+  whose inputs are bitwise equal inside a held composition, for speed only
+  (off; \path{EXHALE_HELD_STELLAR_RATE_REUSE=1};
+  \path{src/modules/radiation/util_ion_eq.f90}).
+\end{description}
+Inputs that only v1.10 reads: \texttt{Regional convergence} and the 23
+further \texttt{Regional ...} keys (all in \texttt{known\_keys} of
+\path{input_read.f90}, parsed by \texttt{regional\_read}); every v1.00 input
+key is accepted. Environment variables that only v1.10 reads (all listed in
+README\_HOWTO, ``Measurement hooks you may meet in a log''):
+\path{EXHALE_BOUNDARY_CLOSURE_MAXITER}, \path{EXHALE_BOUNDARY_CLOSURE_TRACE},
+\path{EXHALE_BOUNDARY_FULL_SWEEPS}, \path{EXHALE_STATIONARY_BOUNDARY_SEED},
+\path{EXHALE_CLOSURE_MAP_PAIRS}, \path{EXHALE_LIVE_DERIVATIVE_STEPS},
+\path{EXHALE_HELD_STELLAR_RATE_REUSE}, \path{EXHALE_STELLAR_RATE_REUSE_TRACE}.
+The defaults in \path{parameters.f90} are those of v1.00. Behavior that
+changes without a key: P1, P2, P6 and P7, the wider \texttt{Molecular
+carrier transport} of P3, and the acceptance of P4. A state certified by
+v1.00 is to be evaluated again: its boundary model differs (P1), and a
+\path{conserved_state.txt} written by v1.00 is ignored for that reason (the
+restart then reads the dimensional pair).
+
 % ===================================================================== %
 \section{Introduction}
 % ===================================================================== %
@@ -1401,7 +1509,31 @@ Variable & Effect \\
   next $n$ assemblies of the stationary residual, so that a reader sharing
   no arithmetic with the code can rebuild each cell's balance
   (\path{conservation_budget.f90}, whose header states the four momentum
-  branches and the sign of the gravitational work). \\
+  branches and the sign of the gravitational work). The file is
+  \path{output/conservation_budget_<nnnn>.txt}: for every cell the face areas,
+  the cell volume, both faces of the three conserved variables, the face and
+  cell potentials, the gravitational work inside the energy flux difference,
+  the face pressures or equilibrium pressure departures of the momentum branch
+  in force, the explicit and transport sources, the radiative heating and
+  cooling and the assembled rows, every real to seventeen significant digits.
+  Schema~3 adds, for the upper face of each row, the left and right face
+  states $(\rho,v,p)$ of the Riemann problem, the well-balanced pressure data
+  (\texttt{wb\_dp\_eq}, \texttt{wb\_dev\_L}, \texttt{wb\_dev\_R} and the
+  jump \texttt{dp\_WB} the Roe flux uses), the central mass transport
+  $(F_L+F_R)/2$, the part of the numerical mass flux the pressure jump carries
+  (the production \texttt{Num\_flux} minus the same call with the jump set to
+  zero: an attribution, not a flux; NaN where the flux is not Roe or the
+  option is off) and the recomputed \texttt{Num\_flux} mass flux; for every
+  cell $|R_{\rm mass}|$, the scale the stationary solve divides it by, their
+  ratio and the signed running sum of $V R_{\rm mass}$; and a header block for
+  the base (the reservoir, the interior state the base condition reads at the
+  face, the characteristic face velocity, both states of face 0, the numerical
+  base mass flow and the wind-window flux). The export is a measurement: the
+  run's outputs are bitwise the same with it on or off; absent or 0, no file
+  is opened. \path{EXHALE_conservation_budget.py} (repository root) rebuilds
+  each row from the exported terms alone and reports separately the assembly
+  consistency (an arithmetic tolerance) and the stationarity (the
+  certification's tolerance). \\
 \texttt{EXHALE\_EVAL\_STATE\_DUMP=1} & Write the state and the
   composition-derived module state (particle and electron counts) at named
   points of the stationary evaluation and of the final certification to
@@ -1798,7 +1930,20 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   ledger (the charge exchange in its own channel,
   \texttt{heat\_charge\_exchange}). Needs \texttt{Molecular chemistry}, so an
   atomic run is unaffected
-  to the bit. Writes the column \texttt{heat\_mol\_chem} to
+  to the bit. Each channel deposits only what its measured product state
+  leaves to translation: the dissociative recombinations of H$_2^+$ and
+  HeH$^+$ leave one H atom in $n=2$ (10.199\,eV, handed to the H($n=2$)
+  population when the run carries one, otherwise radiated) and return 0.749
+  and 1.554\,eV to the gas; the H$_3^+$ recombination leaves 2.4795\,eV (the
+  mean of the $v=5$ and $v=6$ energies of H$_2$, a model estimate from the
+  peak of the measured product distribution) as internal energy of the H$_2$
+  fragment; the 4.478\,eV of the three-body association branches through the
+  vibrational quench fraction, formed from the all-level radiative rate of
+  the 302-level ladder against published collisional rates of each of the
+  colliders H, H$_2$ and He. The association uses the collider-resolved rate
+  coefficient, not the $M={\rm H_2}$ coefficient on the total density.
+  \path{EXHALE_REACTION_HEAT_RECIPIENTS=0} restores the earlier prompt deposit
+  and the total density as third body, for comparison. Writes the column \texttt{heat\_mol\_chem} to
   \texttt{output/Heating\_breakdown.txt}
   (\path{src/modules/lower_atmosphere/molecular_reaction_heat.f90},
   \texttt{Update\_EXHALE\_stage1} Sec.~141). \\
@@ -2143,7 +2288,9 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   as the option token \texttt{wellbal}
   in a state file's \texttt{\# options} line, where \texttt{Restart option
   change:} may name it, since it does not decide how many unknowns a state
-  has. See \path{src/modules/states/Reconstruction.f90}. \\
+  has. A measurement option: the species-row stationary solves did not
+  improve under it (measured on v1.00). See
+  \path{src/modules/states/Reconstruction.f90}. \\
 \texttt{ATES\_photoionization\_rate:} & \texttt{True} & Revert the He\,I
   ($1^1$S) photoionization cross section to the legacy ATES two-term fit
   (default: Verner+1996). Does \emph{not} affect the He\,$2^3$S Penning rate,
@@ -2454,7 +2601,13 @@ defaults restore the standard behavior).}\label{tab:inp-opt}\\
   with $T=p/(n_{\rm tot}+n_e)$ of the new composition and $E$ rebuilt from its
   caloric equation of state, the kinetic part unchanged. A route through the
   iteration and not an equation set: a stationary state is stationary under
-  either. Any other word stops the run. \\
+  either. Any other word stops the run. Why \texttt{pressure} exists: at a
+  base many decades subsonic, a pressure step of $10^{-4}$ against the
+  reservoir drives a face mass flux decades above the wind's into the next
+  solve, and holding the pressure removes that step; the energy each update
+  adds is printed at every pass. On the LHS\,1140\,b molecular states
+  (v1.00) it removed the base step but did not by itself make the next solve
+  converge. \\
 \texttt{Ionization transport:} & \texttt{True}/\texttt{False}
   (def.\ \texttt{False}) & Advect H\,II, He\,II and He\,III as fractions of
   their own element nuclei, with eddy mixing but no relative ion diffusion.
@@ -3194,7 +3347,8 @@ $\mathrm{O(^1D)+H_2\to OH+H}$, \\
 $\mathrm{H_2O}+h\nu\to\mathrm{OH+H}\,/\,\mathrm{H_2+O(^1D)}\,/\,\mathrm{O+H+H}$,
 \quad $\mathrm{OH}+h\nu\to\mathrm{O+H}$.
 \end{center}
-Every coefficient is transcribed from a named evaluation with its validity
+Every coefficient is transcribed from a named evaluation (Baulch et al.\
+2005 and the IUPAC evaluations) with its validity
 range at the code site, and the reverse of each two-body pair is generated by
 detailed balance against a NIST-JANAF Shomate table rather than transcribed
 independently: the pairs run close to cancellation on a hot base, where an

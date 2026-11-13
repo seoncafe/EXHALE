@@ -43,9 +43,9 @@ The reconstruction must be fixed from the first step: a PLM stage, a
 PLM--WENO3 ramp, or an update map is refused. If secondary ionization is
 enabled, it must also be active from the first step; the default immediate
 secondary-ionization setting meets this condition.
-The Huang and Salz settings under
-\texttt{examples/regional\_convergence/} are fragments; merge one into a
-complete planetary \texttt{input.inp}, replacing duplicate keys.
+The Huang and Salz inputs under
+\texttt{examples/regional\_convergence/} are complete inputs
+(\S\ref{sec:v110-regional-details}).
 
 \begin{center}
 \begin{tabular}{lcc}
@@ -163,7 +163,6 @@ positive integer in the current source. The copied v1.00 descriptions of
 experimental environment settings do not establish that they are documented
 user inputs in v1.10.
 
-The v1.10 tree lacks the v1.00 regression harness. Its \texttt{make check}
-target reports the missing harness as a failure. The README in this tree
-describes source-build requirements and the status of the paused calculation
-sequence. No model run was made to produce this documentation update.
+The regression harness (\path{backup/regression/}) is not part of the
+GitHub repository; in a checkout without it, \texttt{make check} reports
+the missing harness and exits nonzero.

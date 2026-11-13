@@ -8,13 +8,13 @@ atmosphere carrying trace metals and, optionally, molecules, and returns the
 mass-loss rate, the wind structure, and the transit transmission spectra that
 follow from it. EXHALE started from the ATES code (Caldiroli et al. 2021;
 Biassoni et al. 2024), of which it keeps the outline of the time-marching
-hydrodynamic loop; almost everything else was written for
-EXHALE, and the code is essentially a new one: the metal chemistry and
-cooling, the molecular and lower-atmosphere layers, the diffusive separation
-of the elements, the Ly-alpha radiative transfer, the well-balanced
-reconstruction and the base boundary, the certification of a steady state,
-the Newton-Krylov steady-state solver with its partitioned composition
-iteration, the heat conduction, and the transit synthesis.
+hydrodynamic loop; almost everything else was written for EXHALE: the metal
+chemistry and cooling, the molecular and lower-atmosphere layers, the diffusive
+separation of the elements, the Ly-alpha radiative transfer, the well-balanced
+reconstruction and the base boundary, the certification of a steady state, the
+Newton-Krylov steady-state solver, the heat conduction, and the transit
+synthesis.
+
 Every extension that adds a species, a transport process or a field is
 opt-in; corrections to the physics of the ATES problem itself (the He 2^3S
 triplet, secondary ionization, case A/B recombination, the He/H charge
@@ -22,979 +22,178 @@ exchange) are on by default, so a bare `input.inp` solves the atomic H/He
 problem with that physics rather than reproducing the legacy ATES model bit
 for bit.
 
-Marching profile convergence is the default scientific route. A stationary
-JFNK root is a separate result; failure to obtain one does not
-invalidate a marching solution whose profiles satisfy the applicable
-physical-time acceptance criterion. The executable separately defaults to
-`Run mode: init`, which is initialization or continuation and does not
-establish a physical elapsed-time window. Use `Run mode: phys` and assess
-saved profiles over the required flow-crossing interval when making a
-physical-time marching claim. The default marching acceptance criterion in
-v1.00 and v1.10 uses K=3 flow-crossing times; ordinary solver termination
-does not automatically apply it.
-The criterion requires full-window ranges of at most
-0.004 dex in T and rho in every physical cell. Velocity spans must be at
-most 1 percent of the minimum speed in cells that keep one sign and remain
-at Mach 0.01 or above; the remaining cells use 1 percent of the maximum
-speed across that quasi-hydrostatic set and the window. It uses the larger
-outer-flow/acoustic crossing time from the final snapshot, requires a
-snapshot bracketing the start and at least ten snapshots per crossing time
-on average with no gap greater than one tenth of a crossing time. See the
-physical-time recipe in `README_HOWTO.md` for clock, archive, and restart
-requirements. A zero-speed quasi-hydrostatic set has zero velocity span.
+## This branch: v1.10
 
-This is EXHALE v1.10. This
-README and [`README_HOWTO.md`](README_HOWTO.md) are the v1.00 files with what
-differs in v1.10 added where it applies, in a sentence that begins "v1.10:"
-or names the version; the differences are collected in
-[Changes in v1.10](#changes-in-v110) below.
-Where a v1.10 sentence and the inherited text disagree, the v1.10 sentence
-holds. Numbers quoted in the inherited text are v1.00 measurements and were
-not measured again on v1.10 unless a v1.10 sentence says so. A document,
-script or example that exists only in the v1.00 tree is named by its path
-there, `../EXHALE_v1.00/...`, which resolves where the two trees sit side by
-side.
+This is EXHALE v1.10 (git branch `v1.10`). This README,
+[`README_HOWTO.md`](README_HOWTO.md) and the user manual are the v1.00 files
+with what differs in v1.10 added where it applies, in a sentence that begins
+"v1.10:" or names the version. Where a v1.10 sentence and the inherited text
+disagree, the v1.10 sentence holds. Numbers quoted in the inherited text are
+v1.00 measurements and were not measured again on v1.10 unless a v1.10
+sentence says so. The changes against v1.00 (items P1-P9: the thermochemical
+closure of the stationary lower boundary, certification of the state as
+written, transport of the molecular ions, the selectable certification region,
+regional stabilization, and others) are listed in section 1.5 of the user
+manual, "Source changes against v1.00".
 
----
+Material that exists only in the v1.00 branch (most examples, the update logs,
+the physics notes) is linked below on GitHub; HOWTO and manual name it by its
+path in a side-by-side checkout, `../EXHALE_v1.00/...`.
 
-## Changes in v1.10
+## Requirements and build
 
-Each
-row was checked again against the v1.10 source on 2026-10-27 in the file it
-names, except where it says otherwise; line numbers are not quoted because
-the source has moved since.
-
-| # | What v1.10 does that v1.00 does not | Where | Default |
-|---|---|---|---|
-| P1 | Thermochemical closure at the stationary lower boundary: the ghost composition and `Apply_BC(rho, T)` are iterated to one fixed point (composition to `1e-11`, `dT/T` and `drho/rho` to 128 eps, at most 60 iterations, Aitken factor at most 16), and a closure that fails is a refusal. The certification gains the entry "lower boundary thermochemical closure"; the base boundary models become `..._face_at_level_v6` and `..._face_at_level_discrete_equilibrium_v7` (v1.00: `v4`, `v5`) | `src/modules/states/stationary_boundary_chemistry.f90`, `src/modules/states/base_boundary.f90`, `src/modules/time_step/steady_newton.f90` | on in the Newton and stationary path and in every final-state certification; no input key |
-| P2 | The state a run writes is certified after its sources and lower ghosts are rebuilt from it (`certify_the_state_to_be_written`, called on the marched, direct steady and stationary-restart output routes), so the written heating, cooling and ghosts are those of the certified state | `src/EXHALE_main.f90` | on |
-| P3 | H2+, H3+ and HeH+ are transported carriers beside H2 (and OH, H2O and CO with oxygen chemistry), with zero relative molecular diffusion, the same eddy mixing, and the hydrogen and helium nucleus budgets as constraints | `src/modules/lower_atmosphere/diffusive_photochemistry.f90`, `src/modules/lower_atmosphere/element_inventory.f90` | widens `Molecular carrier transport: True` |
-| P4 | `Ionization transport: True` with `Coupled carrier solve: True` is accepted in a molecular gas, where the ion stages are Newton carrier rows; it stays refused in an atomic gas, and `On stall` stays refused | `src/modules/files_IO/input_read.f90` | opt-in |
-| P5 | The enthalpy flux of the element carriers is taken from the actual step flux, including the helium share of HeH+ (not checked again here; whether v1.00 counted it twice was not determined) | `diffusive_photochemistry.f90`, `steady_residual.f90` | with `He_diffusion`, interdiffusion enthalpy and carrier transport |
-| P6 | The carrier and elemental transport rows of the certification are judged on a selectable region (every other row gates on the whole column): `Certification region: all` (default) gates every applicable physical cell, `Certification region: wind` gates the cells with `r >=` `Wind start radius [R_p]:` (default 1.2) and reports those below. The report prints both maxima of every such row; a certified state that carries such a row records `cert_reason=certified_all_cells` or `cert_reason=certified_in_wind` (a state without one carries no token). With `all`, a stationary outer iteration that spends its pass cap without all-cell acceptance is accepted on the wind region when the state it hands back is within tolerance there (`certified_in_wind`, info 0) | `src/modules/time_step/certification.f90`, `src/EXHALE_main.f90`, `src/modules/files_IO/input_read.f90` | `all`, wind start radius 1.2 R_p |
-| P7 | The certification report maps the cells that carry H3+ outside the validity range of the H3+ cooling (20-5000 K in LTE, 300-5000 K for the non-LTE rows); the map is a flag and does not refuse certification (only a nonfinite argument does) | `certification.f90`, `src/modules/lower_atmosphere/h3p_cooling.f90` | molecular certification |
-| P8 | Regional stabilization, a finite-duration criterion for physical-time marching (below) | `src/modules/time_step/regional_convergence.f90` | off; `Regional convergence: True` |
-| P9 | Reuse of the stellar photoionization and heating rates of a cell whose inputs are bitwise equal inside a held composition (speed only) | `src/modules/radiation/util_ion_eq.f90` | off; `EXHALE_HELD_STELLAR_RATE_REUSE=1` |
-
-Inputs that only v1.10 reads: `Regional convergence` and the 23 further
-`Regional ...` keys (all in `known_keys` of `input_read.f90`, parsed by
-`regional_read` in `regional_convergence.f90`); every v1.00 input key is
-accepted. Environment variables that only v1.10 reads (README_HOWTO,
-"Measurement hooks"): `EXHALE_BOUNDARY_CLOSURE_MAXITER`,
-`EXHALE_BOUNDARY_CLOSURE_TRACE`, `EXHALE_BOUNDARY_FULL_SWEEPS`,
-`EXHALE_STATIONARY_BOUNDARY_SEED`, `EXHALE_CLOSURE_MAP_PAIRS`,
-`EXHALE_LIVE_DERIVATIVE_STEPS`, `EXHALE_HELD_STELLAR_RATE_REUSE`,
-`EXHALE_STELLAR_RATE_REUSE_TRACE`. Defaults in `parameters.f90` are those of
-v1.00. Behavior that changes without a key: P1, P2, P6 and P7, the wider
-`Molecular carrier transport` of P3, and the acceptance of P4.
-
-### Profile acceptance and separate diagnostics
-
-The default profile criterion and the optional diagnostics have different scopes:
-
-| Outcome | Required evidence |
-| --- | --- |
-| **Marching profile acceptance** | Every physical cell satisfies the stated T, rho and velocity bands throughout the final K=3 crossing-time window, with the required snapshot coverage |
-| **Optional regional stabilization** | Upper-atmosphere profiles remain stable and lower-atmosphere changes stay within the configured bounds throughout a finite confirmation interval |
-| **Optional stationary convergence** | The enabled fluid, chemistry, radiation, and boundary equations satisfy their stated stationary residual and consistency tolerances |
-
-Regional stabilization is implemented in
-[`regional_convergence.f90`](src/modules/time_step/regional_convergence.f90)
-and invoked by the accepted-step path in
-[`EXHALE_main.f90`](src/EXHALE_main.f90). It does not require JFNK and does not
-start a stationary solve when its criteria are met. A small change over time
-alone does not establish stationary convergence.
-
-The monitor is disabled unless `Regional convergence: True` is present.
-Its supported configuration is atomic, global physical-time marching:
-`Run mode: phys`, with local time stepping, molecular chemistry, Newton solving,
-post-processing-only operation, and stationary restart intent disabled.
-It also needs one reconstruction from the first step (`Reconstruction
-scheme: WENO3` or `PLM` alone; the two-stage `PLM+WENO3` with its
-`du_th [PLM,WENO3]` hand-off is refused, and so is `EXHALE_UPDATE_MAP`) and
-secondary ionization active from the first step (`Secondary_ionization: True`,
-the default, or `False`; `Staged` is refused).
-Unsupported combinations stop at startup. Configure regional criteria in a
-complete physical `input.inp`; `examples/regional_convergence/Salz.inp` and
-`examples/regional_convergence/Huang.inp` are two (README_HOWTO, "Example
-configurations").
-The proposed default thresholds in the current source are:
-
-| Quantity | Upper region | Lower and transition regions |
-| --- | ---: | ---: |
-| Window-mean change and span | 0.01 | 0.10 |
-| Full range | 0.05 | 0.20 |
-| Regional mass and internal-energy change and range | 0.01 | 0.05 |
-| Mean actual face mass-flow change and span | 0.01 | 0.05 |
-
-All configured criteria must pass for eight consecutive windows
-(`Regional validation windows: 4` times `Regional confirmation factor: 2`;
-the code accepts 4-32 windows and a factor of 2-4),
-with at least 40 accepted endpoints in each window. The monitor samples every
-accepted step; rejected attempts do not advance its physical confirmation time.
-It uses the numerical face mass flux combined with the Runge-Kutta weights,
-and regional internal energy excludes kinetic energy. Velocity and species
-normalization uses sound speed and hydrogen-nucleus density where appropriate;
-these limits are not relative tolerances on every rare species or on a nearly
-zero velocity. The instantaneous range of the face mass flow is recorded but
-does not reject a window.
-
-All limits, region boundaries, durations, and sampling requirements are input
-settings. The source defaults place both region boundaries at 1.2 R_p.
-`Regional window seconds: 0` selects twice the initial outward acoustic travel
-time. `Regional maximum seconds: 0` selects the settling duration plus two
-complete confirmation intervals; it does not mean unlimited execution.
-`Regional settling seconds` defaults to zero. Explicit regional inventory and
-mass-flow limits override the common `Regional inventory limit` and
-`Regional mass flow limit` values independently of input-line order. Unknown
-`Regional ...` keys are rejected.
-
-These are proposed finite-duration criteria, not universal physical accuracy
-bounds or a proof that oscillations remain bounded indefinitely.
-
-### Progress output and plots
-
-The regional monitor writes:
-
-| File | Contents |
-| --- | --- |
-| `output/regional_convergence.csv` | Regional criterion history |
-| `output/regional_convergence_status.txt` | Current status, effective settings, and achieved convergence level |
-| `output/regional_profile_history.txt` | Accepted profile records with region identifiers |
-
-Profiles/status are recorded at `Regional profile interval` (40 accepted steps
-by default), with initial/final profile records. The stopping statistics still
-use every accepted step. On successful completion, the status includes:
-
-```text
-target_convergence_level=regional_stabilization
-convergence_level=regional_stabilization
-stationary_root_claim=False
-status=regional_limits_satisfied
-```
-
-An incomplete regional run has `convergence_level=none`; the main program's
-normal finalization exits with status 4 if regional monitoring was enabled but
-its criteria were not met. Other startup/runtime failures can terminate earlier.
-Read the status and numerical records as well as the exit code.
-
-From the calculation directory, visualize existing output with:
+A Fortran compiler (`ifx` by default; `ifort` >= 2021 or `gfortran` >= 9.3),
+`make`, and, for the GUI and the analysis tools, Python 3 (>= 3.8) with
+`numpy`, `scipy`, `matplotlib`, `tkinter` and `astropy`. MINPACK is included.
+There is no installation step beyond cloning:
 
 ```bash
-python3 /path/to/EXHALE_v1.10/EXHALE_plots.py --regional --live 60
-python3 /path/to/EXHALE_v1.10/EXHALE_plots.py --regional --save output/regional
+git clone https://github.com/seoncafe/EXHALE
+cd EXHALE
+git checkout v1.10
+make                                    # ifx; make FC=gfortran or FC=ifort to override
 ```
 
-The first command refreshes figures every 60 seconds; the second writes PDF
-figures. The regional plots separate lower, transition, and upper profiles and
-show the evolution of basic physical quantities and convergence criteria.
-Plotting reads existing outputs and does not advance the solver. `--profiles`
-selects the ordinary profile view when automatic regional detection is active.
+Compiler variants, the BLAS/LAPACK linking and a separate GNU Fortran build:
+[`README_HOWTO.md`, Build](README_HOWTO.md#build).
 
-### Stationary boundary chemistry
+## Quick start
 
-[`stationary_boundary_chemistry.f90`](src/modules/states/stationary_boundary_chemistry.f90)
-and [`reservoir_composition.f90`](src/modules/states/reservoir_composition.f90)
-provide the lower-boundary thermochemical calculation used by the stationary
-residual and stored-state certification. `steady_newton.f90` invokes
-`stationary_ghost_state`; `certification.f90` queries its boundary result.
-An unclosed boundary cannot establish a certified stationary solution.
-This implementation does not establish stationary solutions for every
-historical input state.
+```bash
+cd examples/regional_convergence && ../../EXHALE.x Salz.inp   # reads ./Salz.inp, writes ./Salz/
+```
 
-Optional fixed-state stellar-rate reuse is implemented in `util_ion_eq.f90`;
-it is a computational option with restricted reuse conditions, not new physics.
+This runs HD 209458 b after Salz et al. (2016) as a finite-duration
+physical-time integration (its run time was not measured for this README).
+In general, run `EXHALE.x [input_file]` from the run directory; with no
+argument it reads `input.inp` there. Output goes to `Output directory:` when
+the input names one, else to `output/` for `input.inp` and to a directory
+named after the input's stem otherwise. `./run_EXHALE.sh` instead opens a Tk
+interface that fills in the planetary parameters, builds and runs.
+Ready-made configurations: [`README_HOWTO.md`, Example
+configurations](README_HOWTO.md#example-configurations) (the tutorial and
+most numbered examples are in the v1.00 branch).
 
-### Build, controls, and validation differences
+**What counts as a result.** Marching profile convergence is the default
+scientific route, in v1.00 and v1.10 alike. Set `Run mode: phys` (the
+executable's default, `init`, is initialization or continuation and
+establishes no physical elapsed time), keep profile snapshots, and accept the
+state when every physical cell stays within 0.004 dex in T and rho and within
+1 percent in velocity over the final K = 3 flow-crossing times; ordinary
+solver stops do not apply this test. A stationary JFNK solution
+(`Solver: Newton`) and the v1.10 regional stabilization test
+(`Regional convergence: True`) are optional and answer different questions;
+failing to obtain a stationary root does not invalidate a marching result
+that passes its criterion. Before quoting a mass-loss rate, check that the
+outer face is supersonic. Recipe: [`README_HOWTO.md`, Run a physical-time
+marching model](README_HOWTO.md#run-a-physical-time-marching-model); criteria:
+manual sections 1.1 and 3.4.
 
-- Build the current source explicitly. Existing executables and workflow
-  snapshots may represent earlier source revisions; their presence does not
-  show that the latest source was compiled.
-- As in v1.00: `Max steps` and `EXHALE_MAXSTEPS` set separate limits. Likewise,
-  `EXHALE_MARCH_FLUX_TH` controls marching stabilization, whereas `Flux spread
-  tol` controls stationary acceptance. Do not treat them as interchangeable.
-- As in v1.00: `EXHALE_MONITOR_STEPS` must be positive. The source rejects zero
-  and negative values before the monitor-window calculation.
-- In both trees, the material created for error testing was removed from the
-  source on 2026-10-16: the fault-injection environment controls and test
-  hooks, the expected-failure and invalid-input test rows, and their drivers
-  and fixtures. Real failure detection, retry, rollback and the rejection of
-  invalid inputs remain. The proposed input migrations are not implemented.
-  Check the actual reader for the
-  interface supported by a particular executable. Workflow snapshots and
-  executables built before that date still contain the removed controls.
+## Inputs and outputs
 
----
+A run is a directory. `input.inp` holds the keys; `metals.inp`, `opacity.inp`
+and `base.inp` switch their physics on by being present. Every input key, with
+its default and meaning, is in the user manual (section "Input files"); every
+output file and column is in the manual (section "Output files") and, in
+short, in [`README_HOWTO.md`, Output files](README_HOWTO.md#output-files).
+`examples/exhale_io.py` loads every output file by the `# columns` header it
+carries.
 
 ## Features
 
 **Chemistry and radiation**
 
-- Trace metals (C, N, O, Mg, Si, Ca, Na, K, S, Fe) solved self-consistently
-  inside the coupled ionization system, with Badnell RR+DR recombination
-  (Huang et al. 2023 fits for Fe I/II and Shull & Van Steenberg for Ca I, whose
-  isoelectronic sequences the Badnell project does not reach), Voronov
-  collisional ionization, and the charge-exchange reactions of Huang et al.
-  (2023) Table 4, extended by the `O2+ + H0 -> O+ + H+` and
-  `N2+ + H0 -> N+ + H+` electron captures of Barragan et al. (2006) that
-  Table 4 omits (on by default; `metals.inp: cx_O2p_H 0` or `cx_N2p_H 0`
-  leaves either out); each rate is taken from its original source and each
-  pair held to detailed balance with internal partition functions (the
-  source's direction kept, the other derived, and for the three forwards whose
-  sources name their product levels the reverse follows the product
-  populations of a five-level statistical equilibrium at the local electron
-  density), the energy defects heat the gas (`heat_charge_exchange`), and the
-  recombination and collisional-ionization energies of the metals enter the
-  cooling
-- Metal-line cooling from CHIANTI v11 (collision strengths descaled with the
-  natural spline CHIANTI prescribes, observed level energies): closed-form
-  fits for Mg II and Na I, (T, n_e) statistical-equilibrium tables for Ca II,
-  Mg I, Fe II and the levels of C/N/O above their ground terms, and the Fe I
-  table in its LTE limit, with
-  the split ground terms of C I, C II, N II and O I solved in exact statistical
-  equilibrium at the local `(n_e, n_HI)` instead of the coronal limit, which
-  gives the density-dependent saturation of the [C II] 158 um and [O I] 63 um
-  floors
-- Line trapping in the eight ground-term fine-structure lines of C I, C II,
-  N II and O I (the line-center escape probability from the column above each
-  cell enters the statistical-equilibrium solution as `A_ul -> beta*A_ul`),
-  and a smooth cutoff of the coronal fits below their
-  10^3 K validity floor, leaving only the explicit fine-structure terms
-- H and He recombination with case A where the gas is thin and case B where
-  it is thick (`H_rec_escape`, `He_rec_coupling`; ground captures from the
-  Milne relation on the transfer's cross sections), the He II and He III
-  recombination radiation absorbed on the spot, the He I 584 A resonance line
-  scattered by He I and partly converted into the 2^1S two-photon continuum
-  (Wood, Mathis & Ercolano 2004), and every recombination cooling term
-  `k T alpha (3/2 + dln alpha/dln T)` on the coefficient the balance uses
-- He I 2^3S metastable triplet in the coupled solver, with the
-  electron-impact 2^3S -> 1^1S de-excitation (the detailed-balance reverse of
-  the excitation), the collisional feed through the higher triplets, the
-  collision strengths of Bray et al. (2000), temperature-dependent He(2^3S)+H
-  and +H2 destruction rates
-  (Garcia Munoz 2025, continuous closed forms with a 0.9/0.1
-  Penning/associative branching)
-- Updated photoionization data: He I ground state from Verner et al. (1996),
-  a He I 2^3S cross section extended past 60 eV against TOPbase, and the
-  inner shells of the metal ions (Verner & Yakovlev 1995) with their Auger
-  and fluorescence relaxation (Kaastra & Mewe 1993): the Auger electrons heat
-  the gas and a neutral that loses two or more electrons jumps two stages
-- He+ + H charge exchange in its radiative channel (Stancil, Lepp & Dalgarno
-  1998, row 19) and its non-radiative one (the H+ + He cross section of
-  Loreau, Ryabchenko & Vaeck 2014 by reciprocity, taken as
-  `sigma_r(15) sqrt((x - x_th)/(15 - x_th))` between the 13.655 eV/u
-  threshold and the 15 eV/u where their calculation starts), its
-  detailed-balance reverse and the radiative He2+ + H capture in every
-  helium-bearing system (`He_H_charge_exchange`, default on)
-- One stellar spectrum type builds every band of the photon grid, the XUV and
-  the part below 13.6 eV where the He 2^3S metastable and the low-IP metals
-  absorb: `Spectrum type: Power-law` is the power law everywhere,
-  `Spectrum type: Planck` is the photospheric blackbody
-  `pi B_nu(T_eff) (R_star/a)^2` built from `Stellar Teff` and `Stellar radius`,
-  and `Spectrum type: Load` is the table everywhere. A loaded table that stops
-  above the lowest threshold of an active absorber (4.768 eV = 2600 A with
-  `Include He23S? True`, or a neutral metal's threshold) stops the run rather
-  than leaving that absorber without a field; the startup report states the
-  type, the source of the band below 13.6 eV, and the integrated grid flux
-- Secondary ionization by fast photoelectrons: the ionization budget of
-  Shull & van Steenberg (1985), with the heating fraction, its dependence on
-  the photoelectron energy and the H2 channels from Dalgarno, Yan & Liu (1999),
-  above 30 eV (`Secondary_ionization: True`, the default, applies the
-  coupling from the first step; `Staged` keeps the earlier default, which
-  switched it on only once the marching had settled without it; `False`
-  turns it off). Below 30 eV the photoelectrons are deposited whole as heat by
-  default; the opt-in key `Low-energy electron partition: Furlanetto2010`
-  partitions those of 10.2-30 eV into heat, H I and He I ionizations and
-  escaping H I line radiation by the Monte Carlo tables of Furlanetto &
-  Stoever (2010), in cells without H2 (a cell with any n(H2) > 0 keeps the
-  heat-only treatment: the tables are those of an atomic H/He gas;
-  `src/modules/radiation/low_energy_electron_degradation.f90`). The
-  photoelectrons of the recombination radiation absorbed on the spot pass,
-  at their representative energy, through the same bands and partition as
-  the stellar ones
-- Non-LTE H(n=2) populations and Ly-alpha radiative transfer, from either a
-  fast Neufeld escape-probability closure or a field imported from the LaRT
-  Monte Carlo code, including the Ly-alpha emitted in situ within the wind
-- Molecular chemistry: H2, H2+, H3+ and HeH+ in the coupled ionization
-  equilibrium, with H2 photoionization opacity/heating, H3+ infrared cooling
-  (the LTE cooling function of the MiZATeP line list, Mizus et al. 2017,
-  times the non-LTE departure factor of Miller et al. 2013), and H2
-  photodissociation in the Lyman-Werner bands
-  from a line-by-line calculation over every Lyman and Werner transition,
-  tabulated on our own (T, n_H, N_H2) grid -- the dissociation cross section
-  itself, with the line self-shielding and the line overlap inside it and the
-  trapping of the fluorescent decay photons taken from level-resolved CLOUDY
-  runs, rather than a published closed-form fit
-- Oxygen chemistry: OH, H2O and CO in the same coupled system, with the FUV
-  photolysis of H2O and OH in four bands, so the base H2/H partition is
-  computed rather than imported. Rates from Baulch et al. (2005) and the IUPAC
-  evaluations, reverse rates by detailed balance against a NIST-JANAF Shomate
-  table, CO carried as an oxygen reservoir. The first band is the 912-1201 A
-  Lyman-Werner interval, where H2, H2O and OH share one beam: the H2 lines and
-  the H2O/OH continuum each attenuate what the other sees, so the interval has
-  one incident flux (`Stellar LW flux`). The molecular carriers H2, OH, H2O and
-  CO are transported by default (`Molecular carrier transport`), an
-  implicit diffusion-advection solve coupled to their chemistry. v1.10: the
-  transported set also holds the molecular ions H2+, H3+ and HeH+, with zero
-  relative molecular diffusion and the same eddy mixing (P3), so it is H2,
-  H2+, H3+, HeH+, OH, H2O and CO with oxygen chemistry and H2, H2+, H3+ and
-  HeH+ without it; as in v1.00, the key is on by default only with oxygen
-  chemistry and off otherwise (`input_read.f90`). A stationary
-  solve can take those balances as its own unknowns (`Coupled carrier solve`,
-  three-valued: `False` by default, `True`, or `On stall`, which runs the
-  alternation and hands the state to the coupled block at the pass where the
-  alternation gives up; a word the key has no meaning for stops the run); on a
-  molecular configuration that needs
-  `Molecular carrier transport: True` and is refused at startup without it,
-  because an eliminated H2 content is one the local equilibrium cannot
-  determine and the stationary residual is then not a function of its
-  unknowns. The
-  ionization stages can ride the same operator (`Ionization transport:
-  True`, default off), in an atomic gas as well as a molecular one: x(H II)
-  per hydrogen nucleus and x(He II), x(He III) per helium nucleus are carried
-  on their own element's nucleus face flux with the local ionization balance
-  as their source, the neutral stage closing each simplex, and every
-  equilibrium sweep is handed the transported fractions instead of putting
-  them back on their local root. It needs helium in the mixture, in a
-  molecular gas also `Molecular carrier transport: True`, and is refused with
-  `Coupled carrier solve: True` or `On stall`. v1.10: `Coupled carrier solve:
-  True` is accepted in a molecular gas, where H II, He II and He III become
-  Newton carrier rows of the coupled block, and stays refused in an atomic
-  gas; `On stall` stays refused (P4). The local root is wrong where
-  a parcel leaves its shell faster than it ionizes (`P r/|v| < 1`), which is
-  what the Koskinen et al. (2022) comparison of
-  `../EXHALE_v1.00/md/k22_electron_density_excess.md` needed
-- He 2^3S transport (`He 2^3S transport: True`, default off; needs
-  `Include He23S: True` and `Ionization transport: True`): the metastable
-  population n(2^3S)/n(He nuclei) is carried as a fourth helium state of the
-  same operator, on the helium nucleus flux, with the level balance of the
-  coupled system as its source (the steady advection balance of Oklopcic &
-  Hirata 2018 and Lampon et al. 2020, with the eddy term of the stage flux),
-  instead of the local root of that balance in every cell; its certification
-  entry is `carrier balance He2^3S`
-- Thermal infrared field of the atmosphere below the base, so the molecular
-  and fine-structure coolants return the net rate rather than the vacuum limit
-- Molecular infrared bands (`Molecular IR bands`): the H2 quadrupole and
-  magnetic dipole line spectrum (Roueff et al. 2019) and the H2O and CO
-  vibration-rotation bands (HITEMP), in LTE and exchanging with that same
-  field, so the layer below the H2 -> H front settles on a radiative
-  equilibrium temperature instead of radiating itself away
-- Composition-dependent caloric equation of state: below the H2 -> H front the
-  gas stores its energy in the H2 rotational and vibrational ladder as well as
-  in translation, so the internal energy is built from the observed 302-level
-  H2 ladder (Roueff et al. 2019) rather than from a constant gamma = 5/3. An
-  atomic run is byte-identical
-- Chemical heat of the molecular network (`Molecular reaction heat`, default
-  on; the key exists to turn it off): in a molecular gas the ionization energy
-  a photon spends comes back to the GAS through the dissociative recombination
-  of H3+ and H2+, not out of it as the Lyman photon of a radiative
-  recombination, and the code now deposits it -- 81 percent of the total
-  heating rate at the base of a converged hot Uranus. Each channel deposits
-  what its measured product state leaves to translation and no more: the
-  dissociative recombinations of H2+ and HeH+ put one H atom in n = 2 and
-  return 0.749 and 1.554 eV to the gas, the H3+ recombination leaves 2.4795 eV
-  as internal energy of the H2 fragment, and the three-body association's
-  4.478 eV branches through the vibrational quench fraction, which is formed
-  from the all-level radiative rate of the 302-level ladder against published
-  collisional rates for each of the three colliders H, H2 and He. The
-  association itself uses the collider-resolved rate coefficient, not the
-  M = H2 coefficient on the total density. `EXHALE_REACTION_HEAT_RECIPIENTS=0`
-  restores the older prompt-deposit behavior for comparison
-- Diffusive separation of helium and metals: hydrogen and helium are
-  transported as a two-component mixture, with bulk advection, binary
-  diffusive settling in the computed ambipolar field, and an optional eddy
-  term; each trace metal can diffuse independently. The friction is resolved
-  by ionization stage -- hard sphere, polarization and Coulomb -- so an ion
-  is held to the protons instead of settling at a neutral rate. The energy
-  equation carries the enthalpy the moving elements take with them, the
-  interdiffusion enthalpy flux `q_d = sum_s h_s J_s` (Cook 2009, eqs. 11-13),
-  in the marching update and the stationary energy row alike
-  and the enthalpy the transported molecular carriers (H2, OH, H2O, CO) carry
-  relative to the rest of their elements, and, with `Ionization transport:
-  True`, the enthalpy the carried ionization stages move relative to their
-  own element
-  (`Interdiffusion enthalpy flux:`, on by default whenever `He_diffusion` is,
-  a molecular carrier is transported or the stages are carried;
-  `False` only to reproduce published models that omit it; 13-26 percent of
-  the local energy budget at 1.1-5 R_p on the LHS 1140 b diffusion states)
+- Trace metals (C, N, O, Mg, Si, Ca, Na, K, S, Fe) inside the coupled ionization system, with recombination, collisional ionization and detailed-balanced charge exchange
+- Metal-line cooling from CHIANTI v11, with the C/N/O fine-structure ground terms in statistical equilibrium and line trapping
+- H and He recombination switching between case A and case B with optical depth; He I 584 A scattering; on-the-spot absorption of He recombination radiation
+- He I 2^3S metastable triplet in the coupled solver, for the He 10830 line
+- Updated photoionization data, metal inner shells with Auger and fluorescence relaxation
+- He+ + H charge exchange, radiative and non-radiative, with its reverse
+- One stellar spectrum type (power law, Planck or a table) for every band of the photon grid
+- Secondary ionization by fast photoelectrons; optional partition of 10.2-30 eV photoelectrons
+- Non-LTE H(n=2) and Ly-alpha transfer (escape probability or a LaRT field)
+- Molecular chemistry: H2, H2+, H3+, HeH+, H3+ cooling and Lyman-Werner photodissociation
+- Oxygen chemistry (OH, H2O, CO) with FUV photolysis, so the base H2/H partition is computed
+- Transport of the molecular carriers, of the ionization stages and of the He 2^3S population
+- Thermal infrared field of the lower atmosphere and molecular infrared bands
+- Composition-dependent caloric equation of state and the chemical heat of the molecular network
+- Diffusive separation of helium and metals, with the interdiffusion enthalpy flux
 
 **Hydrodynamics and solvers**
 
-- Second-order marching with PLM or WENO3 reconstruction and a stated
-  interface flux (`Numerical flux:` is mandatory; `HLLC`, `ROE` or `LLF`),
-  with an optional two-stage PLM -> WENO3 initialization sequence. `Low Mach velocity jump:`
-  (default off) scales the Roe branch's velocity jump by `min(Ma, 1)` after
-  Rieper (2011); it is kept for study and is NOT recommended on a
-  near-hydrostatic column, where it was measured to remove the damping of the
-  odd-even velocity mode at exactly the faces that mode lives on and to prevent
-  a solve unmodified Roe completes
-- Jacobian-free Newton-Krylov steady-state solver with PTC warm-up, SER ramp,
-  a non-monotone (Grippo) line search and a scaled trust region. The
-  stationary system carries a row and an unknown for every transported
-  balance the configuration activates, not only the hydrodynamic triple
-- In `Run mode: init`, the ordinary marching stop requires the NUMERICAL face mass flux `r^2 F_rho` to be flat
-  over `r >= r_flux` to a spread below 4e-4 (`march_flux_spread_th`) AND the
-  state has stopped changing: over one monitor window of 500 steps no cell's
-  rho or total energy moves by 1e-4 relative, nor its momentum by 1e-4 of
-  `sqrt(rho E)` (`march_change_th`). A `[stop]` line prints both numbers
-  at every monitor step. With `Run mode: phys` and `Restart intent: trajectory`, these gates are report-only. The cell-centered spread `du` of `rho v r^2` is
-  printed as a diagnostic only (it has a resolution floor next to the outer
-  ghost) and still drives the PLM -> WENO3 switch of `du_th [PLM,WENO3]:`.
-  `Solver: Newton [switch]` hands the state to the JFNK solve once that face
-  spread falls below `switch` (default 0.1; it was a `du` threshold before
-  2026-10-10). `EXHALE_MARCH_FLUX_TH`, `EXHALE_MARCH_CHANGE_TH` and
-  `EXHALE_MONITOR_STEPS` override the two thresholds and the window for
-  measurement. v1.10: with `Regional convergence: True` neither this stop,
-  the stall nor the residual gate ends the run; the regional criteria or the
-  regional time budget do (P8, Changes in v1.10)
-- The Mach number of the outermost cell is printed with every Mdot, with a
-  note below 1.1, "NOT A QUANTITATIVE MDOT" (also in `EXHALE_setup.out`): at
-  a subsonic outer face one acoustic characteristic enters through the outer
-  ghost condition, which can then set Mdot, and no other subsonic-face
-  treatment exists (decision 2026-10-12). For a
-  quantitative Mdot put the outer face past the sonic point with
-  `Outer radius [R_p]:` (on `wasp_full_newton`, measured before update log
-  stage 3 section 138 changed the columns, the default Roche L1 face,
-  1.574 R_p at Mach 0.95, moves rho and v by up to 15-17% near 1.31 R_p and
-  log10 Mdot by 0.01 against an outer face at 2 R_p)
-- `Composition update holds: pressure` (default `energy`): where the
-  stationary solve alternates a hydrodynamic solve with the fixed-wind
-  element and carrier relaxations, the composition update keeps the density,
-  velocity and pressure of every cell and rebuilds the total energy from the
-  caloric equation of state of the new composition, instead of keeping the
-  conserved energy and letting the pressure move. At a base many decades
-  subsonic a pressure step of 1e-4 against the reservoir drives a face mass
-  flux decades above the wind's into the next solve; holding the pressure
-  removes that step. A route through the iteration, not an equation set: at
-  a fixed point both values leave the state unchanged, and the energy each
-  update adds is printed at every pass. On the LHS 1140 b molecular states it
-  removes the base step but does not by itself make the next solve converge
-- `Well balanced: True` (default False) carries the departure from each
-  cell's own local hydrostatic equilibrium through the reconstruction, the
-  Riemann jumps and the pressure force, so a discrete hydrostatic
-  equilibrium is preserved to rounding (Kappeli and Mishra 2014, 2016). A
-  measurement option: turning it on moves every result, and the
-  species-row stationary solves do not improve under it
-- A steady state is not "converged", it is CERTIFIED: one evaluator states
-  one condition per active balance and the run prints, and the state file
-  records, which conditions were met and which row and cell refused. The
-  tolerances are anchored by measurement, not inherited from the solver's own
-  target: mass 3e-12, momentum 1e-8, energy 1e-6, the closure and the level
-  balances at the tolerance the cell sweep already judges a root by, and the
-  element and carrier rows at 1e-5. Which cells the element and carrier
-  rows are judged on is the certification region
-  (P6): `Certification region: all` (default) judges them on every
-  applicable physical cell; `Certification region: wind` judges them on the
-  cells with r at or above `Wind start radius [R_p]:` (default 1.2; refused
-  unless it lies above the inner boundary and at or below the last cell
-  center) and reports the cells below, because the same balance is a
-  cancellation of advective terms in the wind and of eddy and settling
-  terms in the layer. Every other row (the hydrodynamic rows, the level
-  balances, the eliminated-species closure, the ionization stage nucleus
-  sums and the lower-boundary thermochemical closure, P1) gates on the whole
-  column in both regions. The report prints, for every element and carrier row,
-  its largest measure over all applicable cells and over the wind region
-  side by side, marking the one that gates. A certified state file with
-  such a row states the region: `certified=T cert_reason=certified_all_cells`
-  or `certified=T cert_reason=certified_in_wind cert_wind_r=<r>`, a wind
-  claim carrying the numerical start radius it was made for; a state
-  without one (the atomic three-unknown route) carries no token. Each region
-  has its own availability: a region with no applicable cell is UNAVAILABLE
-  (printed so, not ABOVE) and certifies nothing, and it never hides the
-  other region's measured result. Older files with `certified_in_wind` and
-  no radius were written under the fixed rule and load as `r >= 1.2`; a
-  reload whose wind start radius differs from a file's wind claim reports
-  the claim as not re-judged. An evaluation (`Restart intent: stationary
-  evaluate`) under `all` records the all-cell verdict, else the wind
-  verdict (`certified_in_wind`), else the refusal; an unsuccessful
-  evaluation exits 2 when the input claimed certification, and an
-  unclaimed snapshot retains the diagnostic evaluation status.
-  A carrier absent from every cell of a region is not applicable there (no
-  refusal) only where its production and incoming transport could not
-  sustain it at the absence floor in any of those cells; otherwise the
-  region is UNAVAILABLE. A stationary restart whose stored pair is already
-  certified on the region in force is accepted at outer pass 0 and writes
-  it: the physical stored pair is retained; boundary ghosts are rebuilt
-  using the current boundary conditions. Under `all`, a stored pair that holds only the
-  wind verdict is iterated, and restored (`certified_in_wind`) if the pass
-  cap ends with a state that fails the wind verdict. With `all`, a
-  stationary outer iteration that spends its pass cap
-  (the input key `JFNK max iterations: <n>`, default 20, the number of
-  stationary outer passes and not a Newton or Krylov iteration cap; it
-  replaced the environment variable `EXHALE_OUTER_PASSES`, which a run now
-  refuses) without all-cell acceptance judges
-  the state it hands back on the wind region: within tolerance there, the
-  run says that all-cell convergence was not reached, names the worst row
-  below the wind start radius, and writes `certified_in_wind` with info 0;
-  otherwise the state is `certified=F` as before. In a
-  molecular gas, the H3+ cooling applicability map is reported; a
-  temperature outside the published intervals does not refuse
-  certification, while a nonfinite argument does (P7).
-  The certification is a
-  DIAGNOSTIC alongside the default marching profile acceptance. Use the
-  default K=3 complete-profile bands in both trees; no
-  stationary root, observable-change budget or slow-chemistry wait is an
-  additional requirement. An uncertified state retains its flag and failing
-  rows. Exit statuses: 0
-  for a certified state or a run that made no stationary claim (the marching
-  stop, whose state is a relaxation snapshot, a step cap, a stall, a NaN); 2
-  for a state the run declared stationary (the residual gate met while
-  marching, a JFNK finish with info = 0) that is not certified (a flag, the state is written in full; a gfortran runtime
-  error also exits 2, and is told apart by the certification's closing line
-  `(certification) the state was written in full; the run exits with status 2
-  because it is not certified.`); 3 when the stationary solve of a steady
-  route failed (the solver's last iterate is written with
-  `cert_reason=stationary_solve_failed`). v1.10: 4 when `Regional
-  convergence: True` was set and the run reached its normal end without
-  meeting the regional criteria. Regional stabilization is a separate,
-  finite-duration outcome that makes no stationary claim; neither it nor the
-  certification alone is an observational error budget
-- Molecular transport: the Navier-Stokes viscous force, its dissipation, and
-  heat conduction, integrated Crank-Nicolson and entering the steady residual
-  with the same operator. `Conduction: True` (default off) uses the
-  conductivity of the mixture, `kappa = (n_e 1.2e-6 T^2.5 + n_HI 379 T^0.69 +
-  n_HeI 299 T^0.69 + n_H2 k_H2(T))/n` erg cm^-1 s^-1 K^-1 (Salz et al. 2015;
-  Sutton et al. 2015; an Eucken-form fit to the tabulated H2 conductivity,
-  valid 200-2000 K), with the base face held at the bath temperature of the
-  lower atmosphere (the profile's own temperature when a lower-atmosphere
-  profile is handed over, the reservoir's isentrope otherwise). The heat the
-  wind conducts into the lower atmosphere through that face is measured on
-  the certified state and written to `EXHALE_resolved.out`
-  (`base_conductive_flux_cgs`, positive into the lower atmosphere, with
-  `base_conduction_T_bath_K` and `base_conduction_T_cell1_K`).
-  `EXHALE_CONDUCTION_SCALE=s` (0 <= s <= 1, unset = 1) multiplies the
-  conductivity, a continuation factor for reaching a state with conduction
-  from one solved without it, carried in the state's `cond` token
-- Low-Mach damping, a gated fourth-difference stress for a shell that has
-  stopped flowing, and an optional Shapiro filter for a breathing base
-- Roche-potential geometry, in either a spherical or a Roche-lobe domain;
-  `Outer radius [R_p]:` carries a Roche domain past L1 with the full tidal
-  potential (as Huang et al. 2023 and Yan et al. 2022 do). Past the ridge the
-  cold IC holds the density at its ridge value, the ghosts of a supersonic
-  outermost cell are the steady isothermal wind through it, and the absorbing
-  columns start at the outer face `r_edg(N)` in every domain (the outer
-  ghosts carry no column)
-- Dual-energy method for cold, highly supersonic expanding atomic gas
-  (`rho e < 1e-2 E`, M >~ 13): the internal energy from the advected adiabat
-  `p/rho^gamma` instead of `E - rho v^2/2` (Ryu et al. 1993; Bryan et al.
-  1995); the run log prints the reset cell-steps
-- Choice of initial condition: cold hydrostatic, warm Parker seed, an
-  automatic selector, or a warm start from an included Wind-AE solver
-  (Murray-Clay et al. 2009 / Broome et al. 2025)
-- Lower-atmosphere connection: an analytic Koskinen et al. (2022) column, an
-  EOS-only molecular-base correction, and a `base.inp` handoff generated
-  either analytically or from a VULCAN photochemistry run that EXHALE launches
-  itself. A handoff that states its own level (`p_base`) fixes the base level
-  of the run, `n0 = p_base/(k_B T0 ntot_bc)`, so `Log10 lower boundary number
-  density` is then unnecessary, and a pair that disagrees by more than 1% is
-  refused at startup rather than one of the two silently winning
-- OpenMP parallelization of the cell sweeps, bitwise identical to the serial
-  result
+- Second-order marching with PLM or WENO3 reconstruction and an HLLC, ROE or LLF flux
+- Optional Jacobian-free Newton-Krylov stationary solver for all active balances
+- Certification of a stationary state, one condition per active balance, with exit statuses
+- v1.10: regional stabilization, a finite-duration test for physical-time marching
+- Viscosity and heat conduction, low-Mach damping, an optional Shapiro filter
+- Well-balanced hydrostatic option; dual-energy update for cold supersonic gas
+- Spherical or Roche-potential geometry, with the outer face past L1 if needed
+- Initial conditions: cold hydrostatic, warm Parker seed, automatic, or a Wind-AE warm start
+- Lower-atmosphere connection: analytic column, `base.inp` handoff, or a VULCAN/Photochem profile
+- OpenMP parallelization, bitwise identical to the serial result
 
 **Tooling**
 
-- Runtime configuration by file presence, not compile flags: `metals.inp`
-  present means metals on, likewise `opacity.inp` and `base.inp`
-- Runtime grid size: `Grid cells: <N>` in `input.inp` (default 500), so
-  base-refinement studies run without a rebuild
-- Shells beyond the constructed grid, off by default: `Outer shells
-  [r_face,cells]: <r_face> <cells>` appends `<cells>` cells outside the
-  outer face of the grid, the last face landing on `r_face` [R_p], with the
-  cells, faces and volumes below the old outer face unchanged bit for bit, so
-  a domain-size test moves only the outer boundary (`../EXHALE_v1.00/md/input_schema.md`,
-  K33d)
-- `EXHALE_transit.py` transmission post-processor: He I 10830 A, Ly-alpha,
-  H-alpha, H-beta, the metal resonance doublets Mg II h&k, Ca II H&K and
-  Na I D, and the O I 1302/1304/1306 triplet out of its three resolved
-  ground-term fine-structure levels, with impact-parameter Voigt integration,
-  instrument and rotation convolution, and an optional triaxial Roche geometry.
-  Every `tpm_*.txt` carries a `# transit_schema 1` metadata block above its
-  column line: which `_adv` profile it was built from, that profile's validity
-  schema, certification verdict and provenance, the census of rows the line
-  took its depth from that were refused a correction, and the
-  `EXHALE_TRANSIT_*` overrides in effect, so a curve says what it stands on
-- A model line compared with an observed transit profile is fitted to the
-  observed equivalent width with its width matched by an added Gaussian
-  velocity kernel, for every planet: the excess absorption of the
-  spectrum convolved with the planet's rotation and the instrument (column 4,
-  `T_rot+instr`) is convolved with a Gaussian of FWHM `f` in
-  velocity, `f` chosen for each model so that the extractor used on the data
-  returns the observed FWHM, and the EW is the window EW of that curve on the
-  observation's samples (trapezoid weights). The kernel stands for a velocity
-  field the 1-D model does not contain, not a computed physics term, and every
-  result that uses it reports `f`. For LHS 1140 b He 10830 the code is
-  `LHS1140b/he10830_equivalent_width.py` (`broaden_excess`,
-  `width_matching_fwhm_kms`, `width_matched_product`, CLI `--width-matched`)
-- Lower atmosphere from Photochem with a two-way coupling:
-  `src/utils/photochem_to_lower_profile.py` writes the lower-atmosphere profile
-  and, with `--conducted-heat-flux F` (default 0, profile unchanged), solves
-  the energy balance of the column below the matching level under the heat
-  the wind conducts into it (`src/utils/conducted_heat_column_balance.py`:
-  mixture conductivity, band emission of CH4, NH3, H2O, C2H2, CO and CO2 from
-  the climate model's k-distributions, published V-T rates for the
-  two-level bands; `--column-energy-treatment nlte|nlte_partial|lte|rotational`,
-  `--nh3-h2-rate-analog cd4_bending|water_bending_overtone`,
-  `--column-band-transfer thin|cooling_to_space|cooling_to_space_exchange`
-  with its validity bound `--column-exchange-shift-max`), re-solving the
-  chemistry on the new temperature; the profile header records
-  `conducted_heat_flux_cgs`, `column_energy_treatment`, `column_T_match_K`,
-  `nh3_h2_rate_analog` (treatment `nlte`), `column_band_transfer` (off the
-  default `thin`) or, under `thin`, the `thin_layer_*` record of the
-  optically thin validity check (the column is kept and flagged past its
-  10 percent limit). `src/utils/element_flux_closure.py` iterates wind and
-  chemistry to one elemental flux at the matching level (for hydrogen the
-  hydrogen-nucleus flux `F_Hnuc` of `EXHALE_resolved.out`, not the
-  component-1 mass flux `F_H`, which carries the metals too; the column
-  models take the stellar energy the wind's input states, `--face-geometry
-  wind`, checked against the wind's `dayside_dilution`) and, with
-  `energy_coupling` on, passes the wind's `base_conductive_flux_cgs` to the
-  next column (damped by `energy_coupling_omega`), converging only when the
-  elemental fluxes and the conducted flux agree within `tol` and `T_match`
-  moves less than `T_match_tol` (default 6 K)
-- An independent conservation audit of the discrete rows, off by default.
-  `EXHALE_CONSERVATION_BUDGET=<n>` exports the next `n` stationary residual
-  assemblies to `output/conservation_budget_<nnnn>.txt`: per cell the face
-  areas, the cell volume, both faces of all three conserved variables, the
-  face potentials and the cell potential, the gravitational work the energy
-  flux difference carries inside it, the face pressures or the equilibrium
-  pressure departures the momentum branch in force uses, the explicit and
-  transport sources, the radiative heating and cooling, and the assembled
-  rows, every real at seventeen significant decimal digits. Schema 3 appends,
-  for the upper face of each row, the left and right face states (rho, v, p)
-  the Riemann problem was solved on, the well-balanced pressure data
-  (`wb_dp_eq`, `wb_dev_L`, `wb_dev_R` and the jump `dp_WB` the Roe flux uses),
-  the central mass transport 0.5 (F_L + F_R), the part of the numerical mass
-  flux the pressure jump carries (the production `Num_flux` with the
-  production jump minus the same call with the jump set to zero, an
-  attribution and not a flux; NaN where the flux is not Roe or the option is
-  off) and the recomputed `Num_flux` mass flux; per cell |R_mass|, the scale
-  the stationary solve divides it by, their ratio and the signed running sum
-  of V R_mass over the physical cells; and a header block for the base: the
-  reservoir, the interior state the base condition reads at the face (the
-  first cell's own constant-density equilibrium under `Well balanced: True`,
-  its hydrostatic isentrope otherwise), the characteristic face velocity, both states of face 0, the numerical base
-  mass flow and the wind-window flux. The export is a measurement: the run's
-  outputs are bitwise the same with it on or off. Absent or `0`
-  nothing is written and no file is opened.
-  `EXHALE_conservation_budget.py` reads that file, rebuilds each row from
-  the exported terms alone, and reports two things separately: assembly
-  consistency, whose tolerance is arithmetic, and stationarity, whose
-  tolerance is the certification's
-- Python loaders (`examples/exhale_io.py`) driven by the `# columns` schema
-  header every output file carries
-- A restart is a contract, not a file copy. Both state files carry a
-  `restart_schema 1` metadata block (reservoir, species columns, grid,
-  constants, twenty-six option switches, physical time, source), and a load whose
-  grid, reservoir, constants or options disagree with the input is refused by
-  name rather than silently accepted. `Restart intent:` says what the loaded
-  state is (`trajectory`, `relaxation`, `stationary`, which enters the steady
-  solver with no time step, or `stationary evaluate`, which certifies the stored
-  pair as loaded, takes no step at all and writes the state, the
-  advection-corrected profiles and the mass-loss line from that pair, its exit
-  status being the stored pair's verdict; one composition sweep from the
-  loaded state is then taken and its movement and certification reported
-  beside the verdict, never written. The same held-composition evaluation,
-  the temperature, sources and lower ghost of the stored composition from one
-  sweep that returns the interior composition bit for bit, is what every
-  stationary outer pass and every written file is certified on, so a file's
-  certificate is the one its reload measures), and `Restart option change:` names the
-  option tokens a deliberate ladder is allowed to differ in. The two
-  continuation-factor tokens, `cond` (`EXHALE_CONDUCTION_SCALE`) and
-  `interdiff_enth` (`EXHALE_INTERDIFF_ENTH_SCALE`), carry a factor other than
-  1 as `ES23.16E3`, so two factors are two states; a five-decimal token
-  written before 2026-10-01 stands for the interval [v - 5e-6, v + 5e-6], and
-  a requested factor inside it loads the state as a seed with its claim
-  dropped (`legacy_factor_token`), one outside it is a physics change to be
-  named. A file with no
-  block is legacy, loaded as before and marked `provenance unknown`, and that
-  mark is inherited by everything the run writes. The two files state the mass
-  density twice -- the `rho` column, and the species densities that weigh it --
-  and the conserved variable is the authority: the density is read from its own
-  column and the loaded species are projected onto it, so the state a restart
-  evaluates is the state the file names to the last bit, whatever mass closure
-  the written composition carries. The departure is reported on every restart.
-  The grid is part of the contract: since 2026-09-27 the first cell face of
-  every grid type is the base level `r = 1` (the reservoir the lower
-  atmosphere states is then the face state itself, with no half-cell slab of
-  reservoir gas under the domain), so every cell center moved and a state
-  written before then is refused; it enters a run only as a seed mapped with
-  `src/utils/map_state_to_grid.py <src> <target_grid_file> <out> --ic`
-  (`--reservoir El/H <value>` rescales an element, `--uniform` sets it to one
-  ratio in every row; a target cell whose center lies between the base face
-  and the source's first cell center takes that cell's values, never an
-  interpolation with the reservoir ghost). v1.10: the lower ghosts of that
-  held-composition evaluation are the thermochemical fixed point of the
-  boundary closure (P1); the base boundary model a state records changes
-  from `..._v4` / `..._discrete_equilibrium_v5` to `..._v6` /
-  `..._discrete_equilibrium_v7`, the loader reports the change, a
-  `conserved_state.txt` written by v1.00 is ignored for that reason (the
-  restart then reads the dimensional pair), and a state certified by v1.00 is
-  to be evaluated again
-- Beside every equilibrium state pair (`Hydro_ioniz.txt`, `Ion_species.txt`,
-  including the pass-state generations and the `EXHALE_DUMP_IC=1` dump) the
-  run writes `output/conserved_state.txt`, the exact code-unit state: the
-  conserved variables (rho, rho v, E) and every species fraction of every
-  cell, ghosts included, as `ES25.17E3` text, which reproduces each binary64
-  value exactly. It is copied with the pair to `conserved_state_IC.txt`, and
-  a restart that finds it starts from the bits the run ended on instead of
-  converting the dimensional pair (the conversion from physical units, the
-  species fractions recovered from densities and the energy rebuilt from `p`
-  move the last digits: 146 of 500 conserved rows and all 500 composition rows
-  of a 20-step `wasp_he23off` state). The file records the format version, the
-  shape (`N`, `Ng`, number of species), the rolling checksums of the two
-  dimensional files it was written with, the reservoir and options fields of
-  the restart metadata, the base boundary model, the species order, the
-  normalization constants, checksums of the physical input files (spectrum,
-  lower-atmosphere profile or `base.inp`, `metals.inp`, the opacity
-  parameters and tables) and of the gravity and irradiation fields, the cell
-  and face radii, and a checksum of its own data. It is used only when all of
-  them agree with the run; otherwise, or when the load applied a `Restart
-  option change:`, migrated a legacy factor token or read a pair without
-  metadata, it is ignored with a printed notice and the restart proceeds from
-  the dimensional pair, which stays the state of record for analysis and the
-  restart contract. A molecular-seed conversion and a seed projected with
-  `EXHALE_SEED_HYDROSTATIC_CELLS` never read it. Physical cells and the upper
-  ghosts are restored; the lower ghosts are rebuilt by the boundary from the
-  run's reservoir. A state that cannot be written exactly (a nonfinite value,
-  a nonpositive density or internal energy, a negative species fraction) is
-  not written, any older file at that path is removed, a warning is printed
-  and the run's exit status is unaffected; a write of a pair without the
-  conserved state (the molecular seed) also removes the older file. The
-  graphical interface copies the file with the pair and deletes a stale
-  `conserved_state_IC.txt` when the state has none;
-  `src/utils/map_state_to_grid.py` refuses a destination that already holds
-  one, since a mapped state is a new state
-- A stationary run that alternates a wind solve with a composition relaxation
-  publishes the state of every completed outer pass as one generation,
-  `output/pass_state/<state_id>/` (`Hydro_ioniz.txt`, `Ion_species.txt`,
-  `conserved_state.txt` when it can be written, `manifest.txt`), written by
-  the final-state writers, with
-  `<state_id> = r<run identity>_p<pass>`; the one-line file
-  `output/pass_state/current` names the generation to take, and it is
-  replaced by a single rename only after that generation is complete, so a
-  run stopped from outside at any moment leaves `current` naming a whole
-  state. The generation `current` named before is kept and older ones are
-  removed. Copy the pair `current` names (and its `conserved_state.txt`) to
-  the `_IC` names to continue from that pass. The pair is never a certified state: both halves say
-  `certified=F cert_reason=pass_snapshot_p<n> ... state_id=<state_id>`
-  (`load_IC` refuses halves of two generations), and a `# pass_snapshot`
-  line records the carrier movement bound and the element under-relaxation
-  factor of the next pass, which a restart does not inherit
-  (`EXHALE_CARRIER_TRUST`, `EXHALE_DIFF_OMEGA` pass them back). Until
-  2026-09-29 the pair was `output/{Hydro_ioniz,Ion_species}_last_pass.txt`
-- The advection-corrected `_adv` profiles the analysis and transit tools read
-  say row by row what they are: two validity fields, `adv_T_status` and
-  `adv_comp_status`, for the temperature and the composition separately, and
-  `adv_mass_row`, the measure both were decided by. The post-process solves
-  the steady ionization and energy equations along the recorded flow, second
-  order in the cell width (variable-step BDF2 since 2026-09-27; the
-  first-order recursion before it put 1-4 percent into the He 10830
-  equivalent width of the LHS 1140 b states), each element's stages stepped
-  on the velocity of that element's nuclei (`v_H`, `v_He`, which differ from
-  the bulk velocity when `He_diffusion` moves the elements), with the heat
-  conduction and the element, carrier and stage enthalpy flux divergences of
-  the run kept in the energy equation it re-solves (the conduction couples
-  neighboring cells, so the corrected column is solved together by a Newton
-  iteration and accepted on its residual), and the
-  flow it integrates along changes its face mass flux by a fraction of itself
-  across each cell; the correction is first order in that fraction, so a row
-  at or below the `# adv_conditional_tol` of the file is corrected and is a
-  CONDITIONAL correction accurate to that fraction of itself, while a row
-  above it, or one whose local radiative balance rather than the flow sets
-  its temperature, or one the gas flows into, or one whose ionization is
-  already equilibrated, or one whose energy balance is carried by the
-  molecular channels the post-process omits, keeps the run's own state and
-  says so. Whether the
-  whole input state passed the stationary certification is a separate
-  statement in the same header (`# adv_input_certified`), and the product is
-  declared there as a one-way correction on a fixed density and velocity
-  field, so a spectrum built on a breathing base is labeled as such. The
-  `# adv_derived_state:` line of the same header records how the solves that
-  produced the rows ended as a whole: the column energy solve of the
-  transport terms (rejected, with its reason and triggering cell, or
-  `converged_on_residual`: every unknown's energy row, formed again at the
-  final profile, within 10 eps times the sum of the parts it is assembled
-  from + 1e-6 of its largest term, with
-  the worst cell and residual in the record), the chemistry, the row counts,
-  the cells whose own marching energy step found no root (unknowns of the
-  column by default) and `outer=unverified`; a rejected column writes every
-  one of its cells `failed` and keeps the marching profile in the numeric
-  columns. `unverified` is the best a record says: the column is solved with
-  its transport coefficients formed on the input composition and the
-  fine-structure escape probabilities of the start of the pass, and neither
-  the full energy residual of the derived state, nor the convergence of the
-  ten outer passes, nor the momentum balance of the corrected pressure is
-  tested. A row where H+, He+ or He(2^3S) loses faster to H2 than to the
-  channels the molecule-free advection systems carry keeps the run's state
-  (status 3), and every refused field carries the run's own numbers exactly
-  (the temperature of a failed row of a rejected column excepted). The
-  `stationary evaluate` route exits 7 when that record is rejected (2 stays
-  the certification refusal of the input), and `EXHALE_transit.py` refuses an
-  `adv` spectrum from a rejected record, or from a file with no record (written
-  before the record existed: an UNKNOWN derived state), with exit 7 unless
-  `EXHALE_TRANSIT_DIAGNOSTIC=1`
+- Runtime configuration by input keys and file presence; runtime grid size
+- Restarts with a metadata contract, an exact code-unit state file and outer-pass snapshots
+- Advection-corrected `_adv` profiles with row-by-row validity fields
+- `EXHALE_transit.py`: He 10830, Ly-alpha, H-alpha, H-beta, Mg II, Ca II, Na I D and O I 1302 transit spectra
+- Fitting a model line to an observed one by equivalent width with a width-matching velocity kernel
+- `src/utils/element_flux_closure.py`: wind and lower-atmosphere chemistry iterated to one elemental flux
+- Conservation audit of the discrete rows (`EXHALE_conservation_budget.py`)
+- Python loaders (`examples/exhale_io.py`) and a live plotter (`EXHALE_plots.py`)
 
----
+Each item is described, with its keys, defaults and validity range, in the
+user manual and, as a recipe, in [`README_HOWTO.md`](README_HOWTO.md).
 
-## Requirements and build
+## Directory layout
 
-| Component | Version |
-|-----------|---------|
-| Fortran compiler | `gfortran` >= 9.3 or `ifort`/`ifx` >= 2021 |
-| Python 3 | >= 3.8; packages `numpy`, `scipy`, `matplotlib`, `tkinter`, `astropy` |
-| MINPACK | included in `src/modules/nonlinear_system_solver/` |
-
-There is no installation step beyond cloning.
-
-```bash
-git clone https://github.com/seoncafe/EXHALE
-cd EXHALE
-git checkout v1.10                      # v1.10: this tree is branch v1.10
-make                                    # ifx; use make FC=gfortran or FC=ifort to override
 ```
-The Makefile selects `ifx` from `PATH` by default. The Makefile fixes the Wind-AE source and link
-object order explicitly and rejects a source-list mismatch. The Intel build
-links MKL with
-`-qmkl=sequential`. With `make FC=gfortran`, it uses OpenBLAS from the compiler's
-prefix when available,
-records that path in the rpath, and otherwise links the system `-llapack`
-(`make LAPACK_LIBS='...'` overrides). OpenBLAS runs its own thread pool,
-independent of OpenMP and by default as wide as the machine: at startup the
-binary sets it to one thread unless `OPENBLAS_NUM_THREADS` is stated, and the
-setup report says which library it found and what it set (the band
-factorizations of the stationary solve are too small to gain from a BLAS team:
-MEASURED 16.33 s against 16.32 s on the `wasp_full_newton` reload at 1 and 8
-BLAS threads, 2026-09-13). The compiler's path and version are part
-of the rebuild stamp: objects from different compilers are never linked together.
-`make FC=gfortran OBJDIR=build_gfortran EXE=EXHALE_gfortran.x` builds a
-separate GNU Fortran binary beside the default Intel binary.
-```
-cd examples/regional_convergence && ../../EXHALE.x Salz.inp  # v1.10: reads ./Salz.inp, writes ./Salz/
+EXHALE/
+|-- Makefile, run_EXHALE.sh   # build; optional GUI launcher
+|-- src/                      # EXHALE_main.f90, modules/, utils/
+|-- examples/                 # input configurations, exhale_io.py
+|-- inputdata/, cooling_data/ # spectra and opacity tables; cooling-fit scripts
+|-- docs/                     # user manual, physics document, notes
+|-- EXHALE_transit.py, EXHALE_plots.py, EXHALE_conservation_budget.py
 ```
 
-v1.10: the tutorial is in the v1.00 tree only
-(`../EXHALE_v1.00/examples/tutorial/`). The line above runs instead the
-v1.10 regional-stabilization input for HD 209458 b, a finite-duration
-physical-time run rather than a short demonstration (its run time was not
-measured for this README; README_HOWTO, "Example configurations").
-
-Run `EXHALE.x [input_file]`. With no argument, it reads `input.inp` in the
-working directory. A missing input file stops the run and names the path tried.
-Relative paths for `metals.inp`, `base.inp`, `opacity.inp`, the lower-atmosphere
-profile, and the spectrum are resolved from the input file's directory;
-presence of the first three files enables their respective options.
-
-The optional input line `Output directory: <path>` selects an absolute path or
-a path relative to the working directory. Without it, `input.inp` writes to
-`output/` for existing runs; any other input filename writes to a directory
-named after its stem in the working directory. For example,
-`EXHALE.x cases/salz.inp` writes to `salz/`. EXHALE creates the output
-directory when needed. Profiles, restart files, `EXHALE_setup.out`, and
-`EXHALE_resolved.out` are written inside it. The setup and resolved reports
-state the input path and output directory in effect. `examples/` holds
-nineteen ready-made configurations, one for each physics or solver option;
-copy one as a starting point. v1.10: those nineteen are in
-`../EXHALE_v1.00/examples/`; this tree's `examples/` holds the inputs of
-`14_diffusion/` and `15_molecular/`, the profile generator of
-`17_lower_profile/`, and the two regional-stabilization inputs of
-`regional_convergence/`. `./run_EXHALE.sh` instead opens a Tk interface
-that fills in the planetary parameters and builds and runs for you.
-
-For a physical-time marching result, set `Run mode: phys`, retain
-profile snapshots, and measure the full radial temperature, density, and
-velocity bands over the required flow-crossing window. The executable's
-`Run mode: init` default is an initialization route, not a scientific
-acceptance criterion. Both versions use the K=3 profile
-criterion as the default acceptance test; ordinary solver stops do not automatically satisfy that test.
-Check that the outer face is supersonic before treating the mass-loss rate
-as quantitative, because a subsonic outer boundary can influence it.
-
-`Solver: Newton` requests an optional stationary JFNK finish. The two-stage
-`PLM+WENO3` and `du_th [PLM,WENO3]` input is an optional initialization route;
-its first threshold controls the reconstruction change. A stationary root
-may be certified independently. Failure to obtain one does not negate a
-marching result whose profile band passes its stated criterion.
-
-Everything else (compiler variants, all opt-in physics keys, output-file
-schemas, convergence recipes, post-processing) is in
-[`README_HOWTO.md`](README_HOWTO.md).
-
----
+The full tree, with the third-party codes fetched on demand:
+[`README_HOWTO.md`, Directory layout](README_HOWTO.md#directory-layout).
 
 ## Documentation
 
-**Start here**
+| Question | Document |
+|---|---|
+| How do I do X (exact lines, commands, expected output)? | [`README_HOWTO.md`](README_HOWTO.md) |
+| What does each input key, output column and option mean? | [`docs/EXHALE_user_manual.pdf`](docs/EXHALE_user_manual.pdf) (section 1: what changed in v1.10) |
+| Which equations and algorithms does the code apply? | [`docs/EXHALE_physics_and_algorithms.pdf`](docs/EXHALE_physics_and_algorithms.pdf), sources in `docs/physics_overview/` |
+| What do the numbered example configurations add? | [`examples/README.md` (v1.00)](https://github.com/seoncafe/EXHALE/blob/v1.00/examples/README.md) |
+| How is Photochem obtained and built for the profile handoff? | [`README_photochem.md` (v1.00)](https://github.com/seoncafe/EXHALE/blob/v1.00/README_photochem.md) |
+| What changed, and when? | update logs (v1.00): [stage 3](https://github.com/seoncafe/EXHALE/blob/v1.00/docs/Update_EXHALE_stage3.pdf) (from 2026-09-23), [stage 2](https://github.com/seoncafe/EXHALE/blob/v1.00/docs/Update_EXHALE_stage2.pdf), [stage 1](https://github.com/seoncafe/EXHALE/blob/v1.00/docs/Update_EXHALE_stage1.pdf); v1.10 keeps no update log of its own |
 
-- [`README_HOWTO.md`](README_HOWTO.md), task-oriented recipes: one entry per
-  task, with the exact input lines, the expected output, and where the full
-  documentation lives. All the details this file used to carry are there
-- [`docs/EXHALE_user_manual.pdf`](docs/EXHALE_user_manual.pdf), the reference
-  manual: every input key, every output column, the physics and the solver
-- [`docs/EXHALE_physics_and_algorithms.pdf`](docs/EXHALE_physics_and_algorithms.pdf),
-  the physical equations and the numerical algorithms as the code applies them
-  (hydrodynamics, radiation, ionization, heating and cooling, molecules and
-  metals, the marching scheme, boundary and initial conditions, the stationary
-  solve), written from the source at the depth of the ATES paper; the section
-  files are `docs/physics_overview/*.tex`
-- v1.10: both PDFs open with a v1.10 section (`docs/v110_user_updates.tex`,
-  `docs/physics_overview/v110_updates.tex`), so every section number of the
-  manual is one higher than in v1.00; the chapters after it, with their
-  examples and numbers, are v1.00 material
-- [`../EXHALE_v1.00/docs/Update_EXHALE_stage3.pdf`](../EXHALE_v1.00/docs/Update_EXHALE_stage3.pdf): the current
-  update log (stage 3, from 2026-09-23).
-  It carries the code-size appendix against the original ATES and the list of
-  source inherited unchanged from it (`../EXHALE_v1.00/docs/Update_EXHALE_appendix.tex`,
-  measured 2026-10-05, after section 102, with `src/utils/codesize.py`: 236
-  core Fortran files, 109,539 code lines, 31 times the 3,514 of ATES);
-  [`../EXHALE_v1.00/docs/Update_EXHALE_stage2.pdf`](../EXHALE_v1.00/docs/Update_EXHALE_stage2.pdf): sections
-  1-17 (2026-09-05 to 09-22);
-  [`../EXHALE_v1.00/docs/Update_EXHALE_stage1.pdf`](../EXHALE_v1.00/docs/Update_EXHALE_stage1.pdf): sections 1-171, the dated changelog against
-  the original ATES. v1.10 keeps no update log of its own
-- [`../EXHALE_v1.00/examples/README.md`](../EXHALE_v1.00/examples/README.md): what each of the numbered
-  example configurations demonstrates, and the exact lines it adds
-- [`../EXHALE_v1.00/README_photochem.md`](../EXHALE_v1.00/README_photochem.md): the Photochem build the
-  lower-atmosphere profile handoff runs on: where the source comes from, the
-  four corrections applied to it, and how the source and its environment are
-  rebuilt. Neither is in this repository
+Physics and numerics notes (v1.00 branch):
+[cooling formulas](https://github.com/seoncafe/EXHALE/blob/v1.00/docs/cooling_formulas.pdf),
+[photoionization cross sections](https://github.com/seoncafe/EXHALE/blob/v1.00/docs/photoion_cross_sections.pdf),
+[recombination coefficients](https://github.com/seoncafe/EXHALE/blob/v1.00/docs/recombination_coefficients.pdf),
+[lower-atmosphere coupling](https://github.com/seoncafe/EXHALE/blob/v1.00/docs/lower_atmosphere_coupling.pdf),
+[molecular hydrogen treatment](https://github.com/seoncafe/EXHALE/blob/v1.00/docs/molecular_hydrogen_treatment.pdf),
+[diffusive separation and He 10830](https://github.com/seoncafe/EXHALE/blob/v1.00/docs/version_compare.pdf),
+[transmission spectrum](https://github.com/seoncafe/EXHALE/blob/v1.00/docs/transmission_spectrum.pdf),
+[boundary and initial conditions](https://github.com/seoncafe/EXHALE/blob/v1.00/docs/EXHALE_BC_and_IC.pdf),
+[steady solver](https://github.com/seoncafe/EXHALE/blob/v1.00/docs/steady_solver_memo.pdf),
+[Wind-AE solver](https://github.com/seoncafe/EXHALE/blob/v1.00/docs/wind_ae_solver.pdf),
+[viscosity and conduction](https://github.com/seoncafe/EXHALE/blob/v1.00/md/viscosity_conduction.md),
+comparison with other escape codes ([code](https://github.com/seoncafe/EXHALE/blob/v1.00/docs/code_comparison.pdf),
+[methodology](https://github.com/seoncafe/EXHALE/blob/v1.00/docs/methodology_comparison.pdf)).
+The list with one line on each is in
+[`README_HOWTO.md`, Where results and documents live](README_HOWTO.md#where-results-and-documents-live).
 
-**Physics and numerics notes**
-
-- [`../EXHALE_v1.00/docs/cooling_formulas.pdf`](../EXHALE_v1.00/docs/cooling_formulas.pdf): the analytic
-  CHIANTI cooling-coefficient fits and their accuracy
-- [`../EXHALE_v1.00/docs/photoion_cross_sections.pdf`](../EXHALE_v1.00/docs/photoion_cross_sections.pdf) and
-  [`../EXHALE_v1.00/docs/recombination_coefficients.pdf`](../EXHALE_v1.00/docs/recombination_coefficients.pdf):
-  the H/He/He 2^3S atomic data and its benchmarks
-- [`../EXHALE_v1.00/docs/lower_atmosphere_coupling.pdf`](../EXHALE_v1.00/docs/lower_atmosphere_coupling.pdf),
-  the lower-atmosphere connection: analytic column, molecular chemistry,
-  Lyman-Werner photodissociation, base infrared field, the H2/H2O/CO infrared
-  bands, VULCAN handoff
-- [`../EXHALE_v1.00/docs/molecular_hydrogen_treatment.pdf`](../EXHALE_v1.00/docs/molecular_hydrogen_treatment.pdf),
-  how H2 is treated: it is one species with no (v,J) resolution, so every
-  level distribution is an assumption; the assumptions, their sources and
-  their validity ranges collected in one place
-- [`../EXHALE_v1.00/docs/version_compare.pdf`](../EXHALE_v1.00/docs/version_compare.pdf), diffusive
-  separation of He and metals, and its measured effect on He 10830
-- [`../EXHALE_v1.00/docs/transmission_spectrum.pdf`](../EXHALE_v1.00/docs/transmission_spectrum.pdf): how the
-  transit spectra are computed from the wind profiles
-- [`../EXHALE_v1.00/docs/EXHALE_BC_and_IC.pdf`](../EXHALE_v1.00/docs/EXHALE_BC_and_IC.pdf) and
-  [`../EXHALE_v1.00/docs/steady_solver_memo.pdf`](../EXHALE_v1.00/docs/steady_solver_memo.pdf): boundary and
-  initial conditions, the convergence criteria, and the Newton-Krylov design
-- [`../EXHALE_v1.00/docs/wind_ae_solver.pdf`](../EXHALE_v1.00/docs/wind_ae_solver.pdf): the included Wind-AE
-  solver behind `IC mode: windae`
-- [`../EXHALE_v1.00/md/viscosity_conduction.md`](../EXHALE_v1.00/md/viscosity_conduction.md), molecular
-  viscosity and heat conduction: derivation and where they matter
-- [`../EXHALE_v1.00/docs/code_comparison.pdf`](../EXHALE_v1.00/docs/code_comparison.pdf) and
-  [`../EXHALE_v1.00/docs/methodology_comparison.pdf`](../EXHALE_v1.00/docs/methodology_comparison.pdf):
-  comparison with ATES, Salz, Kubyshkina, Murray-Clay, AIOLOS, Taylor, Xing
-
-`docs/` holds further typeset notes on individual investigations, and `md/`
-the Markdown memos of the development record. v1.10: this tree's `docs/`
-holds the user manual and the physics document, with their sources and
-figures, the notes `docs/jfnk_march_jfnk_lhs1140b`,
-`docs/marching_acceleration_20261109` and `docs/stationary_vs_marching_lhs1140b`
-(`.tex` and `.pdf`, class `docs/my_memo.cls`), `docs/compare_vulcan_photochem.py`
-and `docs/defect_fixes_20261027/`; the further notes are in
-`../EXHALE_v1.00/docs/`.
+Notes in this branch: [`docs/jfnk_march_jfnk_lhs1140b.pdf`](docs/jfnk_march_jfnk_lhs1140b.pdf)
+and [`docs/stationary_vs_marching_lhs1140b.pdf`](docs/stationary_vs_marching_lhs1140b.pdf)
+(LHS 1140 b, stationary and marching solutions; sources `.tex` with class
+`docs/my_memo.cls`), `docs/compare_vulcan_photochem.py`, and
+`docs/defect_fixes_20261027/`.
 
 ---
 
@@ -1053,5 +252,4 @@ and `docs/defect_fixes_20261027/`; the further notes are in
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-11-13 15:08 KST
-
+Last updated: 2026-11-13 20:43 KST
