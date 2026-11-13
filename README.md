@@ -32,7 +32,7 @@ saved profiles over the required flow-crossing interval when making a
 physical-time marching claim. The default marching acceptance criterion in
 v1.00 and v1.10 uses K=3 flow-crossing times; ordinary solver termination
 does not automatically apply it.
-The checker `../EXHALE_v1.10/LHS1140b/tools/marching_acceptance.py` requires full-window ranges of at most
+The criterion requires full-window ranges of at most
 0.004 dex in T and rho in every physical cell. Velocity spans must be at
 most 1 percent of the minimum speed in cells that keep one sign and remain
 at Mach 0.01 or above; the remaining cells use 1 percent of the maximum
@@ -266,8 +266,7 @@ requirements. A zero-speed quasi-hydrostatic set has zero velocity span.
   `Outer radius [R_p]:` (on `wasp_full_newton`, measured before update log
   stage 3 section 138 changed the columns, the default Roche L1 face,
   1.574 R_p at Mach 0.95, moves rho and v by up to 15-17% near 1.31 R_p and
-  log10 Mdot by 0.01 against an outer face at 2 R_p;
-  `md/outer_boundary_subsonic_review_20261009.md` section 5)
+  log10 Mdot by 0.01 against an outer face at 2 R_p)
 - `Composition update holds: pressure` (default `energy`): where the
   stationary solve alternates a hydrodynamic solve with the fixed-wind
   element and carrier relaxations, the composition update keeps the density,
@@ -280,7 +279,6 @@ requirements. A zero-speed quasi-hydrostatic set has zero velocity span.
   a fixed point both values leave the state unchanged, and the energy each
   update adds is printed at every pass. On the LHS 1140 b molecular states it
   removes the base step but does not by itself make the next solve converge
-  (`md/lhs1140b_composition_update_pressure_20260924.md`)
 - `Well balanced: True` (default False) carries the departure from each
   cell's own local hydrostatic equilibrium through the reconstruction, the
   Riemann jumps and the pressure force, so a discrete hydrostatic
@@ -376,11 +374,7 @@ requirements. A zero-speed quasi-hydrostatic set has zero velocity span.
   density` is then unnecessary, and a pair that disagrees by more than 1% is
   refused at startup rather than one of the two silently winning
 - OpenMP parallelization of the cell sweeps, bitwise identical to the serial
-  result: the suite `src/tests/thread_count_identity` runs 200 steps of the
-  metals-on regression case at 1 and 8 threads and compares every data line
-  (it found, and the tree fixed on 2026-09-26, a shared scratch variable of
-  the metal sweep that made metals-on runs between 2026-09-25 and that fix
-  depend on the thread count)
+  result
 
 **Tooling**
 
@@ -416,12 +410,6 @@ requirements. A zero-speed quasi-hydrostatic set has zero velocity span.
   result that uses it reports `f`. For LHS 1140 b He 10830 the code is
   `LHS1140b/he10830_equivalent_width.py` (`broaden_excess`,
   `width_matching_fwhm_kms`, `width_matched_product`, CLI `--width-matched`)
-  and `LHS1140b/models/.P1/fiducial_conduction/ew_of_state.sh`, whose
-  `EW_NONTHERMAL_KERNEL=width_match` adds `EW_kernel=` and `fwhm_kms=` to
-  `EW.txt` (`EW=` stays the unbroadened value); the script evaluates the state
-  with `Restart intent: stationary evaluate`, stages its
-  `conserved_state.txt` and records the written state's certificate as
-  `written_state`
 - Lower atmosphere from Photochem with a two-way coupling:
   `src/utils/photochem_to_lower_profile.py` writes the lower-atmosphere profile
   and, with `--conducted-heat-flux F` (default 0, profile unchanged), solves
@@ -478,26 +466,7 @@ requirements. A zero-speed quasi-hydrostatic set has zero velocity span.
   consistency, whose tolerance is arithmetic, and stationarity, whose
   tolerance is the certification's
 - Python loaders (`examples/exhale_io.py`) driven by the `# columns` schema
-  header every output file carries; a regression harness over a
-  seventeen-case physics matrix (`make check`, bitwise first, else within a
-  stated relative tolerance); and 61 assertion suites (every executable `src/tests/*/run.sh`)
-  plus the standalone `element_census_tests`, `diffusion_tests` and
-  `residual_determinism` (`make test`), which print
-  one `PASS|FAIL <name> measured= reference= tol=` line per assertion.
-  Suites of the stage-3 physics: `conducted_heat_column` (the column energy
-  balance under the conducted heat: the zero-flux identity, a manufactured
-  column against its analytic solution, the energy budget, the published
-  V-T rates, the band transfer options), `low_energy_electron_degradation`
-  (the 10.2-30 eV partition against the authors' tables),
-  `ionization_stage_enthalpy_flux` (the enthalpy the carried stages move
-  relative to their element), `helium_metastable_transport` (the carried
-  He 2^3S level: simplex, write-back, local limit, source ledger, a
-  manufactured column), `adv_element_velocity` (the `_adv` rows stepped on
-  each element's nuclei velocity), `state_mapper` (`map_state_to_grid.py`, including
-  the first refined cell and the reservoir rescaling) and
-  `element_flux_closure` (the closure's window, its resume rule and the
-  conducted-flux residual); the exact-factor tokens and the
-  stored-pair evaluate are rows of `grid_and_gates`
+  header every output file carries
 - A restart is a contract, not a file copy. Both state files carry a
   `restart_schema 1` metadata block (reservoir, species columns, grid,
   constants, twenty-six option switches, physical time, source), and a load whose
@@ -591,7 +560,7 @@ requirements. A zero-speed quasi-hydrostatic set has zero velocity span.
   factor of the next pass, which a restart does not inherit
   (`EXHALE_CARRIER_TRUST`, `EXHALE_DIFF_OMEGA` pass them back). Until
   2026-09-29 the pair was `output/{Hydro_ioniz,Ion_species}_last_pass.txt`
-  (`md/Update_EXHALE_stage3.md` section 33)
+  (update log stage 3 section 33)
 - The advection-corrected `_adv` profiles the analysis and transit tools read
   say row by row what they are: two validity fields, `adv_T_status` and
   `adv_comp_status`, for the temperature and the composition separately, and
@@ -660,19 +629,12 @@ There is no installation step beyond cloning.
 git clone https://github.com/seoncafe/EXHALE
 cd EXHALE
 make                                    # ifx; use make FC=gfortran or FC=ifort to override
-make check                              # bitwise regression over the case matrix
-make test                               # the assertion suites (physics, grid and gates, ...)
 ```
-The Makefile selects `ifx` from `PATH` by default. On this machine, the
-installed build uses `/data/opt/oneapi_2026.1.1/setvars.sh`, the pinned
-`/data/opt/oneapi_2026.1.1/compiler/2026.1/bin/ifx` (2026.1.1), the
-matching `MKLROOT`, and the conda-forge GCC link driver. A login shell may
-select a different `ifx`; pin the compiler and library paths when reproducing
-that installed executable. The Makefile fixes the Wind-AE source and link
+The Makefile selects `ifx` from `PATH` by default. The Makefile fixes the Wind-AE source and link
 object order explicitly and rejects a source-list mismatch. The Intel build
 links MKL with
 `-qmkl=sequential`. With `make FC=gfortran`, it uses OpenBLAS from the compiler's
-prefix when available (as with the conda-forge gfortran 16.2 on this machine),
+prefix when available,
 records that path in the rpath, and otherwise links the system `-llapack`
 (`make LAPACK_LIBS='...'` overrides). OpenBLAS runs its own thread pool,
 independent of OpenMP and by default as wide as the machine: at startup the
@@ -743,7 +705,7 @@ schemas, convergence recipes, post-processing) is in
   solve), written from the source at the depth of the ATES paper; the section
   files are `docs/physics_overview/*.tex`
 - [`docs/Update_EXHALE_stage3.pdf`](docs/Update_EXHALE_stage3.pdf): the current
-  update log (stage 3, from 2026-09-23; source `md/Update_EXHALE_stage3.md`).
+  update log (stage 3, from 2026-09-23).
   It carries the code-size appendix against the original ATES and the list of
   source inherited unchanged from it (`docs/Update_EXHALE_appendix.tex`,
   measured 2026-10-05, after section 102, with `src/utils/codesize.py`: 236
@@ -849,21 +811,4 @@ the Markdown memos of the development record.
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-11-13 14:17 KST
-
-
-### Regression references (2026-11-09)
-
-The native `backup/regression/` harness contains all 16 default cases and
-references refreshed once at the end of the reviewed change series. Runs
-used this tree's installed ifx 2026.1.1 binary, one thread on lart2. The runner
-and comparator are identical in both versions, but each golden comes from
-its own version: molecular-ion transport and written heating diagnostics
-differ between the trees. The capped cases are relaxation snapshots, not
-accepted physical solutions. `iontrans_metals` is a labeled code-path control
-with a subsonic L1 outer face; a physical 2 R_p stored state is still pending.
-`oxygen_chemistry` is outside the default list and its old golden is unchanged.
-The original references and migration records are preserved in
-`EXHALE_v1.10/scratch_golden_refresh_step2_20261109/` at the workspace root.
-See the shared update log, `EXHALE_v1.00/md/Update_EXHALE_stage3.md`, section 182.
-
+Last updated: 2026-11-13 15:08 KST
