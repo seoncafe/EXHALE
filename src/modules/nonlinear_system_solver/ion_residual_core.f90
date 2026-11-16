@@ -18,7 +18,8 @@
 	use ion_cell_state, only: ion_rates, ieq_cell
 	! The density below which an element is absent from the cell, one
 	! definition for the rows and their layout.
-	use chemical_row_layout, only: absent_element_density, n_layout_rows_max
+	use chemical_row_layout, only: absent_element_density, n_layout_rows_max, &
+	                               present_element_density
 
 	implicit none
 
@@ -575,6 +576,10 @@
 	! order. `base` is the row of the first metal unknown (4 in the metals
 	! system, 5 with the He 2^3S triplet), so ix = base + 2*(e-1) locates the
 	! X+/X++ fractions of element e. Sets nm0/nm1/nm2 in this exact order.
+	! An absent element (mtot <= absent_element_density, whose rows
+	! metal_rows writes as the identity rows) has all three stage densities
+	! exactly zero, so it adds nothing to n_e or to charge exchange
+	! (chemical_row_layout, present_element_density).
 	subroutine metal_fractions(x, base, nelem, mtot, nm0, nm1, nm2)
 	integer, intent(in) :: base, nelem
 	real*8, intent(in)  :: x(*)
@@ -585,7 +590,7 @@
 
 	do e = 1,nelem
 		ix     = base + 2*(e-1)
-		n_X    = mtot(e)
+		n_X    = present_element_density(mtot(e))
 		nm1(e) = x(ix)*n_X
 		nm2(e) = x(ix+1)*n_X
 		nm0(e) = (1.0 - x(ix) - x(ix+1))*n_X

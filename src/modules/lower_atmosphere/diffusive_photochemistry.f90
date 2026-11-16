@@ -551,6 +551,9 @@
       ! controller can ask for a verdict on a trial state without running
       ! a solve.
       public :: carrier_returned_state_verdict, carrier_stall_class
+      ! THE ONE DEFINITION OF A CONVERGED CARRIER NEWTON RESIDUAL, and the
+      ! outcome of the iteration it decides, on their arguments alone.
+      public :: carrier_newton_converged, carrier_newton_status
       ! TWO RECORDS WITH TWO SCOPES, each named for the one it keeps.
       ! carrier_step_verdict is THIS transport step's: it is reset to
       ! "no interval" at the entry of photochemical_transport_step, so a
@@ -614,9 +617,12 @@
       integer, parameter, public :: carrier_solve_converged          = 0
       integer, parameter, public :: carrier_solve_iteration_cap      = 1
       integer, parameter, public :: carrier_solve_line_search_failed = 2
-      ! The iteration stopped falling while its residual was still above
-      ! the absolute floor.  It is a termination, never an acceptance: the
-      ! state it leaves is judged by carrier_returned_state_verdict like
+      ! The iteration stopped falling (carrier_stall_class) without
+      ! meeting the convergence condition carrier_newton_converged: far above
+      ! the threshold after a relative drop, or at the threshold on the full
+      ! row terms while the residual on the physical row terms is still
+      ! above carrier_accept_tol.  It is a termination, never an acceptance:
+      ! the state it leaves is judged by carrier_returned_state_verdict like
       ! any other.
       integer, parameter, public :: carrier_solve_stagnated          = 3
       ! The iteration drove its residual down to the round-off of the row
@@ -632,9 +638,9 @@
       integer, parameter, public :: carrier_solve_unreachable_at_substep = 4
 
       ! HOW A STALLING ITERATION STOPPED.  The three are separated because
-      ! only one of them is an accuracy statement: reaching the absolute
-      ! floor newton_floor says the residual is as small as this
-      ! discretization resolves, while falling by newton_drop RELATIVE to
+      ! only one of them is an accuracy statement: reaching newton_floor
+      ! says the residual on the full row terms is at the declared
+      ! nonlinear accuracy threshold, while falling by newton_drop RELATIVE to
       ! the residual the iteration started from says nothing about the size
       ! of what is left (a start of 1e8 admits a returned residual of 1e2).
       ! The second is therefore a diagnostic label and not a verdict.
@@ -816,7 +822,22 @@
       real(dp), parameter :: limit_report = 1.0d-10
 
       integer,  parameter :: newton_maxit  = 200
-      real(dp), parameter :: newton_tol    = 1.0d-12
+      ! THE NONLINEAR ACCURACY THRESHOLD OF THE CARRIER NEWTON, declared and
+      ! not measured.  The iteration has converged when both normalized
+      ! residuals of carrier_residual are within their tolerances
+      ! (carrier_newton_converged):
+      !   rnorm  = max |row residual| / dsc <= newton_floor, where dsc (the
+      !            FULL row terms, row_terms) is the two time-term
+      !            magnitudes |n_ref f/dt| + |n_ref f_old/dt|, the two face
+      !            flux magnitudes, the advective magnitude where the rows
+      !            advect, the magnitude of the NET chemical source |src|,
+      !            and the absolute floor 1e-20 n_el max(1/dt, signal rate);
+      !   rnormp = max |row residual| / dph <= carrier_accept_tol, where dph
+      !            (the PHYSICAL row terms, row_terms_phys) is the same face
+      !            flux and advective magnitudes, the GROSS production plus
+      !            loss of the row, srcp + srcl, and the floor
+      !            1e-20 n_el times the signal rate; no time term.
+      ! Both are normalized residuals, not errors of the carrier fractions.
       real(dp), parameter :: newton_floor  = 1.0d-8
       real(dp), parameter :: newton_drop   = 1.0d-6
       integer,  parameter :: newton_halves = 8
@@ -836,10 +857,11 @@
       ! carrier that holds the layer cannot pass it by being compared with
       ! a bound instead of with its own terms.
       !
-      ! The number is newton_floor, the absolute residual the solve already
-      ! declares to be what this discretization resolves.  It is the same
-      ! floor on the same measure, asked of the state that is handed back
-      ! rather than of the iteration's last trial.
+      ! The number is newton_floor, the declared nonlinear accuracy
+      ! threshold of the iteration.  The iteration asks it of its own last
+      ! iterate (carrier_newton_converged); the verdict asks it again of the
+      ! state that is handed back, after the element limiter, with the
+      ! round-off exception of carrier_row_roundoff.
       real(dp), parameter :: carrier_accept_tol = newton_floor
       ! THE SMALLEST ROW RESIDUAL THIS ASSEMBLY CAN TELL FROM ZERO, as a
       ! fraction of the row's FULL terms.  A carrier row is a sum of the
@@ -1903,8 +1925,11 @@
       ! the last one did not halve the residual.  What the stall then means
       ! depends on where the residual stands:
       !
-      !  - at or below newton_floor: the absolute floor of this
-      !    discretization, an accuracy statement;
+      !  - at or below newton_floor: the declared accuracy threshold on the
+      !    full row terms.  The iteration stops there; whether it CONVERGED
+      !    is carrier_newton_converged's statement on both measures, so a
+      !    stall here with the physical measure above carrier_accept_tol is
+      !    a stagnation (carrier_newton_status), not a convergence;
       !  - at or below newton_drop times the residual the iteration STARTED
       !    from: not an accuracy statement at all.  The predicate admits
       !    rstart = 1e8, rprev = 1e2, rnorm = 60, which satisfies both
@@ -1927,6 +1952,56 @@
          cls = carrier_stall_open
       endif
       end function carrier_stall_class
+
+
+      ! HAS THE CARRIER NEWTON CONVERGED?  One definition, used at the top
+      ! of every iteration and for the outcome after the last one: the
+      ! residual on the full row terms at or below newton_floor and the
+      ! residual on the physical row terms at or below carrier_accept_tol
+      ! (both normalized residuals; declaration of newton_floor).  Equality
+      ! converges.
+      logical function carrier_newton_converged(rnorm, rnormp)            &
+                       result(conv)
+      real(dp), intent(in) :: rnorm, rnormp
+      conv = (rnorm .le. newton_floor) .and.                              &
+             (rnormp .le. carrier_accept_tol)
+      end function carrier_newton_converged
+
+
+      ! HOW THE CARRIER NEWTON ENDED, from the residual of the iterate it
+      ! ends on (before the element limiter) and how it stopped.  Stopping
+      ! and converging are different statements: a failed line search and a
+      ! stall both stop the iteration, and neither is a convergence unless
+      ! the iterate meets carrier_newton_converged.  The outcomes are
+      ! exclusive and checked in this order:
+      !   converged               carrier_newton_converged(rnorm, rnormp);
+      !   unreachable_at_substep  rnorm at the round-off of the full row
+      !                           terms, the physical measure still above;
+      !   line_search_failed      the last search found no decrease;
+      !   stagnated               a stall at newton_floor or at the relative
+      !                           drop (carrier_stall_class);
+      !   iteration_cap           none of these after newton_maxit.
+      ! The last Newton update of the cap can meet the convergence condition
+      ! without another loop-top test; it is converged here.
+      integer function carrier_newton_status(rnorm, rnormp, stall,        &
+                                             line_search_failed)          &
+                       result(status)
+      real(dp), intent(in) :: rnorm, rnormp
+      integer,  intent(in) :: stall
+      logical,  intent(in) :: line_search_failed
+      if (carrier_newton_converged(rnorm, rnormp)) then
+         status = carrier_solve_converged
+      else if (rnorm .le. carrier_row_roundoff) then
+         status = carrier_solve_unreachable_at_substep
+      else if (line_search_failed) then
+         status = carrier_solve_line_search_failed
+      else if (stall .eq. carrier_stall_at_floor .or.                     &
+               stall .eq. carrier_stall_at_relative_drop) then
+         status = carrier_solve_stagnated
+      else
+         status = carrier_solve_iteration_cap
+      endif
+      end function carrier_newton_status
 
 
       ! IS THE STATE THAT IS ABOUT TO BE WRITTEN BACK A SOLUTION?
@@ -2120,12 +2195,13 @@
       character(len=72) :: txt
       select case (status)
       case (carrier_solve_converged)
-         txt = 'the residual reached the absolute floor'
+         txt = 'both normalized residuals within the declared tolerances'
       case (carrier_solve_line_search_failed)
          txt = 'the line search exhausted its halvings without reducing'//&
                ' the residual'
       case (carrier_solve_stagnated)
-         txt = 'it stagnated at a relative drop, above the absolute floor'
+         txt = 'it stalled without meeting the two-measure convergence'//  &
+               ' condition'
       case (carrier_solve_unreachable_at_substep)
          txt = 'it reached the round-off of the row terms, still above'// &
                ' the acceptance'
@@ -7765,7 +7841,7 @@
       stall              = carrier_stall_none
 
       do it = 1, newton_maxit
-         ! WHERE THE ITERATION MAY STOP, and it is the condition the
+         ! WHERE THE ITERATION HAS CONVERGED, and it is the condition the
          ! RETURNED STATE has to satisfy and not a second, unrelated one.
          ! The acceptance measures the row against its physical terms
          ! (carrier_returned_state_verdict), so an iteration that stops at
@@ -7773,16 +7849,17 @@
          ! the physical time scale of the row, at a state that is 1/dt
          ! times worse on the scale it is about to be judged on: the
          ! stopping test and the acceptance would measure different things.
-         ! So both have to hold -- the full-term accuracy this solve has
-         ! always required, and the acceptance measure itself.
+         ! So both have to hold (carrier_newton_converged).  An iterate that
+         ! meets them forms no Jacobian: the iteration ends on it, and the
+         ! limiter, the residual of the returned state and its verdict
+         ! after the loop run as for every other end.
          !
          ! And the iteration may also stop because there is nothing left to
          ! reduce: a residual at the round-off of the row terms is what an
          ! exact solve leaves (carrier_row_roundoff).  That is not
          ! convergence, it is named as its own outcome below, and the state
          ! is put to the acceptance exactly like any other.
-         if (rnorm .le. newton_tol .and. rnormp .le. carrier_accept_tol)  &
-            exit
+         if (carrier_newton_converged(rnorm, rnormp)) exit
          if (rnorm .le. carrier_row_roundoff) exit
 
          ! ---- assemble the block tridiagonal
@@ -8100,29 +8177,26 @@
          ! Repeating the iteration from the kept iterate would assemble the
          ! same matrix and try the same trials bit for bit, so the first
          ! failure is already the last; the solve ends with
-         ! carrier_solve_line_search_failed and the interval retry halves
-         ! the substep.  An iterate already at the discretization floor is
-         ! the exception: there the search fails because nothing is left to
-         ! reduce, which is the stall at the floor and not a failure.
+         ! carrier_solve_line_search_failed; whether the state it keeps is
+         ! accepted is the verdict's decision below, and only a refusal
+         ! makes the interval retry halve the substep.  A search is never
+         ! started from a converged iterate (the test at the top of the
+         ! loop), so a failed search is a stop and not a convergence.
          ! The residual, row scales and worst row of the kept iterate are
          ! re-formed by the residual of the returned state below.
-         if (line_search_failed) then
-            if (rnorm .le. newton_floor) then
-               stall = carrier_stall_at_floor
-               line_search_failed = .false.
-            endif
-            exit
-         endif
+         if (line_search_failed) exit
          fc     = ftry
          rprev  = rnorm
          rnorm  = rtry
          rnormp = rtryp
          rmerit = rmerit_try
-         ! The iteration has stopped making progress. Whether that is the
-         ! discretization's floor or a residual that merely fell a long way
-         ! from a large start is carrier_stall_class's statement, and it is
-         ! not an acceptance either way: there is nothing further this
-         ! direction will do, so the loop ends and the state is judged.
+         ! The iteration has stopped making progress. Whether that is at
+         ! newton_floor (the declared threshold on the full row terms) or a
+         ! residual that merely fell a long way from a large start is
+         ! carrier_stall_class's statement, and it is not an acceptance
+         ! either way (carrier_newton_status decides convergence on both
+         ! measures): there is nothing further this direction will do, so
+         ! the loop ends and the state is judged.
          stall = carrier_stall_class(it, rnorm, rprev, rstart)
          if (stall .eq. carrier_stall_at_floor .or.                      &
              stall .eq. carrier_stall_at_relative_drop) exit
@@ -8137,21 +8211,14 @@
       ! was given, the verdict below asks what the state handed back
       ! satisfies.  A stall at the relative drop is named as what it is and
       ! is not counted as convergence.
-      if ((rnorm .le. newton_tol .and. rnormp .le. carrier_accept_tol)    &
-          .or. stall .eq. carrier_stall_at_floor) then
-         status = carrier_solve_converged
-      else if (rnorm .le. carrier_row_roundoff) then
-         ! The residual is round-off of the row terms and the state is
-         ! still above the acceptance: nothing further is reachable at this
-         ! substep, and halving raises the floor rather than lowering it.
-         status = carrier_solve_unreachable_at_substep
-      else if (stall .eq. carrier_stall_at_relative_drop) then
-         status = carrier_solve_stagnated
-      else if (line_search_failed) then
-         status = carrier_solve_line_search_failed
-      else
-         status = carrier_solve_iteration_cap
-      endif
+      ! It is evaluated on the residual of the iterate the loop ends on,
+      ! whichever exit ended it, so the last update of the cap is classed by
+      ! the same convergence condition as every loop-top test.  A residual
+      ! at the round-off of the row terms with the physical measure above
+      ! the acceptance is unreachable at this substep: halving raises that
+      ! floor rather than lowering it.
+      status = carrier_newton_status(rnorm, rnormp, stall,                &
+                                     line_search_failed)
 
       pct_newton_resid_before_limit = rnorm
 

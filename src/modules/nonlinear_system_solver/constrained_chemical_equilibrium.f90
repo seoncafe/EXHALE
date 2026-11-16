@@ -133,7 +133,8 @@
 	use species_table,     only: n_melem, iel_O
 	use ion_cell_state,    only: ieq_cell, h2_fraction_of_reservoir
 	use ion_residual_core, only: metal_rows, metal_electron_sum
-	use chemical_row_layout, only: absent_element_density
+	use chemical_row_layout, only: absent_element_density,                 &
+	                               present_element_density
 	use System_HeH_mol,    only: mol_heh_rows, oxygen_carrier_rows,        &
 	                             mol_inv_turnover,                         &
 	                             set_mol_turnover_rates,                   &
@@ -786,7 +787,7 @@
 
 	if (thereis_metals) then
 		el_tot(:) = 0.0d0
-		el_tot(1:met_nelem) = met_ntot(1:met_nelem)
+		el_tot(1:met_nelem) = present_element_density(met_ntot(1:met_nelem))
 		el_tot(11) = nuclei_H       ! cx_H
 		el_tot(12) = nuclei_He      ! cx_He
 		cxb(1:n_fraction_row) = 0.0d0
@@ -839,7 +840,10 @@
 	hetr_is_fixed             = ieq_cell%x_hetr_fixed
 	nuclei_H  = ieq_cell%nh
 	nuclei_He = ieq_cell%nhe
-	nuclei_O  = ieq_cell%n_ofam
+	! The free oxygen family the cell rows see: zero where it is absent
+	! (present_element_density), so OH and H2O are then not species of the
+	! network, as an absent metal element's stages are not.
+	nuclei_O  = present_element_density(ieq_cell%n_ofam)
 
 	element_carried(:) = .false.
 	if (thereis_metals) then
@@ -874,7 +878,7 @@
 		species_exists(is_HeITR) = .true.
 		row_of_species(is_HeITR) = 8
 	endif
-	if (thereis_oxychem) then
+	if (thereis_oxychem .and. nuclei_O .gt. 0.0d0) then
 		species_exists(is_OH)  = .true.
 		species_exists(is_H2O) = .true.
 		row_of_species(is_OH)  = oxygen_base
@@ -901,7 +905,8 @@
 	! The He 2^3S level carried by the flow (He 2^3S transport): row 8 is
 	! the constraint x(8) = x_hetr_fix, for the same reason.
 	if (hetr_is_fixed .and. thereis_HeITR) species_fixed(is_HeITR) = .true.
-	if (oxygen_carriers_are_fixed .and. thereis_oxychem) then
+	if (oxygen_carriers_are_fixed .and. thereis_oxychem .and.             &
+	    nuclei_O .gt. 0.0d0) then
 		species_fixed(is_OH)  = .true.
 		species_fixed(is_H2O) = .true.
 	endif
@@ -1778,6 +1783,11 @@
 	if (thereis_oxychem .and. nuclei_O .gt. 0.0d0) then
 		x(oxygen_base)   = sden(is_OH)/nuclei_O
 		x(oxygen_base+1) = sden(is_H2O)/nuclei_O
+	else if (thereis_oxychem .and. oxygen_carriers_are_fixed) then
+		! An absent family: the transported partition stays the datum of
+		! its pinned rows; it multiplies a zero family density.
+		x(oxygen_base)   = ieq_cell%x_oh_fix
+		x(oxygen_base+1) = ieq_cell%x_h2o_fix
 	endif
 
 	if (thereis_metals) then

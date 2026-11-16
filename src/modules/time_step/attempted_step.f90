@@ -139,15 +139,16 @@
 
       ! WHY AN ATTEMPT WAS REFUSED.
       ! Codes 0 to 9 ARE certification's cert_step_* codes, so that the
-      ! controller and the evaluator name a refusal with one number. 10,
-      ! 12 and 13 are the controller's own: the integration error, the
+      ! controller and the evaluator name a refusal with one number. 10 to
+      ! 13 are the controller's own: the integration error, a pass of a
+      ! sampled macrostep shortened by a positivity bisection, the
       ! exhaustion of the nested hydrodynamic retry, and the coupled source
       ! step that did not reach its fixed point, none of which is a
-      ! statement about an equation (11 is not assigned). The last one
-      ! is separate from as_reject_energy, which IS a statement about the
-      ! energy equation: an exhausted fixed point means the temperature and
-      ! the composition do not belong to each other, while a failed energy
-      ! update means no temperature was found at all.
+      ! statement about an equation. The last one is separate from
+      ! as_reject_energy, which IS a statement about the energy equation:
+      ! an exhausted fixed point means the temperature and the composition
+      ! do not belong to each other, while a failed energy update means no
+      ! temperature was found at all.
       integer, parameter, public :: as_ok                 = 0
       integer, parameter, public :: as_reject_nonfinite   = 1
       integer, parameter, public :: as_reject_positivity  = 2
@@ -158,6 +159,10 @@
       integer, parameter, public :: as_reject_chem_root   = 8
       integer, parameter, public :: as_reject_hydro_row   = 9
       integer, parameter, public :: as_reject_int_error   = 10
+      ! 11: a pass of a sampled macrostep took a positivity bisection,
+      ! so it does not cover its prescribed interval (H or H/2), and
+      ! the H step and the two H/2 steps no longer end at the same t + H.
+      integer, parameter, public :: as_reject_bisected_sampled_pass = 11
       integer, parameter, public :: as_reject_hydro_stage = 12
       integer, parameter, public :: as_reject_source_fixed_point = 13
       ! 14 is the thermal closure of the source step: the change of thermal
@@ -410,6 +415,16 @@
       integer, save, public :: n_err_every = 0
       real*8,  save, public :: err_rtol    = 1.0d-3
       real*8,  save, public :: err_atol    = 1.0d-12
+      ! THE MOMENTUM ROW'S OWN TOLERANCE: the fraction of the wind mass flux
+      ! (the outward mass flux at the cell where the mass-loss rate is
+      ! reported, outward_wind_mass_flux) that the retained-step error of
+      ! the mass flux rho v r^2 of a cell may reach. A saved public
+      ! variable, not a parameter, whose initial value is set at compile
+      ! time: a sensitivity variant is a build with another initial value,
+      ! so that it can be varied without changing err_rtol of every other
+      ! row. Equal to err_rtol by default (a shared convention, not an
+      ! accuracy requirement derived for the wind).
+      real*8,  save, public :: wind_mass_flux_fraction = 1.0d-3
       ! The last estimate taken, the step it was taken at, and where.
       real*8,  save, public :: last_error_estimate = -1.0d0
       integer, save, public :: last_error_step     = -1
@@ -454,15 +469,37 @@
             'the electron fraction and T       ' ]
 
       ! The retained full step has local error Delta/(1 - 2^-p), where
-      ! Delta = q(H) - q(H/2 twice) and p is the order of its row class.
-      ! RK3 hydrodynamic rows and algebraic electron fraction/T use p=3;
-      ! first-order split species and element transport use p=1. The element
-      ! assignment follows its integrator, not a separate measured ladder.
+      ! Delta = q(H) - q(H/2 twice) and p is the order of its row class AS
+      ! A CLASS OF THE COMPLETE SPLIT STEP the two trajectories compare, not
+      ! of one operator inside it.
+      !
+      ! hydrodynamic rows, p = 1: a method-order policy for this class. The
+      ! three-stage Runge-Kutta stage alone is third order, but the rows
+      ! are composed at first order (Lie splitting) with the source,
+      ! chemistry and conduction operators that follow the stages, so the
+      ! split step that is compared is first order. MEASURED on the
+      ! momentum rows that decide the estimate (base cell of He/H 14,
+      ! cell 3 of He/H 0.1, LHS 1140 b test states): the difference of the
+      ! two trajectories scales as H**(1.974 to 1.995) over 2132 retry
+      ! pairs, i.e. local order 2 = p + 1, and the held-state ladders give
+      ! a class-norm order of 0.93 to 1.01 at eight late, near-steady
+      ! entry states (EXHALE_v1.20/scratch_order1b_20261110/runs_v4/,
+      ! scratch_order1bb_20261111/design_momentum_scale.md section 3).
+      ! NOT measured: the mass and energy rows (their differences lie below
+      ! their floors there), other cells, early or evolving states. p = 1
+      ! for the whole class is the conservative choice for a first-order
+      ! split class; it is not a measured order of every row.
+      ! electron fraction and T, p = 3: unchanged; no order was resolved
+      ! for this class.
+      ! species and element transport, p = 1: their first-order split
+      ! integrator; the element assignment follows its integrator, not a
+      ! separate measured ladder.
       ! attempted_step_reduced_dt uses the deciding class's p and multiplies
-      ! the interval by 0.9 e^(-1/(p+1)).
+      ! the interval by 0.9 e^(-1/(p+1)): e^(-1/2) for the hydrodynamic
+      ! rows.
       ! See ../EXHALE_v1.00/md/Update_EXHALE_stage2.md section 7 (N16e).
       integer, parameter, public :: err_order_p(n_err_class) =             &
-                                    [ 3, 1, 1, 3 ]
+                                    [ 1, 1, 1, 3 ]
       real*8,  parameter, public :: err_full_step_factor(n_err_class) =    &
                                     1.0d0/(1.0d0 - 2.0d0**(-err_order_p))
       ! The order of the class whose lower bound the last estimate handed
@@ -578,6 +615,30 @@
       ! much of its trajectory was error-controlled and how much was not.
       integer, save, public :: n_error_estimates_unresolved = 0
 
+      ! THE PREDICTED STARTING INTERVAL OF A SAMPLED MACROSTEP. The first
+      ! trial of a sampled macrostep starts at sample_start_fraction times
+      ! the nominal interval of its step (the CFL interval, or the fixed
+      ! interval where one is prescribed, before the bound that follows a
+      ! refusal). The fraction is the interval the refusal rule would have
+      ! chosen from the nominal interval, predicted from the last accepted,
+      ! resolved estimate of an adopted sampled step
+      ! (attempted_step_predicted_start_fraction). It is at most one, so a
+      ! first trial is never longer than the nominal interval.
+      ! WHY THE GATE IS UNCHANGED: the predicted trial is judged by the same
+      ! estimate and the same limit as any other; a trial that fails is
+      ! refused and retaken by the refusal rule, as before. What changes is
+      ! only where the first trial starts, which removes the refusal that a
+      ! stationary error makes certain at every sample.
+      ! WHAT IT IS NOT: no bound on the unsampled steps between two samples,
+      ! which keep the nominal interval as before.
+      ! It lives in memory only: it starts at one at the start of every run
+      ! and is not written to the restart state, so a continued run starts
+      ! its first sample at the nominal interval.
+      real*8,  save, public :: sample_start_fraction = 1.0d0
+      ! Sampled macrosteps whose first trial started below the nominal
+      ! interval, reported in the controller block.
+      integer, save, public :: n_samples_started_below_nominal = 0
+
       public :: attempted_step_checkpoint_take
       public :: attempted_step_checkpoint_restore
       public :: attempted_step_checkpoint_matches
@@ -586,7 +647,10 @@
       public :: attempted_step_note_step
       public :: attempted_step_reduced_dt
       public :: attempted_step_bound_next_dt
+      public :: attempted_step_predicted_start_fraction
+      public :: attempted_step_reset_start_fraction
       public :: attempted_step_error_estimate
+      public :: outward_wind_mass_flux
       public :: attempted_step_inner_error_reset
       public :: attempted_step_note_inner_error
       public :: attempted_step_species_rows
@@ -1287,17 +1351,67 @@
       ! that case takes the halving.
       real*8,  intent(in) :: dt_in
       integer, intent(in) :: reason
-      real*8 :: e
       if (reason .eq. as_reject_int_error .and.                            &
           last_error_estimate .gt. 0.0d0 .and.                             &
           ieee_is_finite(last_error_estimate)) then
-         e = last_error_estimate
-         dt_o = dt_in*max(0.2d0,                                           &
-                     0.9d0*e**(-1.0d0/dble(last_error_order_p + 1)))
+         dt_o = dt_in*max(0.2d0, integration_error_interval_law())
       else
          dt_o = 0.5d0*dt_in
       endif
       end function attempted_step_reduced_dt
+
+
+      real*8 function integration_error_interval_law() result(g)
+      ! THE ONE COPY OF THE INTERVAL LAW OF THE ESTIMATE: the factor
+      ! 0.9 e**(-1/(p+1)) by which an interval with the last estimate e
+      ! (finite and positive; the callers check) is multiplied so that,
+      ! under e proportional to H**(p+1), the estimate of the deciding class
+      ! of order p becomes 0.9**(p+1) of the limit (0.81 for p = 1, 0.6561
+      ! for p = 3). The floor 0.2 and the clip at one are applied by the two
+      ! callers where they belong: the refusal rule
+      ! (attempted_step_reduced_dt, floor on the interval being retried) and
+      ! the prediction of the starting interval of a sampled macrostep
+      ! (attempted_step_predicted_start_fraction, floor and clip on the
+      ! fraction of the nominal interval).
+      g = 0.9d0*last_error_estimate**(-1.0d0/dble(last_error_order_p + 1))
+      end function integration_error_interval_law
+
+
+      real*8 function attempted_step_predicted_start_fraction(f_adopted)  &
+                      result(f)
+      ! THE STARTING FRACTION PREDICTED FROM AN ACCEPTED SAMPLE. f_adopted
+      ! is the adopted interval of the accepted sampled macrostep divided by
+      ! the nominal interval of its step; the estimate is the last one
+      ! taken (last_error_estimate, resolved and accepted by the caller).
+      ! Under the local law e proportional to H**(p+1) the estimate at the
+      ! nominal interval is e (1/f_adopted)**(p+1), and the refusal rule
+      ! would shorten the nominal interval by max(0.2, 0.9 e_nominal**
+      ! (-1/(p+1))) = max(0.2, f_adopted 0.9 e**(-1/(p+1))). That is the
+      ! prediction, held at most one. A zero estimate carries no prediction
+      ! and gives one (the nominal interval).
+      ! RANGE OF VALIDITY: the local law of the deciding class; where it
+      ! does not hold the predicted trial is judged by the unchanged gate.
+      real*8, intent(in) :: f_adopted
+      if (last_error_estimate .gt. 0.0d0 .and.                             &
+          ieee_is_finite(last_error_estimate) .and.                        &
+          f_adopted .gt. 0.0d0) then
+         f = min(1.0d0, max(0.2d0,                                        &
+                 f_adopted*integration_error_interval_law()))
+      else
+         f = 1.0d0
+      endif
+      end function attempted_step_predicted_start_fraction
+
+
+      subroutine attempted_step_reset_start_fraction()
+      ! Back to the nominal interval: where the operator or the physics of
+      ! the step changes, a prediction measured with the previous one does
+      ! not apply. The next sample starts at the nominal interval and is
+      ! judged by the unchanged gate; if it is refused it is retaken by the
+      ! refusal rule like any other (in the runs that measured it, one
+      ! refusal at the first sample after a reset).
+      sample_start_fraction = 1.0d0
+      end subroutine attempted_step_reset_start_fraction
 
 
       real*8 function attempted_step_bound_next_dt(dt_cfl, dt_accepted)    &
@@ -1356,6 +1470,7 @@
       integer :: j, k, isp, nrow
       integer :: rows(n_species)
       real*8  :: d, sc, budget, inner, cand
+      real*8  :: wind_flux
       real*8, dimension(1-Ng:N+Ng) :: nd_h, nH_h, nO_h, nC_h
       real*8, allocatable :: Y_full(:,:), Y_half(:,:)
       type(signed_element_total) :: inv_h
@@ -1372,12 +1487,55 @@
       est%inner_over_difference = 0.0d0
 
       ! ---- class 1: the conservative hydrodynamic rows ---------------- !
-      ! The scale is the one this module has always used on them,
-      ! err_atol + err_rtol|u|, in the code units u is held in.
+      ! Mass and total-energy rows: err_atol + err_rtol|u|, in the code
+      ! units u is held in (rho and E never approach zero).
+      !
+      ! MOMENTUM ROW: A FRACTION OF THE WIND MASS FLUX (user decision
+      ! 2026-11-11). The row protects the mass flux rho v r^2 of every cell
+      ! to wind_mass_flux_fraction of the wind's: in code units the scale
+      ! is wind_mass_flux_fraction*wind_flux/r_j^2, u(2) being rho v and
+      ! A = r^2 the face area of every domain mode, so the allowance of the
+      ! retained-step error of the cell's mass flux is the same fraction of
+      ! the wind in every cell, including the quasi-hydrostatic base and
+      ! the sign changes of v, where the relative scale err_rtol|u| tends
+      ! to the code-unit err_atol. It is stricter than that relative scale
+      ! where a cell's own flux exceeds the wind's (inward fluxes of the
+      ! lower layers) and looser where it is smaller.
+      ! wind_flux is taken once, from the same two-half-step state the
+      ! other scales use.
+      ! RANGE OF VALIDITY: a positive, finite outward wind flux at the
+      ! evaluation cell. Where it is not positive the state has no outward
+      ! wind reference, and the row keeps the relative scale above (it then
+      ! protects the cell's own momentum, with the near-zero-velocity
+      ! limitation of that scale); the transition is discontinuous, and as
+      ! wind_flux -> 0+ the scale -> 0, so the estimate grows as
+      ! 1/wind_flux for a fixed difference. A requested scale that is not
+      ! a normal positive number (zero by underflow, or subnormal) cannot
+      ! carry the stated fraction of the wind and would make take_row skip
+      ! the row (whose sc <= 0 means a quantity that does not exist): it is
+      ! an invalid normalization and stops the run with the cell named, as
+      ! a nonfinite wind_flux does (a broken invariant of a state that
+      ! passed every check of its attempts). A scale that is not finite
+      ! (positive infinity by overflow; NaN fails the comparison) stops the
+      ! run in the same way. No substitute scale is used.
+      ! Design: scratch_order1bb_20261111/design_momentum_scale.md.
+      wind_flux = outward_wind_mass_flux(u_half)
       do j = 1, N
          do k = 1, 3
             d  = abs(u_full(k,j) - u_half(k,j))
             sc = err_atol + err_rtol*abs(u_half(k,j))
+            if (k .eq. 2 .and. wind_flux .gt. 0.0d0) then
+               sc = wind_mass_flux_fraction*wind_flux/(r(j)*r(j))
+               if (.not. (sc .ge. tiny(1.0d0)) .or.                     &
+                   .not. ieee_is_finite(sc)) then
+                  write(*,'(A,I0,A,ES12.4,A,ES12.4)')                     &
+                       ' (attempted_step_error_estimate) REFUSED: the '//  &
+                       'momentum-row scale of cell ', j,                   &
+                       ' is not a finite normal positive number: ', sc,    &
+                       ' from the wind mass flux ', wind_flux
+                  error stop 1
+               endif
+            endif
             call take_row(est, err_class_hydro, d, sc,             &
                           abs(u_half(k,j)), j, k)
          enddo
@@ -1559,6 +1717,29 @@
          est%q_class(icl) = q
       endif
       end subroutine take_row
+
+
+      real*8 function outward_wind_mass_flux(u) result(flux)
+      ! THE OUTWARD WIND MASS FLUX OF A STATE, rho v r^2 in code units
+      ! (n0 m_H v0 R0^2), at the cell where the run reports its mass-loss
+      ! rate: twenty cells below the top of the grid, held inside [1,N]
+      ! (the same cell as the Mdot report of EXHALE_main). Positive outward.
+      ! It is an explicit definition of the outer wind quantity, not a
+      ! requirement of conservation: in an evolving column the mass flux
+      ! varies with radius by the mass the layers store.
+      ! A nonfinite value stops the run with the cell named: the state
+      ! passed every check of its attempts, so it cannot be one.
+      real*8, dimension(3,1-Ng:N+Ng), intent(in) :: u
+      integer :: j_eval
+      j_eval = max(N - 20, 1)
+      flux   = u(2,j_eval)*r(j_eval)*r(j_eval)
+      if (.not. ieee_is_finite(flux)) then
+         write(*,'(A,I0,A,ES12.4)')                                        &
+              ' (outward_wind_mass_flux) REFUSED: the mass flux at cell ', &
+              j_eval, ' is not finite: ', flux
+         error stop 1
+      endif
+      end function outward_wind_mass_flux
 
 
       double precision function species_budget_fraction(isp, nd, nH, nO,   &
@@ -1792,6 +1973,10 @@
               last_error_estimate, ' at step ', last_error_step
          write(*,'(a,es12.5,a)') '     seconds spent in them: ',           &
               error_estimate_seconds, ' (the duty-cycle cost)'
+         write(*,'(a,i0,a,es12.5)') '     sampled first trials started'//  &
+              ' below the nominal interval: ',                             &
+              n_samples_started_below_nominal, ', last starting fraction ', &
+              sample_start_fraction
          ! HOW MUCH OF THE TRAJECTORY WAS ERROR-CONTROLLED. An estimate
          ! whose inner nonlinear error was not below the difference it
          ! measured judged nothing, and the steps it belongs to were
@@ -1824,6 +2009,8 @@
               'invalid imposed transported fractions'
          case (as_reject_hydro_stage);s =                                  &
               'a Runge-Kutta stage left the admissible set'
+         case (as_reject_bisected_sampled_pass); s =                       &
+              'a sampled pass was shortened by a positivity bisection'
          case default;  s = cert_step_reason_text(reason)
       end select
       end function attempted_step_reason_text
