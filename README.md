@@ -22,23 +22,24 @@ exchange) are on by default, so a bare `input.inp` solves the atomic H/He
 problem with that physics rather than reproducing the legacy ATES model bit
 for bit.
 
-## This branch: v1.10
+## This branch: v1.20
 
-This is EXHALE v1.10 (git branch `v1.10`). This README,
-[`README_HOWTO.md`](README_HOWTO.md) and the user manual are the v1.00 files
-with what differs in v1.10 added where it applies, in a sentence that begins
-"v1.10:" or names the version. Where a v1.10 sentence and the inherited text
-disagree, the v1.10 sentence holds. Numbers quoted in the inherited text are
-v1.00 measurements and were not measured again on v1.10 unless a v1.10
-sentence says so. The changes against v1.00 (items P1-P9: the thermochemical
-closure of the stationary lower boundary, certification of the state as
-written, transport of the molecular ions, the selectable certification region,
-regional stabilization, and others) are listed in section 1.5 of the user
-manual, "Source changes against v1.00".
+This is EXHALE v1.20 (git branch `v1.20`). It has the physics, inputs and
+outputs of v1.10 and computes a physical-time march faster: the
+cell-independent spectral integrands of the stellar field are tabulated once
+on the photon grid; within one coupled source step the density-free spectral
+integrals of a cell are reused from pass to pass while every spectral weight
+stays within a factor 1 + 1e-9 of the current one; a molecular cell is solved
+on its free fractions only; the carrier chemistry Jacobian is formed by
+forward-mode differentiation; and more cell loops run in parallel. None of
+these adds an input key or an output file; the run log ends with the counts
+of the spectral reuse. Section 1 of the user manual lists these algorithms
+and what this branch shares with v1.10 beyond v1.00 (items P1-P9). Numbers
+quoted in the inherited text are v1.00 measurements unless a sentence says
+otherwise.
 
 Material that exists only in the v1.00 branch (most examples, the update logs,
-the physics notes) is linked below on GitHub; HOWTO and manual name it by its
-path in a side-by-side checkout, `../EXHALE_v1.00/...`.
+the physics notes) is linked below on GitHub.
 
 ## Requirements and build
 
@@ -50,9 +51,13 @@ There is no installation step beyond cloning:
 ```bash
 git clone https://github.com/seoncafe/EXHALE
 cd EXHALE
-git checkout v1.10
+git checkout v1.20
 make                                    # ifx; make FC=gfortran or FC=ifort to override
 ```
+
+With the Intel compiler, set `MKLROOT` (for example by sourcing the oneAPI
+`setvars.sh`) before `make`; the Makefile then records the MKL library path
+in the binary's run-time search path.
 
 Compiler variants, the BLAS/LAPACK linking and a separate GNU Fortran build:
 [`README_HOWTO.md`, Build](README_HOWTO.md#build).
@@ -75,13 +80,13 @@ configurations](README_HOWTO.md#example-configurations) (the tutorial and
 most numbered examples are in the v1.00 branch).
 
 **What counts as a result.** Marching profile convergence is the default
-scientific route, in v1.00 and v1.10 alike. Set `Run mode: phys` (the
+scientific route. Set `Run mode: phys` (the
 executable's default, `init`, is initialization or continuation and
 establishes no physical elapsed time), keep profile snapshots, and accept the
 state when every physical cell stays within 0.004 dex in T and rho and within
 1 percent in velocity over the final K = 3 flow-crossing times; ordinary
 solver stops do not apply this test. A stationary JFNK solution
-(`Solver: Newton`) and the v1.10 regional stabilization test
+(`Solver: Newton`) and the regional stabilization test
 (`Regional convergence: True`) are optional and answer different questions;
 failing to obtain a stationary root does not invalidate a marching result
 that passes its criterion. Before quoting a mass-loss rate, check that the
@@ -124,13 +129,14 @@ carries.
 - Second-order marching with PLM or WENO3 reconstruction and an HLLC, ROE or LLF flux
 - Optional Jacobian-free Newton-Krylov stationary solver for all active balances
 - Certification of a stationary state, one condition per active balance, with exit statuses
-- v1.10: regional stabilization, a finite-duration test for physical-time marching
+- Regional stabilization, a finite-duration test for physical-time marching
 - Viscosity and heat conduction, low-Mach damping, an optional Shapiro filter
 - Well-balanced hydrostatic option; dual-energy update for cold supersonic gas
 - Spherical or Roche-potential geometry, with the outer face past L1 if needed
 - Initial conditions: cold hydrostatic, warm Parker seed, automatic, or a Wind-AE warm start
 - Lower-atmosphere connection: analytic column, `base.inp` handoff, or a VULCAN/Photochem profile
 - OpenMP parallelization, bitwise identical to the serial result
+- Reuse of the spectral integrals of the stellar field within one source step, bounded to a factor 1 + 1e-9 of every spectral weight
 
 **Tooling**
 
@@ -166,11 +172,11 @@ The full tree, with the third-party codes fetched on demand:
 | Question | Document |
 |---|---|
 | How do I do X (exact lines, commands, expected output)? | [`README_HOWTO.md`](README_HOWTO.md) |
-| What does each input key, output column and option mean? | [`docs/EXHALE_user_manual.pdf`](docs/EXHALE_user_manual.pdf) (section 1: what changed in v1.10) |
+| What does each input key, output column and option mean? | [`docs/EXHALE_user_manual.pdf`](docs/EXHALE_user_manual.pdf) (section 1: the v1.20 tree) |
 | Which equations and algorithms does the code apply? | [`docs/EXHALE_physics_and_algorithms.pdf`](docs/EXHALE_physics_and_algorithms.pdf), sources in `docs/physics_overview/` |
 | What do the numbered example configurations add? | [`examples/README.md` (v1.00)](https://github.com/seoncafe/EXHALE/blob/v1.00/examples/README.md) |
 | How is Photochem obtained and built for the profile handoff? | [`README_photochem.md` (v1.00)](https://github.com/seoncafe/EXHALE/blob/v1.00/README_photochem.md) |
-| What changed, and when? | update logs (v1.00): [stage 3](https://github.com/seoncafe/EXHALE/blob/v1.00/docs/Update_EXHALE_stage3.pdf) (from 2026-09-23), [stage 2](https://github.com/seoncafe/EXHALE/blob/v1.00/docs/Update_EXHALE_stage2.pdf), [stage 1](https://github.com/seoncafe/EXHALE/blob/v1.00/docs/Update_EXHALE_stage1.pdf); v1.10 keeps no update log of its own |
+| What changed, and when? | update logs (v1.00): [stage 3](https://github.com/seoncafe/EXHALE/blob/v1.00/docs/Update_EXHALE_stage3.pdf) (from 2026-09-23), [stage 2](https://github.com/seoncafe/EXHALE/blob/v1.00/docs/Update_EXHALE_stage2.pdf), [stage 1](https://github.com/seoncafe/EXHALE/blob/v1.00/docs/Update_EXHALE_stage1.pdf) |
 
 Physics and numerics notes (v1.00 branch):
 [cooling formulas](https://github.com/seoncafe/EXHALE/blob/v1.00/docs/cooling_formulas.pdf),
@@ -192,8 +198,7 @@ The list with one line on each is in
 Notes in this branch: [`docs/jfnk_march_jfnk_lhs1140b.pdf`](docs/jfnk_march_jfnk_lhs1140b.pdf)
 and [`docs/stationary_vs_marching_lhs1140b.pdf`](docs/stationary_vs_marching_lhs1140b.pdf)
 (LHS 1140 b, stationary and marching solutions; sources `.tex` with class
-`docs/my_memo.cls`), `docs/compare_vulcan_photochem.py`, and
-`docs/defect_fixes_20261027/`.
+`docs/my_memo.cls`) and `docs/compare_vulcan_photochem.py`.
 
 ---
 
@@ -221,8 +226,7 @@ and [`docs/stationary_vs_marching_lhs1140b.pdf`](docs/stationary_vs_marching_lhs
 5. [Taylor, A. R., Koskinen, T., et al. (2025)](https://ui.adsabs.harvard.edu/abs/2025ApJ...989...68T).
    *A Multispecies Atmospheric Escape Model with Excited Hydrogen and Helium:
    Application to HD209458b.* ApJ, 989, 68.  (Diffusive-separation reference
-   model; its He(2^3S)+H Penning fit was replaced by the Garcia Munoz 2025
-   rate.)
+   model; EXHALE uses the Garcia Munoz 2025 He(2^3S)+H Penning rate.)
 
 6. [Xing, L., Yan, D., Guo, J. (2023)](https://ui.adsabs.harvard.edu/abs/2023ApJ...953..166X). *The Mass
    Fractionation of Helium in the Escaping Atmosphere of HD 209458b.* ApJ,
@@ -252,4 +256,4 @@ and [`docs/stationary_vs_marching_lhs1140b.pdf`](docs/stationary_vs_marching_lhs
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-11-16 13:41 KST
+Last updated: 2026-11-16 14:09 KST

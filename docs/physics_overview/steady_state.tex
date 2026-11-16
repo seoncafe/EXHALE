@@ -321,9 +321,12 @@ balances.  One number for the three hydrodynamic rows is not possible: on one
 converged state the three reach values seven decades apart and their one-ulp
 arithmetic floors two decades apart.
 
-The v1.10 element and carrier verdict uses $10^{-5}$ in every applicable
-physical cell, retaining each row's absence mask. The radius windows and
-former restricted-cell comparisons are diagnostic only. A prescribed
+The element and carrier verdict uses $10^{-5}$ in every applicable
+physical cell of the region selected by \texttt{Certification region}
+(\texttt{all}, the default: every applicable physical cell; \texttt{wind}: the
+cells at $r\ge$ \texttt{Wind start radius [R\_p]}, default 1.2), retaining
+each row's absence mask; the other region is reported. Other radius windows are
+reported as diagnostics only. A prescribed
 reservoir cell with a zero element residual does not independently test
 the boundary condition. The mass row's tolerance is a function of the cell,
 %
@@ -680,7 +683,7 @@ A pass makes progress when the joint distance of the state to the
 certification falls, or, where that distance is carried by a row that is not
 hydrodynamic, when the composition's own residual falls; three consecutive
 passes without progress end the loop rather than spend the budget (20 passes,
-\texttt{EXHALE\_OUTER\_PASSES}) on a fixed point the alternation is not
+the input key \texttt{JFNK max iterations}) on a fixed point the alternation is not
 approaching.  The endings are named: the joint certification passes; a row of
 the state is not finite; the element composition update is refused; the
 joint measure stops falling; the pass budget ends uncertified; no solve has

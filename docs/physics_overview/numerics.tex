@@ -478,7 +478,9 @@ each stage followed by the boundary condition, by the admissibility test of
 Sec.~\ref{sec:numerics:posflux}, and by the species advection sub-step that
 rides on the face mass fluxes that stage built.  A stage that cannot be
 repaired causes the whole step to be discarded and retaken from $u^n$ at half
-$\Delta t$, up to a bounded number of bisections.
+$\Delta t$, up to 20 bisections (\texttt{n\_dt\_halve\_max},
+\texttt{EXHALE\_main.f90}); inside a sampled macrostep such a bisection
+refuses the macrostep instead (below).
 
 The time step is the explicit-stable interval of the scheme actually in use,
 derived at \texttt{eval\_dt.f90} for the spherical finite-volume divergence
@@ -538,14 +540,104 @@ route's initial pseudo-time and the floor of the JFNK pseudo-transient
 continuation (Sec.~\ref{sec:steady:ptc}), so its value moves solver behavior
 as well as a time step.  The no-step evaluation route does not call it.
 
-In physical-time mode, the default integration-error diagnostic compares
-one complete step with two half steps from the same starting state every
-20 accepted steps. If the scaled difference exceeds its limit, the entire
-attempt is retried with a shorter interval. The complete-step result is
-retained when accepted; the two half steps provide the estimate. This
-sampled estimate does not assert a bound on every unsampled step. It is
-inactive by default during initialization, whose local time steps do not
-define a physical-time trajectory.
+\paragraph{The step-doubling estimate of the integration error.}
+In physical-time mode every 20th accepted step (\texttt{n\_err\_every},
+\texttt{attempted\_step.f90}; off in initialization, whose local time steps do
+not define a trajectory) is a \emph{sampled macrostep}: from one checkpoint
+the complete operator-split step of Sec.~\ref{sec:numerics:split} is taken
+once over $H$ and twice over $H/2$, and the difference
+$\Delta = q(H) - q(H/2,H/2)$ of the two endpoints at $t+H$ is formed row by
+row (\texttt{attempted\_step\_error\_estimate}).  The full-step result is the
+one the run keeps when the macrostep is accepted; the half steps are the
+measurement.  The retained step has the estimated error
+$\Delta/(1-2^{-p})$, $p$ being the order of the row class \emph{as a class
+of the complete split step}, and each row is divided by a scale of its own
+quantity:
+%
+\begin{center}\small
+\begin{tabular}{@{}llll@{}}
+\toprule
+Class & Rows & $p$ & Scale \\
+\midrule
+hydrodynamic & $\rho$, $\mathcal{E}$ & 1 & $a + r_{\rm tol}|u|$ \\
+             & $\rho v$ & 1 & $\epsilon_w\,\Phi_{\rm wind}/r_j^2$
+                (relative scale where $\Phi_{\rm wind}\le0$) \\
+species & transported carrier fractions & 1 &
+  $r_{\rm tol}|f| + g\,f_{\max}$ \\
+element & element mass fractions (\texttt{He\_diffusion}) & 1 &
+  $r_{\rm tol}|Y| + g$ \\
+charge and $T$ & $n_e/n$, $T$ & 3 &
+  $r_{\rm tol}|n_e|/n + g\,n_{\rm H}/n$; $r_{\rm tol}T$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+%
+with $r_{\rm tol}=10^{-3}$ (\texttt{err\_rtol}), $a=10^{-12}$ in code units
+(\texttt{err\_atol}), $g$ = \texttt{element\_ratio\_gate} $=10^{-9}$
+(\texttt{err\_species\_floor\_of\_budget}), $f_{\max}$ the largest fraction
+the species can take with its element budgets
+(\texttt{species\_budget\_fraction}), $n$ the nucleon density of the cell,
+and $\epsilon_w = 10^{-3}$ (\texttt{wind\_mass\_flux\_fraction}).  The hydrodynamic class is
+taken at first order although the Runge-Kutta stages are third order,
+because the stages are composed at first order (Lie splitting) with the
+source, chemistry and conduction operators that follow them, and the
+compared step is the whole split step.  The momentum row protects the mass
+flux $\rho v r^2$ of every cell to the fraction $\epsilon_w$ of the outward
+wind mass flux $\Phi_{\rm wind} = \rho v r^2$ at cell $\max(N-20,1)$, the cell
+of the mass-loss report (\texttt{outward\_wind\_mass\_flux}), so the same
+allowance holds in the quasi-hydrostatic base and at the sign changes of
+$v$, where a scale relative to the cell's own momentum would fall to the
+code-unit floor $a$.  A nonfinite $\Phi_{\rm wind}$ or a momentum scale that
+is not a finite normal positive number stops the run with the cell named.
+
+Each of the three passes stops its nonlinear solves at a finite tolerance,
+so $\Delta$ bounds the temporal error only to within three times the inner
+error of the passes, collected cell by cell (the composition and the
+temperature of the coupled source step and the carrier rows).  The estimate
+forms the interval $[e_{\rm lower},e_{\rm upper}]$ that this leaves; the
+macrostep is refused when $e_{\rm lower}>1$, accepted when $e_{\rm upper}\le
+1$, and \emph{unresolved} otherwise, in which case it is adopted without a
+bound on its temporal error and counted as such.  A class whose inner error
+exceeds a tenth of its difference (\texttt{err\_inner\_fraction}) is
+reported unresolved.  A refusal by the estimate retakes the macrostep from
+its entry state with $H \leftarrow H\max\{0.2,\ 0.9\,e^{-1/(p+1)}\}$, $p$ the
+order of the deciding class (\texttt{integration\_error\_interval\_law},
+\texttt{attempted\_step\_reduced\_dt}); any other refusal halves $H$.  After
+a refused step the next interval is bounded by
+$\min(\Delta t_{\rm CFL}, 2\Delta t_{\rm accepted})$.
+
+Two further rules keep the comparison a comparison of two trajectories over
+the same interval.  A positivity bisection of a Runge-Kutta stage
+(Sec.~\ref{sec:numerics:posflux}) inside any pass of a sampled macrostep
+shortens the interval that pass integrates, so the pass no longer covers its
+prescribed interval ($H$ or $H/2$); such a pass refuses the whole macrostep
+(refusal code~11, \texttt{as\_reject\_bisected\_sampled\_pass}), which is
+retaken at $H/2$.  Outside a sampled macrostep a bisected interval is the
+step's interval and the clock advances by it.  And the first trial of a
+sampled macrostep starts at the fraction $f_s\le1$
+(\texttt{sample\_start\_fraction}) of the nominal interval of its step (the
+CFL or prescribed interval, before the bound after a refusal): after an
+accepted, resolved estimate $e$ of an adopted sampled step taken at the
+fraction $f$ of its nominal interval,
+%
+\begin{equation}
+  f_s = \min\Bigl\{1,\ \max\bigl[0.2,\ f\cdot0.9\,e^{-1/(p+1)}\bigr]\Bigr\},
+  \label{eq:sample_start}
+\end{equation}
+%
+the interval the refusal rule would choose from the nominal interval under
+$e\propto H^{p+1}$ (\texttt{attempted\_step\_predicted\_start\_fraction}).
+The fraction is committed only when the step is adopted.  It is reset to one
+at the start of every run (it is not part of the restart state) and wherever
+the operator of the step changes: the PLM$\to$WENO3 switch, every change of
+the continuation weight $\lambda$ and its end, and the activation of
+secondary ionization.  The predicted trial is judged by the same estimate
+and limit as any other.  Neither rule bounds the unsampled steps between two
+samples, which keep the nominal interval.  The end-of-run block of the
+controller prints the number of estimates, the last $e$, the time spent in
+them, the number of sampled first trials started below the nominal interval
+with the last $f_s$, and the number of unresolved estimates
+(\texttt{attempted\_step\_report}).
 
 \subsection{Operator splitting of one step}
 \label{sec:numerics:split}
@@ -691,7 +783,7 @@ those runs. In a physical trajectory, the settled,
 stall, and residual flags are reported at monitor steps and do not terminate
 integration. A trajectory ends at a step cap (\texttt{Max steps},
 \texttt{count\_max} or \texttt{EXHALE\_MAXSTEPS}), or on a hard failure
-such as a nonfinite state or retry exhaustion. In v1.10, an enabled
+such as a nonfinite state or retry exhaustion. An enabled
 regional stabilization test also ends it on a pass or exhaustion.
 In an earlier \texttt{wasp\_full} calculation, $\chi$ fell by a factor
 of 0.88 every 1000 steps with either WENO3 floor, corresponding to an
@@ -715,7 +807,7 @@ Only the residual gate met while marching and a Newton finish
 claim a stationary state, and only they lead to status~2 on a refusal
 (Sec.~\ref{sec:steady:gates}; update log stage~3 section~135).
 
-The default acceptance of physical-time marching in v1.00 and v1.10 is
+The default acceptance of physical-time marching is
 checked across every output snapshot spanning the final $K=3$ flow-crossing
 times. The crossing time is calculated from the last snapshot, using the
 larger of the flow and acoustic times and, when the adiabatic index is not
@@ -725,7 +817,7 @@ of $T$ and $\rho$. In a cell with Mach number at least $0.01$ throughout
 the window and no velocity sign change, the velocity range divided by the
 minimum $|v|$ must be at most $0.01$. In the quasi-hydrostatic cells and
 near sign changes, the range is divided by the maximum speed in that
-region. The checker in \path{EXHALE_v1.10/LHS1140b/tools/marching_acceptance.py}
+region. The checker \path{LHS1140b/tools/marching_acceptance.py} of the source tree
 also requires coverage and sufficient snapshot density;
 it reports the measured worst band and failing cells. These are
 finite-duration profile conditions, not a stationary residual test.

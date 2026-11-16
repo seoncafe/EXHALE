@@ -1,4 +1,4 @@
-%% EXHALE v1.10: User Manual. The inherited v1.00 chapters follow the v1.10 update.
+%% EXHALE v1.20: User Manual. The inherited v1.00 chapters follow the section on the v1.20 tree.
 %% Author: Kwang-Il Seon
 \documentclass[english,a4paper]{my_memo}
 \synctex=1
@@ -38,7 +38,7 @@
 
 \begin{document}
 
-\title{EXHALE v1.10: User Manual}
+\title{EXHALE v1.20: User Manual}
 \author{Kwang-Il Seon}
 \date{Last updated: \docmoddate}
 \maketitle
@@ -66,7 +66,7 @@ this document is the practical user guide.
 \tableofcontents
 \input{v110_user_updates}
 
-% Two further subsections of the section "What changed in v1.10".
+% Two further subsections of the section on the v1.20 tree.
 \subsection{Further details of the regional test}\label{sec:v110-regional-details}
 
 \path{examples/regional_convergence/Salz.inp} (HD\,209458\,b after Salz et
@@ -99,10 +99,15 @@ bounds, and a pass is not a proof that oscillations remain bounded
 indefinitely. A small change over time alone does not establish stationary
 convergence.
 
-\subsection{Source changes against v1.00 (P1--P9)}\label{sec:v110-changes}
+\subsection{Differences from v1.00 shared with v1.10 (P1--P9)}\label{sec:v110-changes}
 
-What v1.10 does that v1.00 does not. Each item was checked against the v1.10
-source on 2026-10-27 in the file it names, except where it says otherwise.
+What the v1.20 tree, like v1.10, does beyond the v1.00 branch as v1.10 was
+formed from it. Each item names the source file of this tree that
+implements it. P2 and P6 are also in the current v1.00 source
+(\texttt{certify\_the\_state\_to\_be\_written} in its
+\path{src/EXHALE_main.f90}; the keys \texttt{Certification region},
+\texttt{Wind start radius [R\_p]} and \texttt{JFNK max iterations} in its
+\path{input_read.f90}).
 \begin{description}
 \item[P1] Thermochemical closure at the stationary lower boundary: the ghost
   composition and \texttt{Apply\_BC(rho, T)} are iterated to one fixed point
@@ -135,9 +140,9 @@ source on 2026-10-27 in the file it names, except where it says otherwise.
   stays refused (\path{input_read.f90}; opt-in).
 \item[P5] The enthalpy flux of the element carriers is taken from the actual
   step flux, including the helium share of HeH$^+$ (with \texttt{He\_diffusion},
-  the interdiffusion enthalpy and carrier transport; not checked again on
-  2026-10-27; whether v1.00 counted it twice was not determined;
-  \path{diffusive_photochemistry.f90}, \path{steady_residual.f90}).
+  the interdiffusion enthalpy and carrier transport; not checked against
+  the source for this list; \path{diffusive_photochemistry.f90},
+  \path{steady_residual.f90}).
 \item[P6] The carrier and elemental transport rows of the certification are
   judged on a selectable region, \texttt{Certification region: all} (default)
   or \texttt{wind} with \texttt{Wind start radius [R\_p]:} (default 1.2);
@@ -158,21 +163,80 @@ source on 2026-10-27 in the file it names, except where it says otherwise.
   (off; \path{EXHALE_HELD_STELLAR_RATE_REUSE=1};
   \path{src/modules/radiation/util_ion_eq.f90}).
 \end{description}
-Inputs that only v1.10 reads: \texttt{Regional convergence} and the 23
-further \texttt{Regional ...} keys (all in \texttt{known\_keys} of
-\path{input_read.f90}, parsed by \texttt{regional\_read}); every v1.00 input
-key is accepted. Environment variables that only v1.10 reads (all listed in
-README\_HOWTO, ``Measurement hooks you may meet in a log''):
+Inputs that the v1.00 branch does not read: \texttt{Regional convergence}
+and the 23 further \texttt{Regional ...} keys (all in \texttt{known\_keys} of
+\path{input_read.f90}, parsed by \texttt{regional\_read}); every input key of
+the v1.00 branch is accepted. Environment variables that the v1.00 branch
+does not read (all listed in README\_HOWTO, ``Measurement hooks you may meet
+in a log''):
 \path{EXHALE_BOUNDARY_CLOSURE_MAXITER}, \path{EXHALE_BOUNDARY_CLOSURE_TRACE},
 \path{EXHALE_BOUNDARY_FULL_SWEEPS}, \path{EXHALE_STATIONARY_BOUNDARY_SEED},
 \path{EXHALE_CLOSURE_MAP_PAIRS}, \path{EXHALE_LIVE_DERIVATIVE_STEPS},
 \path{EXHALE_HELD_STELLAR_RATE_REUSE}, \path{EXHALE_STELLAR_RATE_REUSE_TRACE}.
-The defaults in \path{parameters.f90} are those of v1.00. Behavior that
-changes without a key: P1, P2, P6 and P7, the wider \texttt{Molecular
-carrier transport} of P3, and the acceptance of P4. A state certified by
-v1.00 is to be evaluated again: its boundary model differs (P1), and a
-\path{conserved_state.txt} written by v1.00 is ignored for that reason (the
-restart then reads the dimensional pair).
+Behavior that differs from the v1.00 branch without a key: P1 and P7, the wider
+\texttt{Molecular carrier transport} of P3, and the acceptance of P4. A state
+certified by v1.00 is to be evaluated again: its boundary model differs (P1),
+and a \path{conserved_state.txt} written by v1.00 is ignored for that reason
+(the restart then reads the dimensional pair).
+
+\subsection{Algorithms of the v1.20 tree that v1.10 does not have}
+\label{sec:v120-algorithms}
+
+The five items below change how the code computes, not what it computes:
+none adds an input key, an environment variable or an output file, and none
+can be switched off from the input. The physics they evaluate is that of the
+v1.10 tree; the results differ within the rounding and the tolerances of the
+solves and, for the reuse of item~2, by a bounded lag of the spectral
+weights.
+{\sloppy
+\begin{description}
+\item[1. Spectral tables.] The cell-independent integrands of the
+  photoionization, photoheating and secondary-ionization rates of every
+  absorber are tabulated once on the photon grid, and the photoelectron
+  partition of a cell is applied after the sum over photon bins
+  (\texttt{photoelectron\_and\_primary\_absorption\_spectral\_tables},
+  \texttt{spectral\_basis\_of\_cell}, \path{util_ion_eq.f90};
+  \texttt{EXHALE\_physics\_and\_algorithms.pdf}, ``Photoionization and
+  photoheating rates'').
+\item[2. Reuse of the spectral basis.] Within one coupled source step of a
+  marching step, pass 2 and later passes of an interior cell reuse the
+  density-free spectral integrals of its earlier pass when the change of the
+  attenuation is bounded by $\ln(1+10^{-9})$ in every photon bin; the rates
+  and heating are formed from the current composition in every pass
+  (\path{src/modules/radiation/field_spectral_basis_reuse.f90}). The run log
+  ends with a block that counts the decisions:
+\begin{lstlisting}[style=sh]
+   spectral-basis reuse (eps_F = 1.00E-09): field requests of the HHe field loop by decision,
+     counted once for every cell of every field loop run (every ghost application)
+     reused                         <count>
+     recomputed_first_pass          <count>
+     ...
+\end{lstlisting}
+  Only the decisions that occurred are printed; nothing is printed when no
+  H/He field loop ran.
+\item[3. The molecular cell solve on its free fractions.] The identity rows
+  and the pinned rows of the transported fractions of a molecular cell are
+  data of its composition solve, not unknowns
+  (\texttt{composition\_with\_prescribed\_fractions},
+  \path{newton_solver.f90}). \texttt{EXHALE\_FORCE\_HYBRD1} restores the full
+  solve.
+\item[4. Exact derivatives of the carrier chemistry.] The Jacobian of the
+  carrier chemistry source of the carrier transport is formed by
+  forward-mode differentiation with dual numbers from the same source text as
+  the residual (\path{dual_number_arithmetic.f90},
+  \texttt{carrier\_source\_and\_density\_derivatives} in
+  \path{diffusive_photochemistry.f90}), not by a forward difference.
+\item[5. Further parallel cell loops.] The charge-exchange heating, the
+  Lyman-Werner table reads and the conversion of the conserved variables with
+  the molecular caloric equation of state run as OpenMP loops whose results do
+  not depend on the thread count.
+\end{description}\par}
+Measured on four molecular LHS~1140\,b test states (update log stage~3
+sections 189 and 192): with items 3 and 4, over 1000 steps, the same
+attempts, refusals and verdicts as without them, with $T$ and $\rho$ within
+$6\times10^{-14}$\,dex; with item~2 against the recomputation of every pass,
+the final states at 2100\,s within $1.3\times10^{-10}$ relative outside the
+velocity column and $2.2\times10^{-7}$\,cm\,s$^{-1}$ in it.
 
 % ===================================================================== %
 \section{Introduction}
@@ -446,8 +510,8 @@ stop reads (\S\ref{sec:convctl}).
 \subsection{Convergence control}\label{sec:convctl}
 \paragraph{Physical acceptance of a marching state.}
 Marching is the default solution route. Its default acceptance criterion
-in v1.00 and v1.10 checks the retained physical-time profiles with
-\path{EXHALE_v1.10/LHS1140b/tools/marching_acceptance.py}. Over all selected snapshots
+checks the retained physical-time profiles with the checker
+\path{LHS1140b/tools/marching_acceptance.py} of the source tree. Over all selected snapshots
 of the final $K=3$ flow-crossing times, every cell must have a full
 $\log_{10}T$ and $\log_{10}\rho$ range no greater than 0.004~dex.
 The velocity range must be at most 0.01 times the smallest $|v|$ over the
@@ -476,9 +540,29 @@ $V_j=(r_{j+1/2}^3-r_{j-1/2}^3)/3$, $A=r^2$, and each face signal speed
 $S$ is the larger adjacent $|v|+c_s$. Global stepping takes the smallest
 $\Delta t_j$; \texttt{Time stepping: Local} uses individual cell intervals
 only for \texttt{Run mode: init} and is refused for a physical trajectory.
-In physical mode a full step is compared with two half steps every 20
-accepted steps by default. The comparison can refuse and retry a step;
-it is distinct from the profile acceptance test.
+In physical mode every 20th accepted step is a sampled macrostep: the
+complete operator-split step is taken once over $H$ and twice over $H/2$ from
+one checkpoint, and the difference of the two endpoints, divided by a scale
+of each quantity, estimates the integration error of the retained full step
+(\path{attempted_step.f90}; off in \texttt{Run mode: init}). The scales are
+$10^{-12}+10^{-3}|u|$ for the mass and total-energy rows (code units), and for
+the momentum row $10^{-3}$ of the outward wind mass flux
+$\rho v r^2$ at cell $\max(N-20,1)$, the cell of the mass-loss report,
+divided by $r^2$ (the row's own relative scale when that flux is not
+positive); the transported species, element fractions, electron fraction and
+temperature each have their own (\texttt{EXHALE\_physics\_and\_algorithms.pdf},
+``Time integration and the time step''). The hydrodynamic rows are taken as
+first order, because the Runge-Kutta stages are composed at first order with
+the source, chemistry and conduction operators. The comparison can refuse and
+retry a step; it is distinct from the profile acceptance test. The first
+trial of a sampled macrostep starts at a fraction of the nominal (CFL)
+interval predicted from the last accepted estimate,
+$\min\{1,\max[0.2, f\,0.9\,e^{-1/(p+1)}]\}$ with $f$ the fraction at which
+that sample was taken and $p$ the order of the deciding class; the fraction
+starts at one in every run (also after a restart) and returns to one where
+the step operator changes (the PLM$\to$WENO3 switch, the reconstruction
+continuation, the activation of secondary ionization). The unsampled steps
+keep the nominal interval.
 \texttt{Marching snapshot interval:} and
 \texttt{Marching diagnostic interval:} each take one nonnegative integer.
 Their defaults are 0 and 1 accepted step, respectively. Zero disables the separate periodic state archive; the current output
@@ -505,7 +589,27 @@ interval, allowing eight outer reductions. Exhaustion restores the last
 accepted state and stops nonzero with the refusal history. In a
 sampled error comparison, refusal of either full or half step discards
 the entire comparison and restarts it from the same initial state with
-a shorter full interval.
+a shorter full interval. A refusal by the error estimate multiplies the
+interval by $\max(0.2, 0.9\,e^{-1/(p+1)})$; every other refusal halves it,
+and after a refused step the next interval is at most twice the accepted
+one. A positivity bisection of a Runge-Kutta stage inside any pass of a
+sampled macrostep refuses the whole macrostep, because that pass no longer
+covers its prescribed interval ($H$ or $H/2$); outside a sampled macrostep the
+bisected interval is simply the step's interval. An estimate whose inner
+solver errors do not allow a verdict is \emph{unresolved}: the macrostep is
+adopted without a bound on its temporal error and counted. The end-of-run
+block \texttt{ATTEMPTED-STEP CONTROLLER} of the run log prints the attempts,
+the refusals by reason and by operation, and, when estimates were taken,
+\begin{lstlisting}[style=sh]
+     step-doubling integration-error estimates: <n>, last e = <e> at step <k>
+     seconds spent in them: <s> (the duty-cycle cost)
+     sampled first trials started below the nominal interval: <m>, last starting fraction <f>
+     of these, <u> of <n> were UNRESOLVED: the inner nonlinear error of the passes
+\end{lstlisting}
+The refusal of a bisected sampled pass is counted under the reason ``a
+sampled pass was shortened by a positivity bisection'' and its verdict reads
+``the pass took $n$ positivity bisection(s), so it does not cover its
+prescribed interval (H or H/2)''.
 
 \paragraph{The marching stop (since 2026-10-09).} For initialization and relaxation runs, the marching loop stops when
 the \emph{numerical} face mass flux is flat \emph{and} the state has stopped
@@ -991,8 +1095,7 @@ ionization stage nucleus sums, the lower boundary closure) gates on the whole
 column in both regions, and a certified state without an element or carrier
 row carries no region token. The report prints, for each element and carrier
 row, the maximum over all applicable cells and over the wind side by side and
-marks which region gated. Before 2026-11-12 v1.10 gated these rows on every
-applicable cell only; v1.00 gated them at $r\ge1.20$ only.
+marks which region gated.
 
 \emph{Exit statuses.}
 \begin{center}\small
@@ -1100,8 +1203,9 @@ that wind, solve again (\texttt{steady\_wind\_with\_element\_diffusion},
 \texttt{EXHALE\_main.f90}). Each such round is an \emph{outer pass}; the cap
 is 20 passes (the input key \texttt{JFNK max iterations: <n>}, the cap of
 stationary outer passes and not of the Newton or Krylov iterations inside one
-pass; it replaced the environment variable \texttt{EXHALE\_OUTER\_PASSES} on
-2026-11-12, which now stops the run at its start), and a run with no
+pass; a run that finds the environment variable
+\texttt{EXHALE\_OUTER\_PASSES} set, even empty, stops at its start and names
+this key), and a run with no
 transported species has one pass, the wind solve alone. The element update is
 under-relaxed by a factor $\omega$ that starts at $0.5$
 (\texttt{EXHALE\_DIFF\_OMEGA}) with floor $0.125$, and the carrier update is
@@ -1269,7 +1373,9 @@ Variable & Effect \\
   use MINPACK \texttt{hybrd1}, skipping the analytic-Jacobian Newton and the
   Newton that otherwise continues from \texttt{hybrd1}'s result: lets the
   same binary produce both solvers' outputs for an A/B validation
-  (\texttt{Update\_EXHALE\_solver.pdf} \S6). \\
+  (\texttt{Update\_EXHALE\_solver.pdf} \S6). It also makes the molecular
+  cell solve take all its fractions as unknowns
+  (\S\ref{sec:v120-algorithms}, item 3). \\
 \texttt{EXHALE\_IEQ\_TOL=}$\langle v\rangle$ & Replace the tolerance $\tau$
   of the cell solve ($\sqrt{\epsilon_{\rm mach}}=1.5\times10^{-8}$): the solve
   stops when the Newton correction of every unknown is below
@@ -4438,7 +4544,7 @@ later has to say which boundary it is a solution of:
 \end{quote}
 
 \noindent (each is one line in the file). The first names the model that built the face state
-(\S\ref{sec:basebc}). The current v1.10 identities end in v7 for
+(\S\ref{sec:basebc}). The identities of this tree end in v7 for
 \texttt{Well balanced: True} and v6 otherwise. Both close chemistry at the density and temperature produced by the
 boundary. Version v7
 uses the discrete mechanical equilibrium reconstruction at the face;

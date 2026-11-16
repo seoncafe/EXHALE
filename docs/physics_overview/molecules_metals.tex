@@ -316,11 +316,23 @@ settling acceleration of the mixture, the one the element operator uses
 not carried ($\alpha_T=0$), there being no evaluated $\alpha_T$ for H$_2$O,
 OH or CO in an H$_2$/He bath.
 
-$P_i-L_i$ is not written in this module: it is obtained by calling the very
+$P_i-L_i$ is not written in this module: it is obtained from the very
 rows the local equilibrium solve uses, \texttt{mol\_heh\_rows} row 4 for
 H$_2$ and \texttt{oxygen\_carrier\_rows} for OH and H$_2$O, at the trial
-densities with the background frozen, and the Jacobian is a forward
-difference of those same calls, so a rate that changes there changes here.
+densities with the background frozen, so a rate that changes there changes
+here.  The rows are written once, in include files
+(\texttt{mol\_heh\_rows\_body.inc}, \texttt{oxygen\_carrier\_rows\_body.inc},
+\texttt{carrier\_source\_assembly.inc} and the others they include), and
+compiled both on real numbers (the residual) and on dual numbers
+(\texttt{dual\_number\_arithmetic.f90}, forward-mode differentiation with one
+partial derivative for each carrier density): the Jacobian block of the
+chemistry is the source evaluated on dual densities
+(\texttt{carrier\_source\_and\_density\_derivatives}), the exact first
+derivatives of the same expressions with no difference step.  At a clip of a
+closure at zero (atomic H, the free electrons, free O, a collider of the
+H$_2$ three-body association) the derivative is the one-sided derivative from
+the admissible side (\texttt{positive\_part}).  Rate coefficients, the photon
+field and the frozen background are constants of the carrier step.
 CO has no chemical source and only its transport moves it, with a ceiling
 from \texttt{limit\_to\_element\_budget} that keeps it from carrying the
 oxygen and the carbon out of the wind, where the molecule cannot survive and
@@ -328,7 +340,17 @@ where the O\,{\sc i} and C\,{\sc ii} lines are the coolant.
 
 The discretization is cell-centered $f_i$, face-centered fluxes on
 \texttt{r\_edg}, one backward-Euler step per call, Newton with a
-backtracking line search, block tridiagonal in space with blocks of the
+backtracking line search, converged when two normalized residuals are both
+at or below $10^{-8}$ (\texttt{carrier\_newton\_converged}): the largest row
+residual over the full row terms (time term, face fluxes, advective
+magnitude, magnitude of the net source; \texttt{newton\_floor}) and over the
+physical row terms (the same transport magnitudes and the gross production
+plus loss, no time term; \texttt{carrier\_accept\_tol}).  Both are normalized
+residuals, a declared nonlinear accuracy and not a bound on the error of the
+carrier fractions; a failed line search or a stall ends the iteration and
+counts as converged only when the iterate meets the same test, and the
+returned state is judged again after the element limiter.  The system is
+block tridiagonal in space with blocks of the
 carrier count (up to $8\times8$; a carrier the run does not solve keeps an
 identity row, so the block shape is fixed). Face $N$ carries zero
 diffusive flux; the drift term switches from central to donor cell on a

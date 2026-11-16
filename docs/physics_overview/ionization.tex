@@ -70,6 +70,26 @@ configurations: \texttt{System\_H}, \texttt{System\_HeH},
 \texttt{System\_HeH\_mol\_metals}. The shared rows live once, in
 \texttt{ion\_residual\_core.f90}.
 
+\paragraph{An absent element.} A metal element whose nuclei density in the
+cell is at or below \texttt{absent\_element\_density} $=10^{-30}$\,cm$^{-3}$
+is absent from the cell system: its two rows are the identity rows $x=0$,
+and the element density every row of the cell receives is the one value
+\texttt{present\_element\_density}$(n)$, equal to $n$ above the threshold
+and exactly 0 at or below it (\texttt{chemical\_row\_layout.f90}).  The stage
+densities, the electrons, the charge-exchange reactants, the analytic
+Jacobian of \texttt{System\_HeH\_metals} and the charge-exchange turnover
+bound are all formed from it, so no reaction adds to an identity row.  With
+the oxygen chemistry on, the element is the free oxygen family, OH and
+H$_2$O included: an absent family has identity OH/H$_2$O rows, and
+prescribed (transported) OH/H$_2$O fractions keep their pinned rows and
+multiply a zero family density inside the cell rows.  The threshold is a
+truncation of the local rows only: the stored state keeps the true nuclei of
+the element (as its neutral stage, or at the imposed carrier fractions), and
+cooling, heating, opacity, the budgets and the output read them unchanged.
+The charge exchange of the carrier transport (Sec.~\ref{sec:mol:carrier})
+is a different equation on the oxygen nuclei of the carrier step and is not
+subject to the rule.
+
 \paragraph{The H/He rows.} With photoionization rates $\Gamma$,
 recombination coefficients $\alpha$ (case B plus the ground captures whose
 photons are not re-absorbed on the spot, \eqref{eq:ion:netalpha}) and
@@ -542,7 +562,21 @@ and on failure restores the entry guess, calls the in-tree MINPACK
 \texttt{hybrd1}'s result. The systems without an analytic Jacobian (the
 molecular and the He~$2^3$S layouts) are solved by \texttt{hybrd1} followed
 by the same Newton with a forward-difference Jacobian
-(\texttt{hybrd1\_resolving\_every\_unknown}). The solve has converged when
+(\texttt{hybrd1\_resolving\_every\_unknown}).  In a molecular cell only the
+free fractions are unknowns of that solve
+(\texttt{composition\_with\_prescribed\_fractions}, \texttt{newton\_solver.f90},
+called through \texttt{molecular\_fractions\_with\_prescribed\_data}): the
+identity rows of an absent element or of an unused X$^{++}$ (datum 0) and the
+pinned rows $x - x_{\rm fix}$ of the transported fractions (datum $x_{\rm
+fix}$) are data, the full composition is rebuilt from the data and the free
+fractions before every evaluation of the complete residual, and the free
+rows $G(y) = F_U(X(y))$ form the same system because each prescribed row
+vanishes identically at its datum.  The lower-ghost H$_2$ reservoir row
+stays an unknown, since it couples H$_2$ to the ionized hydrogen of the same
+solve.  At the end every prescribed row must be exactly zero; otherwise the
+solve is reported unconverged and judged like any unconverged attempt.
+\texttt{EXHALE\_FORCE\_HYBRD1} and a row layout the routine does not know
+take the full solve. The solve has converged when
 the Newton correction $\delta x=-J^{-1}f$ at the returned state resolves
 \emph{every} unknown relative to its own magnitude,
 %
@@ -604,7 +638,15 @@ block are independent and the sweep is OpenMP-parallel with the cell
 scratch declared \texttt{threadprivate}; the rate coefficients are evaluated
 in blocks of a fixed even length (\texttt{xuv\_rate\_block},
 \texttt{util\_ion\_eq.f90}), so that the vectorized transcendental calls pair
-the same lanes at any thread count.
+the same lanes at any thread count.  The field loop of the H/He/metal
+layouts runs with a dynamic schedule of four cells.  Three further cell
+loops are parallel, each cell writing only its own element and every sum
+keeping its order, so their results do not depend on the thread count: the
+charge-exchange heating (\texttt{charge\_exchange.f90}), the Lyman-Werner
+table reads of each cell, with the sum along the path left serial
+(\texttt{util\_ion\_eq.f90}), and the conversion of conserved to primitive
+variables with the molecular caloric equation of state
+(\texttt{U\_to\_W\_interior}, \texttt{UW\_conversions.f90}).
 
 \paragraph{The acceptance measure.} A candidate composition is a root when it
 lies inside the element simplex and the normalized reaction residual

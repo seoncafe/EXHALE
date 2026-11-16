@@ -1,18 +1,21 @@
-% User-facing changes in the v1.10 source tree. Keep before the inherited chapters.
+% The v1.20 tree: solution routes and its differences from v1.10 and v1.00.
+% Keep before the inherited chapters.
 \clearpage
-\section{What changed in v1.10}\label{sec:v110-user}
+\section{The v1.20 tree}\label{sec:v110-user}
 
-This manual describes the current v1.10 physical options and output schemas.
-Shared descriptions also apply to v1.00 where stated. Planet-specific
-timings, residuals and convergence examples retained from v1.00 are
-historical measurements, not current v1.10 results. The features below
-are specific to v1.10. A stable marching profile and a stationary
-certificate answer different questions.
+This manual describes the physical options and output schemas of the v1.20
+source tree. Shared descriptions also apply to the v1.00 and v1.10 branches
+where stated. Planet-specific timings, residuals and convergence examples
+retained from v1.00 are historical v1.00 measurements, not v1.20 results.
+The regional test, the stationary lower-boundary closure and the items P1--P9
+(\S\ref{sec:v110-changes}) are shared with v1.10;
+\S\ref{sec:v120-algorithms} lists what the v1.20 tree computes differently
+from v1.10. A stable marching profile and a stationary certificate answer
+different questions.
 
 \subsection{Marching acceptance and stationary convergence}
 
-Marching is the default solution route. In both v1.00 and v1.10 the
-default criterion accepts a physical marching state when the retained profiles pass the
+Marching is the default solution route. The default criterion accepts a physical marching state when the retained profiles pass the
 $K=3$ flow-crossing-time test in \S\ref{sec:convctl}: every cell's complete
 temperature and density bands are at most 0.004~dex, and its velocity band
 is at most 1\% under the flow or quasi-hydrostatic normalization. The
@@ -72,7 +75,7 @@ reference; it does not combine favorable windows from different candidates.
 
 The radial cuts, window duration, settling time, total time budget, thresholds,
 and profile cadence are editable with \texttt{Regional ...} input lines. The
-complete v1.10 set is:
+complete set is:
 
 \begin{lstlisting}[style=cfg]
 Regional convergence: True
@@ -133,8 +136,8 @@ failure can end earlier.
 Run the plotter from the calculation directory after output appears:
 
 \begin{lstlisting}[style=sh]
-python3 /path/to/EXHALE_v1.10/EXHALE_plots.py --regional --live 60
-python3 /path/to/EXHALE_v1.10/EXHALE_plots.py --regional --save output/regional
+python3 /path/to/EXHALE/EXHALE_plots.py --regional --live 60
+python3 /path/to/EXHALE/EXHALE_plots.py --regional --save output/regional
 \end{lstlisting}
 
 The first invocation refreshes the display every 60 seconds. The second
@@ -145,7 +148,7 @@ available with \texttt{--profiles}.
 
 \subsection{Stationary lower-boundary closure and current scope}
 
-The v1.10 stationary residual closes the lower ghost composition and
+The stationary residual closes the lower ghost composition and
 thermodynamics at a fixed column. Certification of the stored state also
 checks the boundary result; an unclosed boundary cannot establish a certified
 stationary state. The relevant modules are
@@ -159,10 +162,11 @@ environment control set separate caps. Similarly,
 \path{EXHALE_MARCH_FLUX_TH} changes the marching stop, while
 \texttt{Flux spread tol} belongs to stationary acceptance. These values must
 not be substituted for one another. \path{EXHALE_MONITOR_STEPS} must be a
-positive integer in the current source. The copied v1.00 descriptions of
+positive integer in the current source. The inherited v1.00 descriptions of
 experimental environment settings do not establish that they are documented
-user inputs in v1.10.
+user inputs of this tree.
 
 The regression harness (\path{backup/regression/}) is not part of the
 GitHub repository; in a checkout without it, \texttt{make check} reports
 the missing harness and exits nonzero.
+

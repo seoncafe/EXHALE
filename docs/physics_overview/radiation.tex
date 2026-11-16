@@ -416,6 +416,75 @@ is stacked on the first. The rates are constants of the cell's nonlinear
 solve, carrying the field dependence inside the residual meaning a
 re-integration of the photon grid at every residual evaluation.
 
+\paragraph{Spectral tables and the spectral basis of a cell.}  The
+attenuated field of the H/He/metal layouts is evaluated in three steps
+(\texttt{photoionization\_field\_at\_cell\_HHe}, \texttt{util\_ion\_eq.f90}):
+the attenuated spectrum $\mathcal{F}_k$ of the cell
+(\texttt{attenuated\_spectrum\_of\_cell}); its density-free spectral
+integrals (\texttt{spectral\_basis\_of\_cell}, type
+\texttt{spectral\_basis\_t}); and the assembly of the rates, heating channels
+and efficiency of the composition passed in from those integrals and the
+cell's photoelectron partition
+(\texttt{photoionization\_rates\_of\_spectral\_basis}).  The integrands of
+\eqref{eq:rad:photorate} and \eqref{eq:rad:photoheat} that do not depend on
+the cell (the cross section, the photoelectron share and the electron-energy
+weights of the secondary-ionization partition of every absorber, H\,{\sc i},
+He\,{\sc i}, He\,{\sc ii}, He\,$2^3$S, the H$_2$ channels and every metal
+column) are tabulated once on the photon grid, together with the first and
+last bins in which each row is nonzero
+(\texttt{photoelectron\_and\_primary\_absorption\_spectral\_tables},
+\texttt{metal\_photoabsorption\_spectral\_tables}; rebuilt when the photon
+grid changes, the former also when \texttt{photoheat\_photon\_fraction}
+changes).  The integrals of a cell are
+then sums $\sum_k b_k w_{k}$ of the weights $b_k = \mathcal{F}_k\Delta E_k$
+with each table row over its support, and the photoelectron partition of the
+cell is applied to these integrals after the sum over photon bins instead of
+inside it; the result is the same expression summed in another order.  The
+active low-energy partition and the photon-fraction heating need integrals
+the tables do not hold, and for them the attenuated spectrum itself is
+passed to the assembly.
+
+\paragraph{Reuse of the spectral basis across the passes of one coupled
+source step.}  The coupled source step of a marching step
+(Sec.~\ref{sec:numerics:split}, item~6) re-forms the field of every cell at
+every pass from the composition the pass starts from.  On pass $k\ge2$ of the
+same entry an interior cell may take the spectral integrals its own earlier
+pass formed (\texttt{field\_spectral\_basis\_reuse.f90}); the partition, the
+density assembly and the heating are formed from the current arguments in
+every call, so only the spectral weights carry a lag.  With the cell mean of
+the attenuation $A = e^{-\tau_{\rm out}}(1-e^{-\tau})/\tau$ of a bin
+($\tau_{\rm out}$ the star-ward and $\tau$ the cell's own depth) and $w$ the
+opacity-weighted width, every bin obeys $|{\rm d}\ln(w A)| \le |{\rm
+d}\tau_{\rm out}| + |{\rm d}\tau|/2 + |{\rm d}\ln w| \le \hat M$,
+%
+\begin{equation}
+  \hat M = \sum_a \sigma_{\max,a}\,|{\rm d}N_a|
+         + \tfrac12\sum_a \sigma_{\max,a}\,|{\rm d}(n_a w)|
+         + |{\rm d}\ln w|,
+  \label{eq:rad:basisbound}
+\end{equation}
+%
+with $N_a$ the star-ward column, $n_a$ the own density and $\sigma_{\max,a}$
+the largest cross section of absorber $a$ (\texttt{scalar\_attenuation\_bound}).
+A cell reuses only when $\hat M \le \ln(1+\epsilon_F)$,
+$\epsilon_F = 10^{-9}$ (\texttt{spectral\_basis\_reuse\_eps}), so that every
+stored spectral weight lies within a factor $1+\epsilon_F$ of the current
+one.  The bound concerns the spectral weights; it is not a relative accuracy
+statement for a signed combination (the H$_2$ heating), for a quantity with
+a vanishing denominator, or for the accepted state of the step.  Every other
+case recomputes: pass~1 of every entry (a new step, a refused, restored or
+sampled attempt); ghost cells, and the later ghost fixed-point applications
+of a sweep, which also invalidate every stored basis at its end; an entry with
+the fixed-point probe or the geometric extrapolation, and a probe pass;
+the \texttt{alpha} form \eqref{eq:alpha2d} with $\alpha>0$, for which the
+bound is not derived; photon-fraction heating; an active low-energy partition; a change
+of branch (photoelectron partition on or off, H$_2$ present, double
+ionization wanted); an underflowed bin or a nonfinite value in the generating
+basis; nonfinite current inputs.  A stored basis is never rewritten by a
+reuse.  The reuse is on in every build (\texttt{spectral\_basis\_reuse\_on},
+a compile-time constant); there is no input key.  The run log ends with the
+counts of the reuse decisions (\texttt{spectral\_basis\_reuse\_report}).
+
 \subsection{Secondary ionization by photoelectrons}
 \label{sec:radiation:secondary}
 

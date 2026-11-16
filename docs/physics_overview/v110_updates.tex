@@ -1,10 +1,11 @@
-% Physical interpretation and implementation boundaries added for v1.10.
-\section{v1.10 regional stabilization and stationary closure}
+% Regional stabilization and the lower-boundary closure of the stationary problem.
+\section{Regional stabilization and stationary closure}
 \label{sec:v110-physics}
 
 This section describes the regional diagnostic and the lower-boundary
-thermochemical closure in v1.10. The regional diagnostic, the physical-time
-profile criterion, and stationary certification answer separate questions.
+thermochemical closure of the stationary problem. The regional diagnostic, the
+physical-time profile criterion, and stationary certification answer separate
+questions.
 
 \subsection{Finite-duration regional condition}
 
@@ -70,7 +71,7 @@ profile criterion of Sec.~\ref{sec:numerics:du}.
 
 \subsection{Lower-boundary thermochemical closure in the stationary problem}
 
-The stationary residual in v1.10 evaluates a thermochemical state for the
+The stationary residual evaluates a thermochemical state for the
 lower ghost cells at a fixed physical column. The same boundary calculation
 is queried when the stored state is certified. The routines
 \texttt{stationary\_ghost\_state} and
