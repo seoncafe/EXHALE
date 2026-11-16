@@ -1,0 +1,8 @@
+Integrated  cross section (a0^2) for e-H(nf,lf) <- e-H(ni,li) for ni <= 9 and nf <= 10 (note n=10 is denoted by the character ":").
+TICS is the Total Ionisation Cross Section, which is the sum of cross sections for states nf with ef>0.
+TCS is the Total Cross Section, which is the sum of cross sections for all open states nf.
+Note, in L-S coupling, due to degenerate energies, the transitions nf <- ni for nf = ni, and lf = li +/- 1, the cross sections are formally infinite, e.g. 2P <- 2S. 
+Filename examples:
+4F.2P is for nf=4, lf=3, ni=2, li=1
+4F.2  is for nf=4, lf=3, ni=2, averaged over li=0 and 1
+4.2   is for nf=4, summed over lf = 0,1,2,3, ni=2, averaged over li=0,1

@@ -1,0 +1,24 @@
+# MCCC calculations of H2 vibrational energy levels
+# Reference: Scarlett et al., Atom. Data Nucl. Data Tables (2020)
+# MCCC Database: mccc-db.org
+# This file: vibrational level energies for the J1Dg electronic state of H2
+# v    Energy (Hartrees)  Energy (eV)
+  0   -0.65229           -17.74970
+  1   -0.64217           -17.47440
+  2   -0.63262           -17.21440
+  3   -0.62376           -16.97350
+  4   -0.61537           -16.74520
+  5   -0.60748           -16.53050
+  6   -0.60012           -16.33020
+  7   -0.59329           -16.14420
+  8   -0.58696           -15.97190
+  9   -0.58116           -15.81410
+ 10   -0.57587           -15.67010
+ 11   -0.57111           -15.54080
+ 12   -0.56691           -15.42640
+ 13   -0.56329           -15.32790
+ 14   -0.56029           -15.24620
+ 15   -0.55797           -15.18310
+ 16   -0.55640           -15.14050
+ 17   -0.55566           -15.12030
+ 18   -0.55556           -15.11760

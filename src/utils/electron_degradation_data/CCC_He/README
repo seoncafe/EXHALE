@@ -1,0 +1,14 @@
+Convergent Close-Coupling (CCC) calculations of e-He scattering using an up to 314 target states: l_max=5, N_l=25-l.
+
+f.i files of integrated cross sections (cm^2) for e-He(nf,lf,sf) <- e-He(ni,li,si) for ni,nf <= 5.
+TICS is the Total (one-electron) Ionisation Cross Section, which is the sum of cross sections for states nf with ef>0.
+TCS is the Total Cross Section, which is the sum of cross sections for all open states nf.
+
+Filename examples:
+s4F.t2P are cross sections for nf=4, lf=3, si=0, ni=2, li=1, sf=1
+TCS.s4D are TCS cross sections for ni=4, li=2, si=0
+
+As at 13-Apr-2026 these resuts are unpublished, but are based on the CCC theory given by Fursa and Bray, PRA 52, 1279 (1995),
+see https://journals.aps.org/pra/abstract/10.1103/PhysRevA.52.1279.
+
+Available from https://atom.curtin.edu.au/ccc-db/index.html.

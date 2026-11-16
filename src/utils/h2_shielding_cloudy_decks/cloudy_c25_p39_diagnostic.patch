@@ -1,0 +1,117 @@
+--- /home/kiseon/CLOUDY/c25.00/source/h2_priv.h	2025-08-26 12:47:51.000000000 +0900
++++ /tmp/claude-1000/-nfs-mocafe-kiseon-RT-Codes-ExoAtmosphere/4b5720ff-a4b5-4ae7-b461-c2d91dc0a3af/scratchpad/p39/cloudy_patched/source/h2_priv.h	2026-09-02 22:23:36.933090664 +0900
+@@ -271,6 +271,14 @@
+ 
+ 	double Solomon_dissoc_rate_g;
+ 	double Solomon_dissoc_rate_s;
++
++	/* EXHALE P39 diagnostic, added 2026-09-02, not part of upstream CLOUDY:
++	 * the fresh (locally absorbed) pump rate per H2g molecule, and the
++	 * dissociation rate per H2g molecule that a SINGLE pump would give,
++	 * i.e. with the branching D/(D + sum A_ul) instead of the escape-
++	 * probability-weighted D/(D + sum A_ul Ploss) the Solomon rate uses. */
++	double Solomon_pump_rate_g;
++	double Solomon_dissoc_single_g;
+ 	
+ 	/** these are decay rates from electronic levels into g and s */
+ 	double Solomon_elec_decay_g;
+--- /home/kiseon/CLOUDY/c25.00/source/mole_h2_etc.cpp	2025-08-26 12:47:51.000000000 +0900
++++ /tmp/claude-1000/-nfs-mocafe-kiseon-RT-Codes-ExoAtmosphere/4b5720ff-a4b5-4ae7-b461-c2d91dc0a3af/scratchpad/p39/cloudy_patched/source/mole_h2_etc.cpp	2026-09-02 22:23:36.933090664 +0900
+@@ -36,6 +36,23 @@
+ 	Solomon_dissoc_rate_g = 0.;
+ 	Solomon_dissoc_rate_s = 0.;
+ 
++	/* EXHALE P39 diagnostic, 2026-09-02 (not upstream): fresh pump rate and
++	 * single-pump dissociation rate of the H2g population.  sum_A holds
++	 * sum_l A_ul of each electronic excited level WITHOUT the escape
++	 * probability, so that D/(D + sum_A) is the branching one pump would
++	 * have if every fluorescent photon escaped -- the quantity DB96 Table 2
++	 * tabulates as <p_diss>. */
++	Solomon_pump_rate_g = 0.;
++	Solomon_dissoc_single_g = 0.;
++	std::map<long,double> sum_A;
++	for( TransitionList::iterator tr = trans.begin(); tr != rad_end; ++tr )
++	{
++		qList::iterator Hi = (*tr).Hi();
++		if( (*Hi).n() < 1 ) continue;
++		long key = (((long)(*Hi).n()*64L + (long)(*Hi).v())*64L + (long)(*Hi).J());
++		sum_A[key] += (*tr).Emis().Aul();
++	}
++
+ 	/* these are used in a print statement - are they needed? */
+ 	Solomon_elec_decay_g = 0.;
+ 	Solomon_elec_decay_s = 0.;
+@@ -54,6 +71,12 @@
+ 		 * into continuum */
+ 		double rate_up_cont = (*(*tr).Lo()).Pop() * (*tr).Emis().pump() * factor;
+ 
++		/* EXHALE P39 diagnostic (not upstream) */
++		long key_p39 = (((long)(*Hi).n()*64L + (long)(*Hi).v())*64L + (long)(*Hi).J());
++		double A_p39 = sum_A[key_p39];
++		double D_p39 = (double)H2_dissprob[(*Hi).n()][(*Hi).v()][(*Hi).J()];
++		double rate_up_p39 = (*(*tr).Lo()).Pop() * (*tr).Emis().pump();
++
+ 		/* rate electronic state decays into H2g */
+ 		double elec_decay = (*(*tr).Hi()).Pop() * (*tr).Emis().Aul() *
+ 			((*tr).Emis().Ploss());
+@@ -72,6 +95,9 @@
+ 			Solomon_dissoc_rate_g += rate_up_cont;
+ 			/* rate electronic state decays into H2g */
+ 			Solomon_elec_decay_g += elec_decay;
++			/* EXHALE P39 diagnostic (not upstream) */
++			Solomon_pump_rate_g += rate_up_p39;
++			Solomon_dissoc_single_g += rate_up_p39 * D_p39 / SDIV( D_p39 + A_p39 );
+ 		}
+ 	}
+ 
+@@ -91,12 +117,17 @@
+ 		/* will be used for H2g-> H + H */
+ 		Solomon_dissoc_rate_g /= SDIV(H2_den_g);
+ 
++		/* EXHALE P39 diagnostic (not upstream) */
++		Solomon_pump_rate_g /= SDIV(H2_den_g);
++		Solomon_dissoc_single_g /= SDIV(H2_den_g);
++
+ 	}
+ 	else
+ 	{
+ 		Solomon_dissoc_rate_s = 0.; 
+ 		Solomon_dissoc_rate_g = 0.;	
+-
++		Solomon_pump_rate_g = 0.;
++		Solomon_dissoc_single_g = 0.;
+ 	}
+ 	/*fprintf(ioQQQ,"DEBUG H2 new %.2e %.2e %.2e %.2e \n",
+ 		Solomon_elec_decay_g ,
+--- /home/kiseon/CLOUDY/c25.00/source/mole_h2_io.cpp	2025-08-26 12:47:51.000000000 +0900
++++ /tmp/claude-1000/-nfs-mocafe-kiseon-RT-Codes-ExoAtmosphere/4b5720ff-a4b5-4ae7-b461-c2d91dc0a3af/scratchpad/p39/cloudy_patched/source/mole_h2_io.cpp	2026-09-02 22:23:59.453137288 +0900
+@@ -263,7 +263,8 @@
+ 			"#depth\tN(H2)\tN(H2)/u(H2)\tA_V(star)\tn(Eval)"
+ 			"\tH2/Htot\trenorm\tfrm grn\tfrmH-\tdstTH85\tBD96\tELWERT\tBigH2\telec->H2g\telec->H2s"
+ 			"\tG(TH85)\tG(DB96)\tCR\tEleclife\tShield(BD96)\tShield(H2)\tBigh2/G0(spc)\ttot dest"
+-			"\tHeatH2Dish_TH85\tHeatH2Dexc_TH85\tHeatDish_BigH2\tHeatDexc_BigH2\thtot\n" );
++			"\tHeatH2Dish_TH85\tHeatH2Dexc_TH85\tHeatDish_BigH2\tHeatDexc_BigH2\thtot"
++			"\tpump_g\tdiss_single_g\tdiss_eff_g\tG_TH85\n" );
+ 	}
+ 	else if( p.nMatch("SOLO") )
+ 	{
+@@ -1581,12 +1582,17 @@
+ 			Solomon_dissoc_rate_g/SDIV(hmi.UV_Cont_rel2_Habing_spec_depth),
+ 			hmi.H2_rate_destroy);
+ 		fprintf(io,
+-			"\t%.2e\t%.2e\t%.2e\t%.2e\t%.2e\n",
++			"\t%.2e\t%.2e\t%.2e\t%.2e\t%.2e\t%.6e\t%.6e\t%.6e\t%.6e\n",
+ 			hmi.HeatH2Dish_TH85,
+ 			hmi.HeatH2Dexc_TH85,
+ 			HeatDiss, 
+ 			HeatDexc,
+-			thermal.htot);
++			thermal.htot,
++			/* EXHALE P39 diagnostic (not upstream) */
++			Solomon_pump_rate_g,
++			Solomon_dissoc_single_g,
++			Solomon_dissoc_rate_g,
++			hmi.UV_Cont_rel2_Habing_TH85_depth);
+ 	}
+ 	/* save h2 solomon */
+ 	else if( (strcmp(chJOB , "H2so" ) == 0) && (strcmp(chTime,"LAST") != 0) )

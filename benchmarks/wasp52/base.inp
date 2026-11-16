@@ -1,0 +1,13 @@
+# base.inp -- lower-atmosphere handoff for EXHALE
+# written by vulcan_to_base.py from WASP52-photo.vul
+# PHOTOCHEMICAL base state (VULCAN): q_H2=2.8406e-02 q_H=8.8115e-01 q_He=0.0900 mu=1.314
+# q_H2O = 2.320e-05
+# q_CO = 2.354e-04
+# q_CH4 = 1.411e-27
+# q_CO2 = 1.491e-07
+# q_NH3 = 7.188e-20
+# q_HCN = 6.760e-21
+T_base    1181.20
+r_base    1.40492
+HeH_base  0.095919
+Kzz_base  1.000e+09

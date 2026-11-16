@@ -1,0 +1,64 @@
+
+--- MgI_2853 ---
+    Lambda = 8.629e-6/(1*sqrt(T)) * Ups(T) * dE * exp(-dE/kT)
+    dE = 4.3378 eV ;  Ups(T) = 0.354521 + 15.0995*ln(1 + T/93933.3)
+    max rel. err (full 1e3-1e5 K)            :   2.77 %
+    max rel. err (relevant, T>  7586 K)    :   2.77 %
+    rms rel. err (relevant range)            :   0.98 %
+
+--- MgII_hk ---
+    Lambda = 8.629e-6/(2*sqrt(T)) * Ups(T) * dE * exp(-dE/kT)
+    dE = 4.2766 eV ;  Ups(T) = 16.2306 + 20.3468*ln(1 + T/121913)
+    max rel. err (full 1e3-1e5 K)            :   1.06 %
+    max rel. err (relevant, T>  6026 K)    :   1.06 %
+    rms rel. err (relevant range)            :   0.47 %
+
+--- CaII_HK ---
+    Lambda = 8.629e-6/(2*sqrt(T)) * Ups(T) * dE * exp(-dE/kT)
+    dE = 3.1434 eV ;  Ups(T) = 14.6535 + 18.7059*ln(1 + T/33882.6)
+    max rel. err (full 1e3-1e5 K)            :   1.34 %
+    max rel. err (relevant, T>  4677 K)    :   1.34 %
+    rms rel. err (relevant range)            :   0.41 %
+
+--- NaI_D ---
+    Lambda = 8.629e-6/(2*sqrt(T)) * Ups(T) * dE * exp(-dE/kT)
+    dE = 2.1037 eV ;  Ups = 36.0744  (constant)
+    max rel. err (full 1e3-1e5 K)            :   0.01 %
+    max rel. err (relevant, T>  2818 K)    :   0.00 %
+    rms rel. err (relevant range)            :   0.00 %
+
+--- FeII_coronal ---
+    Lambda = T^-1/2 * sum_i A_i*exp(-T_i/T)
+      A = 1.9603e-18   T_i =    1326.8 K   (dE_eff = 0.114 eV)
+      A = 1.6643e-17   T_i =    9543.1 K   (dE_eff = 0.822 eV)
+      A = 6.5488e-16   T_i =   58986.3 K   (dE_eff = 5.083 eV)
+      A = 7.6573e-16   T_i =  137471.7 K   (dE_eff = 11.846 eV)
+    max rel. err (full 1e3-1e5 K)            :   1.45 %
+    max rel. err (relevant, T>  1000 K)    :   1.45 %
+    rms rel. err (relevant range)            :   0.32 %
+
+--- FeII_boltz ---
+    Lambda = T^-1/2 * sum_i A_i*exp(-T_i/T)
+      A = 1.4093e-18   T_i =    1109.7 K   (dE_eff = 0.096 eV)
+      A = 9.8941e-18   T_i =    8583.4 K   (dE_eff = 0.740 eV)
+      A = 5.4145e-16   T_i =   58134.5 K   (dE_eff = 5.010 eV)
+      A = 4.7711e-16   T_i =  147615.4 K   (dE_eff = 12.721 eV)
+    max rel. err (full 1e3-1e5 K)            :   0.86 %
+    max rel. err (relevant, T>  1000 K)    :   0.86 %
+    rms rel. err (relevant range)            :   0.26 %
+
+================== summary of fitted formulas ==================
+Resonance lines: Lambda(T) = 8.629e-6/(g_l*sqrt(T))*Ups(T)*dE*exp(-dE/kT)
+  MgI_2853      g_l=1  dE=4.3378 eV  Ups = 0.354521 + 15.0995*ln(1+T/93933.3)
+  MgI_2853      Fortran: a b T0 dE_erg dE_over_k = 0.35452071 15.099537 93933.324 6.94992895e-12 50338.130
+  MgII_hk       g_l=2  dE=4.2766 eV  Ups = 16.2306 + 20.3468*ln(1+T/121913)
+  MgII_hk       Fortran: a b T0 dE_erg dE_over_k = 16.230616 20.346807 121913.06 6.85184502e-12 49627.711
+  CaII_HK       g_l=2  dE=3.1434 eV  Ups = 14.6535 + 18.7059*ln(1+T/33882.6)
+  CaII_HK       Fortran: a b T0 dE_erg dE_over_k = 14.653524 18.705877 33882.599 5.03631038e-12 36477.848
+  NaI_D         g_l=2  dE=2.1037 eV  Ups = 36.0744  (constant)
+  NaI_D         Fortran: a b T0 dE_erg dE_over_k = 36.074352 0 inf 3.37049304e-12 24412.382
+  FeII_coronal  Lambda = T^-1/2 * [ 1.9603e-18*exp(-1326.8/T) + 1.6643e-17*exp(-9543.1/T) + 6.5488e-16*exp(-58986.3/T) + 7.6573e-16*exp(-137471.7/T) ]
+  FeII_boltz    Lambda = T^-1/2 * [ 1.4093e-18*exp(-1109.7/T) + 9.8941e-18*exp(-8583.4/T) + 5.4145e-16*exp(-58134.5/T) + 4.7711e-16*exp(-147615.4/T) ]
+  freefree_Z1   already analytic: 1.9095e-25 * Z^2 * (T/1e4)^0.55
+
+wrote cooling_formula_fits.png

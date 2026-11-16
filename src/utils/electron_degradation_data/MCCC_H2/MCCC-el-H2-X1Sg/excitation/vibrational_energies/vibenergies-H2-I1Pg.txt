@@ -1,0 +1,14 @@
+# MCCC calculations of H2 vibrational energy levels
+# Reference: Scarlett et al., Atom. Data Nucl. Data Tables (2020)
+# MCCC Database: mccc-db.org
+# This file: vibrational level energies for the I1Pg electronic state of H2
+# v    Energy (Hartrees)  Energy (eV)  *** Asterisks denote wave functions located in the outer well ***
+  0   -0.65444           -17.80810
+  1   -0.64482           -17.54640
+  2   -0.63592           -17.30430
+  3   -0.62782           -17.08390
+  4   -0.62556           -17.02240
+  5   -0.62523           -17.01340 *
+  6   -0.62508           -17.00930 *
+  7   -0.62502           -17.00770 *
+  8   -0.62500           -17.00720 *
