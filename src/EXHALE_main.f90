@@ -162,6 +162,10 @@
                                attempted_step_note_step,                 &
                                attempted_step_reduced_dt,                &
                                attempted_step_bound_next_dt,             &
+                               attempted_step_predicted_start_fraction,  &
+                               attempted_step_reset_start_fraction,      &
+                               sample_start_fraction,                    &
+                               n_samples_started_below_nominal,          &
                                attempted_step_error_estimate,            &
                                attempted_step_report,                    &
                                attempted_step_read_environment,          &
@@ -184,6 +188,7 @@
                                as_reject_source_fixed_point,             &
                                as_reject_mass_projection,                &
                                as_reject_imposed_input,                  &
+                               as_reject_bisected_sampled_pass,          &
                                integration_error, err_class_name,        &
                                n_err_class, err_inner_fraction,          &
                                err_order_p,                              &
@@ -438,6 +443,7 @@
       real*8 :: jac_eps, jac_err
       ! --- lightweight phase profiler (gated by env EXHALE_PROFILE=1) ---
       logical :: do_profile = .false.
+      logical :: tp_step_pending = .false.
       integer :: jj_ec
       real*8  :: tp_step0, tp_a, tp_ion = 0.0d0, tp_tot = 0.0d0
       ! finer phases of the marching step (EXHALE_PROFILE=1): the three RK
@@ -631,6 +637,12 @@
       ! retry, and only the adoption boundary reads it.
       real*8, dimension(:), allocatable   :: dtloc_macro
       real*8  :: dt_macro, dt_cfl_now, dt_reduced, dt_last_accepted
+      ! The nominal interval of the step (before the starting fraction of
+      ! a sampled macrostep and the bound after a refusal), and the
+      ! starting fraction an accepted sample predicts, committed only
+      ! when that step is adopted.
+      real*8  :: dt_nominal_of_step, start_fraction_after_adoption
+      logical :: start_fraction_pending
       real*8  :: t_err0, e_err
       ! The carrier substep's own diagnostics, read for the inner
       ! nonlinear error the estimate is judged against.
@@ -1751,6 +1763,10 @@
       ! and a run that rejects nothing never enters the branch.
       dt_last_accepted        = -1.0d0
       dt_bounded_by_rejection = .false.
+      dt_nominal_of_step      = -1.0d0
+      start_fraction_after_adoption = 1.0d0
+      start_fraction_pending  = .false.
+      call attempted_step_reset_start_fraction
       call attempted_step_read_environment()
       ! THE CONTROLLER OWNS THE DECISION on an uncovered carrier interval
       ! (see the call site in the step), so the operator's own stop is off
@@ -2041,24 +2057,6 @@
                dt     = dt*update_map_scale
                dt_loc = dt_loc*update_map_scale
             endif
-            ! ADVISOR DECISION 3: a dt REDUCED BY A REJECTION bounds the
-            ! next step, dt_next = min(dt_CFL, 2 dt_accepted). The bound is
-            ! applied only after a step that was actually refused: the CFL
-            ! step of a marching run can rise by more than a factor two
-            ! between two neighboring states in a startup transient, and
-            ! bounding that would change a run that rejected nothing, which
-            ! this controller must not do.
-            if (dt_bounded_by_rejection) then
-               dt_cfl_now = dt
-               dt = attempted_step_bound_next_dt(dt_cfl_now,              &
-                                                 dt_last_accepted)
-               if (dt .ne. dt_cfl_now .and. dt_cfl_now .gt. 0.0d0)        &
-                  dt_loc = dt_loc*(dt/dt_cfl_now)
-               dt_bounded_by_rejection = .false.
-            endif
-            if (do_profile) tp_step0 = omp_get_wtime()
-
-
             ! Rows 1-12 form one attempted step; adoption precedes
             ! update_map_end_step. A refusal restores the checkpoint and
             ! retries with shorter dt without physical accumulation.
@@ -2076,6 +2074,42 @@
                 marching_step .gt. 0) then
                if (mod(marching_step, n_err_every) .eq. 0) n_err_passes = 3
             endif
+            ! THE NOMINAL INTERVAL of this step: the CFL interval (or the
+            ! prescribed one) as every step has it, before the two bounds
+            ! below. A sampled macrostep starts its first trial at the
+            ! predicted fraction of it (attempted_step.f90,
+            ! sample_start_fraction); the trial is judged by the unchanged
+            ! estimate and refused and retaken by the unchanged rule. An
+            ! unsampled step keeps the nominal interval.
+            dt_nominal_of_step = dt
+            if (n_err_passes .eq. 3 .and.                                 &
+                sample_start_fraction .lt. 1.0d0) then
+               dt     = dt*sample_start_fraction
+               dt_loc = dt_loc*sample_start_fraction
+               n_samples_started_below_nominal =                          &
+                  n_samples_started_below_nominal + 1
+            endif
+            ! ADVISOR DECISION 3: a dt REDUCED BY A REJECTION bounds the
+            ! next step, dt_next = min(dt_CFL, 2 dt_accepted). The bound is
+            ! applied only after a step that was actually refused: the CFL
+            ! step of a marching run can rise by more than a factor two
+            ! between two neighboring states in a startup transient, and
+            ! bounding that would change a run that rejected nothing, which
+            ! this controller must not do.
+            if (dt_bounded_by_rejection) then
+               dt_cfl_now = dt
+               dt = attempted_step_bound_next_dt(dt_cfl_now,              &
+                                                 dt_last_accepted)
+               if (dt .ne. dt_cfl_now .and. dt_cfl_now .gt. 0.0d0)        &
+                  dt_loc = dt_loc*(dt/dt_cfl_now)
+               dt_bounded_by_rejection = .false.
+            endif
+            if (do_profile) then
+               tp_step0 = omp_get_wtime()
+               tp_step_pending = .true.
+            endif
+
+
             dt_macro    = dt
             dtloc_macro = dt_loc
             if (n_err_passes .eq. 3) then
@@ -2087,6 +2121,7 @@
                                                    n_steps_dt_halved)
             endif
             n_macro_retry = 0
+            start_fraction_pending = .false.
 
             macrostep: do
 
@@ -2426,6 +2461,23 @@
                exit trial
             endif
 
+            ! A SAMPLED MACROSTEP COMPARES TWO ENDPOINTS AT t + H: one step of
+            ! H (the full pass) and two successive steps of H/2 (the half
+            ! passes, ending at t + H/2 and at t + H). A positivity bisection
+            ! inside any pass shortens the interval that pass integrates, so
+            ! the pass no longer covers its prescribed interval: the estimate
+            ! would compare states at different times, and the full pass,
+            ! which is the state the run keeps, would cover less than the H
+            ! the clock advances by. Such a pass refuses the macrostep, which
+            ! the controller below retakes from its entry state at a shorter
+            ! common H. Outside a sampled macrostep the bisected dt is the
+            ! step's dt, and the clock advances by it.
+            if (n_err_passes .eq. 3 .and. n_dt_halve .gt. 0) then
+               as_trial_reason = as_reject_bisected_sampled_pass
+               as_trial_op     = as_op_hydro
+               exit trial
+            endif
+
             ! Update-map snapshots sit BETWEEN operator-split stages, never
             ! between the statements of one. A statement placed inside the RK3
             ! block changes how gfortran contracts u - dt*(dF - S) into an FMA
@@ -2571,8 +2623,15 @@
             ! dt, and exactly the flux of the stationary energy row at a
             ! fixed point, which is what makes the marching and the
             ! stationary routes solve one energy equation.  The column sum
-            ! is zero: both ends of the carrier column are closed.  Only for
-            ! an interval the step covered: an exhausted one moved nothing.
+            ! is sum_j V_j div_q_car(j) = -A_0 q(0) (in the units of the
+            ! energy row): q(N) = 0 at the outer face, and q(0) is the
+            ! enthalpy the base face exchanges with the lower atmosphere,
+            ! nonzero where a handoff states the base partition of a
+            ! carrier (H2 in the lower-profile runs) and zero otherwise
+            ! (carrier_enthalpy_divergence_of_state and
+            ! molecular_carrier_enthalpy_face_flux, diffusive_photochemistry).
+            ! Only for an interval the step covered: an exhausted one moved
+            ! nothing.
             if (carrier_enthalpy_active() .and.                          &
                 as_carrier_status .ne. carrier_interval_exhausted) then
                call carrier_enthalpy_divergence_of_state(rho, T, f_sp,    &
@@ -3096,6 +3155,11 @@
                   write(as_verd%what,'(A,A,I0)') 'transport stage: ',      &
                        trim(cond_reason_text)//', cell ',                 &
                        conduction_last_cell
+               else if (as_trial_reason .eq.                               &
+                        as_reject_bisected_sampled_pass) then
+                  write(as_verd%what,'(A,I0,A)') 'the pass took ',         &
+                       n_dt_halve, ' positivity bisection(s), so it does'//&
+                       ' not cover its prescribed interval (H or H/2)'
                else
                   as_verd%what   = 'the temperature and the composition'// &
                                    ' were still moving at the pass cap'
@@ -3261,10 +3325,10 @@
                ! keeps, over its tolerance: the difference between the step
                ! at H and the two at H/2, divided by (1 - 2**-p) for the
                ! retained trajectory and by the row's own scale. p is the
-               ! order of the INTEGRATOR THAT CARRIES THE ROW'S CLASS,
-               ! three for the conservative rows and for the electron
-               ! fraction and the temperature, one for the transported
-               ! fractions (attempted_step.f90, err_order_p); the class
+               ! order of the ROW'S CLASS in the complete split step,
+               ! one for the conservative rows and for the transported
+               ! fractions, three for the electron fraction and the
+               ! temperature (attempted_step.f90, err_order_p); the class
                ! whose lower bound the gate reads also sets the exponent of
                ! the reduction a refusal applies.
                call attempted_step_error_estimate(u_err_full,             &
@@ -3385,6 +3449,16 @@
                   dt_bounded_by_rejection = .true.
                   cycle macrostep
                endif
+               ! THE STARTING FRACTION OF THE NEXT SAMPLE, predicted from
+               ! this accepted estimate only when it is resolved (an
+               ! unresolved estimate judged nothing and predicts nothing),
+               ! and committed only when this step is adopted below.
+               if (as_est%resolved .and. dt_nominal_of_step .gt. 0.0d0) then
+                  start_fraction_after_adoption =                         &
+                     attempted_step_predicted_start_fraction(             &
+                        dt_macro/dt_nominal_of_step)
+                  start_fraction_pending = .true.
+               endif
                ! THE TRAJECTORY THE RUN KEEPS IS THE ONE AT H, which is
                ! the state the acceptance predicate was evaluated on and
                ! the state the estimate above refers to; the two half steps
@@ -3409,6 +3483,10 @@
             ! not keep.
             n_steps_accepted = n_steps_accepted + 1
             dt_last_accepted = dt
+            if (start_fraction_pending) then
+               sample_start_fraction  = start_fraction_after_adoption
+               start_fraction_pending = .false.
+            endif
             ! The code's time unit is R0/v0 (dr_j is in R0, v in v0), so
             ! the increment is stated in seconds here and the header needs
             ! no unit of its own.
@@ -3666,6 +3744,9 @@
                      lam_good     = lam_good + 1
                      recon_lambda = min(1.0d0,                            &
                                         recon_lambda + recon_lambda_step)
+                     ! The operator of the step changed: the predicted
+                     ! starting fraction of a sample no longer applies.
+                     call attempted_step_reset_start_fraction
                      if (lam_good .ge. 5) then
                         recon_lambda_step = min(recon_lambda_step0,       &
                                                 2.0d0*recon_lambda_step)
@@ -3681,6 +3762,7 @@
                   endif
                else
                   recon_lambda = min(1.0d0, recon_lambda + recon_lambda_step0)
+                  call attempted_step_reset_start_fraction
                endif
                if (recon_lambda .ge. 1.0d0) then
                   ! Done: disarm, so that the JFNK finish and every gate see
@@ -3689,6 +3771,7 @@
                   in_lambda_ramp  = .false.
                   recon_lambda_on = .false.
                   call select_stationary_reconstruction
+                  call attempted_step_reset_start_fraction
                   write(*,'(A,I0,A,I0,A,I0,A,ES12.4)')                    &
                      '    -> PLM -> WENO3 continuation reached lambda = '//&
                      '1 at step ', marching_step, ' (', lam_step_count,           &
@@ -3743,6 +3826,7 @@
                      ! which is the one-step switch this replaces.
                      in_lambda_ramp    = .true.
                      in_plm_stage      = .false.
+                     call attempted_step_reset_start_fraction
                      recon_lambda_on   = .true.
                      recon_lambda      = min(1.0d0, recon_lambda_step0)
                      recon_lambda_step = recon_lambda_step0
@@ -3764,6 +3848,7 @@
                      ! neither scheme.
                      call select_stationary_reconstruction
                      in_plm_stage = .false.
+                     call attempted_step_reset_start_fraction
                      stall_count  = 0
                      du_prev      = huge(1.0d0)
                      write(*,'(A,ES12.4,A,I0)') '    -> switched PLM -> WENO3 at du =', &
@@ -3963,6 +4048,7 @@
                  steady_gates_converged)) then
                sec_ion_active = .true.
                sec_flip_step  = marching_step
+               call attempted_step_reset_start_fraction
                sec_ion_armed_step = marching_step
                mass_flux_converged = .false.
                relaxation_stalled = .false.;  steady_gates_converged = .false.
@@ -4012,6 +4098,7 @@
                ! handoff resumes when face mass-flux spread meets its gate.
                   sec_ion_active = .true.
                   sec_flip_step  = marching_step
+                  call attempted_step_reset_start_fraction
                   sec_ion_armed_step = marching_step
                   mass_flux_converged = .false.
                   relaxation_stalled = .false.;  steady_gates_converged = .false.
@@ -4187,6 +4274,7 @@
 
             if (do_profile) then
                tp_tot = tp_tot + (omp_get_wtime() - tp_step0)
+               tp_step_pending = .false.
                if (mod(marching_step, 500) .eq. 0 .and. tp_tot .gt. 0.0d0)          &
                   write(*,'(A,I7,A,F6.1,A)') ' (profile) count=', marching_step,     &
                      '  ioniz_eq fraction=', 100.0d0*tp_ion/tp_tot, ' %'
@@ -4195,6 +4283,10 @@
 
       ! End of temporal while loop
       enddo
+      if (do_profile.and.tp_step_pending) then
+         tp_tot = tp_tot + (omp_get_wtime() - tp_step0)
+         tp_step_pending = .false.
+      endif
       write(*,*) '(EXHALE_main.f90) Time integration done.'
 
       ! ONE STATE PER OUTPUT FILE. Everything written from here on -- the

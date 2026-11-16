@@ -1,6 +1,7 @@
       module newton_solver
       use global_parameters,   only: use_newton_ieq
       use chemical_row_layout, only: fraction_resolution
+      use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
       ! THE CELL SOLVE OF THE IONIZATION AND CHEMICAL SYSTEMS, AND WHEN IT
       ! HAS CONVERGED.
       !
@@ -215,14 +216,19 @@
       real*8  :: fvec(n), fjac(n,n), dx(n), dxbar(n), xnew(n), fnew(n)
       real*8  :: dsc(n), fnorm, fnorm_new, lam, theta0, theta
       integer :: ipiv(n), it, ils, iflag, sinfo
+      real*8, external :: enorm
       logical :: accepted
 
       info  = 0
       iflag = 1
+      if (.not. all(ieee_is_finite(x))) return
+      if (.not. ieee_is_finite(rtol) .or. rtol .lt. 0.0d0) return
       call fcn(n, x, fvec, iflag, params)
-      fnorm = sqrt(sum(fvec*fvec))
-      if (.not. (fnorm .eq. fnorm)) return          ! NaN at the guess
-      if (fnorm .eq. 0.0d0) then
+      if (.not. all(ieee_is_finite(fvec))) return
+      ! A squared norm may underflow for a nonzero residual.
+      fnorm = enorm(n, fvec)
+      if (.not. ieee_is_finite(fnorm)) return
+      if (all(fvec .eq. 0.0d0)) then
          info = 1; return
       endif
 
@@ -232,19 +238,22 @@
          else
             call forward_difference_jacobian(fcn, n, x, fvec, fjac, params)
          endif
+         if (.not. all(ieee_is_finite(fjac))) return
          call lu_factor(n, fjac, ipiv, sinfo)
          if (sinfo .ne. 0) return                   ! singular -> fall back
          dx = -fvec
          call lu_solve(n, fjac, ipiv, dx)
-         if (.not. all(dx .eq. dx)) return          ! NaN correction
+         if (.not. all(ieee_is_finite(dx))) return   ! nonfinite correction
 
          ! Converged: the correction resolves every unknown. It is applied
          ! when the corrected state is finite (it lies within the
          ! resolution of x either way).
          if (correction_resolves_every_unknown(n, dx, x, rtol)) then
             xnew = x + dx
+            if (.not. all(ieee_is_finite(xnew))) return
             call fcn(n, xnew, fnew, iflag, params)
-            if (all(fnew .eq. fnew)) x = xnew
+            if (.not. all(ieee_is_finite(fnew))) return
+            x = xnew
             info = 1
             return
          endif
@@ -255,16 +264,25 @@
          accepted = .false.
          do ils = 1, maxls
             xnew = x + lam*dx
+            if (.not. all(ieee_is_finite(xnew))) then
+               lam = 0.5d0*lam
+               cycle
+            endif
             call fcn(n, xnew, fnew, iflag, params)
-            fnorm_new = sqrt(sum(fnew*fnew))
-            if (fnorm_new .eq. fnorm_new) then
+            if (.not. all(ieee_is_finite(fnew))) then
+               lam = 0.5d0*lam
+               cycle
+            endif
+            fnorm_new = enorm(n, fnew)
+            if (ieee_is_finite(fnorm_new)) then
                if (fnorm_new .lt. (1.0d0 - 1.0d-4*lam)*fnorm) then
                   accepted = .true.
                else
                   dxbar = -fnew
                   call lu_solve(n, fjac, ipiv, dxbar)
                   theta = sqrt(sum((dsc*dxbar)**2))
-                  if (theta .eq. theta .and.                              &
+                  if (all(ieee_is_finite(dxbar)) .and.                   &
+                      ieee_is_finite(theta) .and.                         &
                       theta .lt. (1.0d0 - 0.25d0*lam)*theta0)             &
                      accepted = .true.
                endif
@@ -277,7 +295,7 @@
          x     = xnew
          fvec  = fnew
          fnorm = fnorm_new
-         if (fnorm .eq. 0.0d0) then
+         if (all(fvec .eq. 0.0d0)) then
             info = 1; return
          endif
       enddo

@@ -23,6 +23,7 @@
 	! turnover of each group (normalized_reaction_residual), and the
 	! density below which an element is absent from the cell.
 	use chemical_row_layout, only: absent_element_density,                &
+	                               present_element_density,               &
 	                               chemical_row_layout_of_cell,           &
 	                               ionization_row_layout,                 &
 	                               mark_constraint_rows_of_cell,          &
@@ -3657,7 +3658,8 @@
 					     - h2_fraction_of_reservoir(                      &
 					           base_h2_nuclei_fraction(), x_ion_ghost,    &
 					           hydrogen_nuclei_in_oxygen_carriers(        &
-					             sys_x(1:N_eq), iox, ieq_cell%n_ofam,     &
+					             sys_x(1:N_eq), iox,                      &
+					             present_element_density(ieq_cell%n_ofam), &
 					             nh(j))))
 					ghost_closed = (ghost_closure_res .le.                &
 					                base_ghost_closure_tol)
@@ -4959,7 +4961,7 @@
 	endif
 	if (thereis_oxychem .and. ieq_cell%nh .gt. 0.0d0) then
 		iy = oxygen_row_base()
-		s = s + (x(iy) + 2.0d0*x(iy+1))*ieq_cell%n_ofam/ieq_cell%nh
+		s = s + (x(iy) + 2.0d0*x(iy+1))*present_element_density(ieq_cell%n_ofam)/ieq_cell%nh
 		k = k + 2
 	endif
 	if (s .gt. 1.0d0 + dble(k)*fraction_resolution) return
@@ -5173,7 +5175,7 @@
 	! ionization_fractions_physical.
 	if (thereis_oxychem .and. ieq_cell%nh .gt. 0.0d0) then
 		iy = oxygen_row_base()
-		s = s + (x(iy) + 2.0d0*x(iy+1))*ieq_cell%n_ofam/ieq_cell%nh
+		s = s + (x(iy) + 2.0d0*x(iy+1))*present_element_density(ieq_cell%n_ofam)/ieq_cell%nh
 	endif
 	viol = max(viol, s - 1.0d0)
 
@@ -5946,7 +5948,8 @@
 		x(4) = h2_fraction_of_reservoir(ieq_cell%x_h2_neutral_partition,  &
 		          ionized_hydrogen_nuclei_fraction(x),                    &
 		          hydrogen_nuclei_in_oxygen_carriers(                     &
-		             x, iox, ieq_cell%n_ofam, ieq_cell%nh))
+		             x, iox, present_element_density(ieq_cell%n_ofam),   &
+		             ieq_cell%nh))
 	end subroutine impose_transported_fractions
 
 
@@ -6400,7 +6403,10 @@
 	endif
 	if (thereis_oxychem) then
 		ix = oxygen_row_base()
-		if (ix+1 .le. nx) then
+		! An absent family's rows are identity rows, as an absent
+		! metal element's are below: no density conversion.
+		if (ix+1 .le. nx .and.                                            &
+		    present_element_density(ieq_cell%n_ofam) .gt. 0.0d0) then
 			conv(ix)   = 1.0d0/max(ieq_cell%n_ofam, 1.0d-300)
 			conv(ix+1) = conv(ix)
 			keep(ix)   = .true.
@@ -6737,7 +6743,7 @@
 	ox_h = 0.0d0
 	if (thereis_oxychem .and. ieq_cell%nh .gt. 0.0d0) then
 		iy   = oxygen_row_base()
-		ox_h = (x(iy) + 2.0d0*x(iy+1))*ieq_cell%n_ofam/ieq_cell%nh
+		ox_h = (x(iy) + 2.0d0*x(iy+1))*present_element_density(ieq_cell%n_ofam)/ieq_cell%nh
 		if (ox_h .gt. 1.0d0) then
 			x(iy)   = x(iy)/ox_h
 			x(iy+1) = x(iy+1)/ox_h

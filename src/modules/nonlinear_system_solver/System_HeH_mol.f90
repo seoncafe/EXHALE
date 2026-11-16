@@ -103,7 +103,8 @@
 	use charge_exchange, only: he_h_cx_fvec
 	use chemical_row_layout, only: chemical_row_layout_of_cell,           &
 	                               n_layout_rows_max, turnover_of_group,  &
-	                               element_group_turnover_reciprocal
+	                               element_group_turnover_reciprocal,     &
+	                               present_element_density
 	use Cooling_Coefficients, only: ioniz_HeI23S_H2,      &
 	                               f_penning_HeI23S
 	! The control key of the collider-resolved third body, read from the one
@@ -501,7 +502,9 @@
 	real*8 :: nH, nO, sc
 
 	nH = ieq_cell%nh
-	nO = ieq_cell%n_ofam
+	! An absent family keeps the scale 1 of its identity rows
+	! (chemical_row_layout, present_element_density).
+	nO = present_element_density(ieq_cell%n_ofam)
 
 	! (iox) OH: made by O1 reverse, O2 and the H2O photolysis channels that
 	!       end in OH; destroyed by O1, O2 reverse and O7.

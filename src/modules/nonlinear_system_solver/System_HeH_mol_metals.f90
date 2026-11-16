@@ -66,7 +66,8 @@
 	use chemical_row_layout, only: chemical_row_layout_of_cell,           &
 	                               ionization_row_layout,                 &
 	                               mark_constraint_rows_of_cell,          &
-	                               absent_element_density
+	                               absent_element_density,                &
+	                               present_element_density
 
 	implicit none
 
@@ -254,9 +255,12 @@
 
 	! Oxygen carriers, as fractions of the free oxygen family. They hold H
 	! nuclei too (OH one, H2O two), so they enter the atomic-H closure below.
+	! An absent family (n_ofam <= absent_element_density) hands zero OH and
+	! H2O to every row, as metal_fractions hands zero O stages
+	! (chemical_row_layout, present_element_density).
 	if (thereis_oxychem) then
 		iox    = oxygen_row_base()
-		n_ofam = ieq_cell%n_ofam
+		n_ofam = present_element_density(ieq_cell%n_ofam)
 		n_oh   = x(iox)*n_ofam
 		n_h2o  = x(iox+1)*n_ofam
 	else
@@ -302,6 +306,7 @@
 	! The ionization rows themselves are unchanged -- no reaction of the
 	! audited set makes or destroys an oxygen ION -- so O I / O II / O III
 	! above the molecular layer are untouched, which is what gate G2 tests.
+	! For an absent family every term here is zero, and so is O I.
 	if (thereis_oxychem)                                                  &
 		nm0(iel_O) = nm0(iel_O) - n_oh - n_h2o
 
@@ -330,6 +335,12 @@
 		call oxygen_carrier_rows(fvec, iox, n_hi, n_h2, n_oh, n_h2o,      &
 		                         nm0(iel_O), oj3, oj4, oj5, oj7,          &
 		                         gross=gross)
+	! An absent family carries no reaction: its two rows are the identity
+	! rows written after the scaling below, with no gross rate.
+	if (thereis_oxychem .and. n_ofam .eq. 0.0d0) then
+		gross(iox)   = 0.0d0
+		gross(iox+1) = 0.0d0
+	endif
 
 	! --- Metal rows (System_HeH_metals, shifted to mbase..) ---
 	call metal_rows(fvec, x, mbase, met_nelem, met_ntot, met_g0, met_g1, &
@@ -365,6 +376,14 @@
 	! block and metal block alike, charge exchange inside the gross rates
 	! (System_HeH_mol, mol_inv_turnover).
 	call scale_molecular_rows(N_eq, fvec, gross)
+
+	! The identity rows x = 0 of an absent oxygen family
+	! (mark_constraint_rows_of_cell); a transported carrier partition below
+	! replaces them by its own constraint.
+	if (thereis_oxychem .and. n_ofam .eq. 0.0d0) then
+		fvec(iox)   = x(iox)
+		fvec(iox+1) = x(iox+1)
+	endif
 
 	! IMPOSED CARRIER PARTITIONS. Where a partition is not a local root, the
 	! balance row that would have computed it is replaced by the value,

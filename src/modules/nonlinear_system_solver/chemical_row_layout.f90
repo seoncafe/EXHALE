@@ -123,7 +123,10 @@
 
 	! An element whose nuclei density is at or below this is absent from
 	! the cell: its two rows are the identity rows x = 0 (ion_residual_core,
-	! metal_rows) and carry no reaction.
+	! metal_rows) and carry no reaction, and it hands zero stage densities
+	! and zero electrons to every other row (present_element_density). For
+	! oxygen with the carrier chemistry on, the element is the free oxygen
+	! family (met_ntot(iel_O) = ieq_cell%n_ofam), OH and H2O included.
 	real*8, parameter :: absent_element_density = 1.0d-30
 
 	! THE RESOLUTION OF A FRACTION OF AN ELEMENT. Every unknown of the cell
@@ -172,6 +175,27 @@
 	end type chemical_row_layout_of_cell
 
 	contains
+
+	elemental real*8 function present_element_density(n_nuclei)
+	! THE ONE RULE FOR AN ABSENT METAL ELEMENT IN THE CELL EQUATIONS: the
+	! nuclei density [cm^-3] an element hands to the rows of one cell's
+	! ionization and chemistry system, n_nuclei where it is above
+	! absent_element_density and exactly 0 at or below it, where the
+	! element's own rows are the identity rows x = 0. n_nuclei is a finite,
+	! nonnegative element total. Every stage density, electron count,
+	! charge-exchange reactant, linear-derivative coefficient and, for the
+	! free oxygen family, every OH and H2O density and turnover of the cell
+	! rows is formed from this value. The threshold is a numerical
+	! truncation of those local rows: the stored state and every consumer
+	! outside the cell system keep the element's true nuclei, written as
+	! its neutral stage (the root x = 0) or at imposed carrier fractions.
+	real*8, intent(in) :: n_nuclei
+	if (n_nuclei .gt. absent_element_density) then
+		present_element_density = n_nuclei
+	else
+		present_element_density = 0.0d0
+	endif
+	end function present_element_density
 
 	pure real*8 function helium_closure_allowance(has_triplet, has_molecule) result(allowance)
 	! The neutral ground singlet closes He II, He III, the metastable level
@@ -423,8 +447,11 @@
 	!     written last there and wins);
 	!   transported ionization stages and He 2^3S level: rows 1, 2, 3 and
 	!     the level's row pinned (impose_transported_ionization_fractions);
+	!   absent free oxygen family (n_ofam <= absent_element_density): the
+	!     OH and H2O rows identity (System_HeH_mol_metals);
 	!   transported oxygen carriers: the OH and H2O rows pinned
-	!     (System_HeH_mol_metals).
+	!     (System_HeH_mol_metals; written last there and wins over the
+	!     identity of an absent family).
 	! metal_ntot and metal_top are the cell's (System_HeH_metals met_ntot,
 	! met_top), read only where the layout carries metals.
 	type(chemical_row_layout_of_cell), intent(inout) :: layout
@@ -462,6 +489,10 @@
 		call set_constraint(cell%x_hetr_row, row_pinned_fraction)
 
 	iox = layout%oxygen_row_base
+	if (iox .gt. 0 .and. cell%n_ofam .le. absent_element_density) then
+		call set_constraint(iox,   row_identity)
+		call set_constraint(iox+1, row_identity)
+	endif
 	if (cell%x_ox_fixed .and. iox .gt. 0) then
 		call set_constraint(iox,   row_pinned_fraction)
 		call set_constraint(iox+1, row_pinned_fraction)

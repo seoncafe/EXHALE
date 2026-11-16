@@ -35,7 +35,8 @@
 
 	use global_parameters
 	use ion_cell_state, only: ieq_cell
-	use chemical_row_layout, only: absent_element_density
+	use chemical_row_layout, only: absent_element_density,                &
+	                               present_element_density
 	use ion_residual_core, only: heh_rows, heh_crow, heh_jac_local,       &
 	                             metal_fractions, metal_electron_sum,     &
 	                             metal_rows,                             &
@@ -215,6 +216,9 @@
    real*8  :: n_hi,n_hii,n_hei,n_heii,n_heiii
    real*8  :: nm0(met_nelem),nm1(met_nelem),nm2(met_nelem)
    real*8  :: dne(N_eq), Crow(N_eq), n_X
+   ! The nuclei density each element hands to the rows, zero for an absent
+   ! one (present_element_density), as metal_fractions forms nm0/nm1/nm2.
+   real*8  :: n_present(met_nelem)
    integer :: e,ix,i,k
 
    ! Unpack H/He coefficients (named cell state, same as the residual).
@@ -228,14 +232,15 @@
    call metal_fractions(x, 4, met_nelem, met_ntot, nm0, nm1, nm2)
    n_e = n_hii + n_heii + 2.0*n_heiii
    call metal_electron_sum(n_e, met_nelem, nm1, nm2)
+   n_present = present_element_density(met_ntot(1:met_nelem))
 
    ! Electron-density gradient dne(k) = d n_e / d x_k.
    dne = 0.0d0
    dne(1)=n_h; dne(2)=n_he; dne(3)=2.0*n_he
    do e=1,met_nelem
       ix=4+2*(e-1)
-      dne(ix)   = met_ntot(e)
-      dne(ix+1) = 2.0*met_ntot(e)
+      dne(ix)   = n_present(e)
+      dne(ix+1) = 2.0*n_present(e)
    enddo
 
    ! n_e-coefficient C_i of each row (the factor multiplying n_e in fvec_i).
@@ -263,7 +268,7 @@
    ! Metal rows (present elements only):
    do e=1,met_nelem
       ix=4+2*(e-1); n_X=met_ntot(e)
-      if (n_X .le. 1.0d-30) cycle
+      if (n_X .le. absent_element_density) cycle
       ! Row ix: X0<->X+ , f = nm0*g0 + (nm0*b0 - a1*nm1)*n_e
       fjac(ix,ix)   = fjac(ix,ix)   - n_X*met_g0(e)                    &
                     + (-n_X*met_b0(e) - met_a1(e)*n_X)*n_e
@@ -285,7 +290,7 @@
    ! of heh_rows) and the same cell.
    call cx_add_to_jac(N_eq, fjac, nm0, nm1, nm2,                       &
                       n_hi, n_hii, n_hei, n_heii, n_heiii,             &
-                      met_ntot, n_h, n_he, 1.0d0, ieq_cell%T_K)
+                      n_present, n_h, n_he, 1.0d0, ieq_cell%T_K)
 
    ! He <-> H charge-exchange Jacobian (rows 1,2,3; cols 1,2,3), mirror of
    ! the he_h_cx_fvec call in the residual (standard He row, +1).
