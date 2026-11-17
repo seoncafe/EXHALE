@@ -1226,7 +1226,8 @@ and the profile it writes are in [`examples/17_lower_profile/` (v1.00)](https://
 ### Producing one from a photochemistry model
 
 ```bash
-# production route: Photochem, in the Python it is installed into (see below)
+# production route: Photochem, in the Python environment it is installed
+# into ("Obtaining Photochem" below)
 python3 \
   src/utils/photochem_to_lower_profile.py <run_dir> \
       --mp 0.720 --r-ref 1.36 \
@@ -1240,6 +1241,14 @@ python3 src/utils/vulcan_to_lower_profile.py <run_dir> \
       --vulfile vulcan_work/hd209_vulcan/output/HD209.vul \
       --mp 0.720 --r-ref 1.36 --p-match 1e-6
 ```
+
+The `vulcan_work/` files are the T(p), K_zz and stellar flux of a VULCAN
+set-up (see "Use VULCAN photochemistry" below); they are not in this
+repository. `src/utils/photochem_parallel.py` runs the same adapter with the
+same arguments on `OMP_NUM_THREADS` OpenMP threads (the adapter alone runs
+on one); [`README_photochem.md`](README_photochem.md) section 6 gives an
+example that needs only files of this repository, with its run time and
+memory.
 
 Each writes `<run_dir>/lower_atmosphere_profile.dat` and a `base.inp` that
 carries **only** the matching `solution_id` (a provenance file; any physics
@@ -1449,27 +1458,24 @@ modifications you need to make if you set it up by hand:
 ## Obtaining Photochem (third-party, not in this repo)
 
 The Photochem route of the profile handoff, and the elemental-flux closure that
-drives it (`src/utils/element_flux_closure.py`), need a Photochem that is
-neither the plain release nor the conda-forge package: Equilibrate's elemental
-mass-balance test uses one absolute threshold set by the most abundant element
-and skips everything below `1e-6`, so a trace element can be four orders
-of magnitude out of balance in a solve that reports success; and two of
-Clima's unconstrained `hybrd1` solves are replaced by solves confined to their
-physical domain. On LHS 1140 b the first moves the deepest-level N/H departure
-from `1e-4` to `1e-14`, which is the difference between a handoff the adapter
-refuses and one it accepts.
+drives it (`src/utils/element_flux_closure.py`), run on Photochem `v0.9.3`
+with `src/utils/photochem_exhale.patch`: Equilibrate tests the elemental
+mass balance of every element against its own tolerance and defines its
+convergence flag on every return, two of Clima's root solves are confined to
+their physical domain and scaled, and the gas-giant extension checks the
+elemental closure of each equilibrium level.
 
-**[`README_photochem.md` (v1.00)](https://github.com/seoncafe/EXHALE/blob/v1.00/README_photochem.md) is the whole procedure**: the two GitHub
-repositories and the versions they are pinned to, the compilers and packages
-required, the build command with its traps, what the EXHALE patch changes, and
-the four verification steps. It is not repeated here.
+**[`README_photochem.md`](README_photochem.md) is the whole procedure**:
+repositories and versions, the data package, build requirements and command,
+what the patch changes, how to verify the result, and how to run the
+adapter on one or several OpenMP threads.
 
-In short: `src/utils/setup_photochem.sh` clones Photochem `v0.9.0`
-(`e1e8725`) into `photochem/` and applies `src/utils/photochem_exhale.patch`;
-`photochem_clima_data` `v0.3.1` is cloned beside it and pip-installed; then
-Photochem is built and installed into the Python that will run the adapter.
-Neither directory is tracked, so a fresh clone of EXHALE has
-neither.
+In short: `src/utils/setup_photochem.sh` clones Photochem `v0.9.3`
+(`ba3542c`) into `photochem/` and applies
+`src/utils/photochem_exhale.patch`; `photochem_clima_data` `v0.3.4` is
+installed with pip (Photochem `v0.9.3` refuses the `v0.3.1` mechanism); then
+Photochem is built and installed into the Python environment that will run
+the adapter. Neither is tracked, so a fresh clone of EXHALE has neither.
 
 `closure.json` needs no `"python"` key: with none, the closure driver runs the
 chemistry under its own interpreter, which is expected to be the one Photochem
@@ -2211,14 +2217,13 @@ EXHALE/
 |   `-- utils/             # Python GUI (EXHALE_interface_main.py), fortdep.py
 |-- VULCAN/                # third-party VULCAN (+FastChem), NOT in this repo;
 |                          #   fetched by src/utils/setup_vulcan.sh
-|-- photochem/             # third-party Photochem v0.9.0 + the EXHALE patch,
+|-- photochem/             # third-party Photochem v0.9.3 + the EXHALE patch,
 |                          #   NOT in this repo;
 |                          #   src/utils/setup_photochem.sh puts it there
-|-- photochem_clima_data/  # the data tables Photochem imports (v0.3.1),
-|                          #   NOT in this repo (clone + pip -e)
+|-- photochem_clima_data/  # the data tables Photochem imports (v0.3.4),
+|                          #   NOT in this repo (clone + pip install)
 |-- README_photochem.md    # what to download, what to install, how to build
 |                          #   the two above, and what the patch is
-|                          #   (v1.00 branch only)
 |-- inputdata/             # opacity / SED table samples (*.opa, Jlya.txt.example, ...)
 |-- cooling_data/          # CHIANTI cooling-formula fit scripts + notebooks
 |-- examples/

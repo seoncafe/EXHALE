@@ -175,7 +175,7 @@ The full tree, with the third-party codes fetched on demand:
 | What does each input key, output column and option mean? | [`docs/EXHALE_user_manual.pdf`](docs/EXHALE_user_manual.pdf) (section 1: the v1.20 tree) |
 | Which equations and algorithms does the code apply? | [`docs/EXHALE_physics_and_algorithms.pdf`](docs/EXHALE_physics_and_algorithms.pdf), sources in `docs/physics_overview/` |
 | What do the numbered example configurations add? | [`examples/README.md` (v1.00)](https://github.com/seoncafe/EXHALE/blob/v1.00/examples/README.md) |
-| How is Photochem obtained and built for the profile handoff? | [`README_photochem.md` (v1.00)](https://github.com/seoncafe/EXHALE/blob/v1.00/README_photochem.md) |
+| How is Photochem obtained and built for the profile handoff? | [`README_photochem.md`](README_photochem.md) |
 | What changed, and when? | update logs (v1.00): [stage 3](https://github.com/seoncafe/EXHALE/blob/v1.00/docs/Update_EXHALE_stage3.pdf) (from 2026-09-23), [stage 2](https://github.com/seoncafe/EXHALE/blob/v1.00/docs/Update_EXHALE_stage2.pdf), [stage 1](https://github.com/seoncafe/EXHALE/blob/v1.00/docs/Update_EXHALE_stage1.pdf) |
 
 Physics and numerics notes (v1.00 branch):
@@ -256,4 +256,4 @@ and [`docs/stationary_vs_marching_lhs1140b.pdf`](docs/stationary_vs_marching_lhs
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-11-16 14:09 KST
+Last updated: 2026-11-17 16:16 KST

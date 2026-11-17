@@ -774,6 +774,41 @@ def planck_bin_integral(nu_lo, nu_hi, T, npts=48):
     return 0.5*(nu_hi - nu_lo)*np.einsum('q,bqt->bt', wq, B)
 
 
+def array_identity(a):
+    """dtype, shape and value bytes of an array: equal identities mean equal
+    arrays element by element, signed zeros and NaN payloads included.  The
+    shape is that of the array itself (a 0-d array stays 0-d), the bytes
+    those of a contiguous copy."""
+    a = np.asarray(a)
+    return (a.dtype.str, a.shape, np.ascontiguousarray(a).tobytes())
+
+
+# Largest number of temperature arrays one net-cooling closure keeps for
+# reuse.  MEASURED: at most 10 distinct temperature arrays in one closure
+# (the first depth pass of the k01 column energy balance; 4 in the others).
+# The bound only limits memory in a long continuation; the oldest entry is
+# dropped first and a dropped entry is simply evaluated again.
+NET_COOLING_MEMO_ENTRIES = 64
+
+
+def planck_bin_integral_shared(nu_lo, nu_hi, T, known, npts=48):
+    """planck_bin_integral(nu_lo, nu_hi, T, npts), evaluated once for every
+    distinct (bin edges, temperatures, npts) within the scope of the dict
+    `known` that the caller passes (None: no sharing).  The Planck band
+    integral depends on nothing else, so species whose k-distribution
+    tables share the bin edges share it; tables on another grid get their
+    own entry.  The returned array is shared: callers only read it."""
+    if known is None:
+        return planck_bin_integral(nu_lo, nu_hi, T, npts)
+    key = (array_identity(nu_lo), array_identity(nu_hi), array_identity(T),
+           npts)
+    B = known.get(key)
+    if B is None:
+        B = planck_bin_integral(nu_lo, nu_hi, T, npts)
+        known[key] = B
+    return B
+
+
 class KDistributionTable(object):
     """One species' table: bin-mean cross sections sigma_bar = sum_g w_g k_g
     and the g-point cross sections, interpolated bilinearly (log10 k against
@@ -1416,12 +1451,31 @@ class ColumnResponse(object):
         if transfer not in TRANSFERS:
             raise ValueError('transfer must be one of %s' % (TRANSFERS,))
 
+        # The net cooling depends on T and on inputs fixed for the lifetime
+        # of this closure (the domain d with its composition, pressures and
+        # reference state, treatment, transfer, the tables and rates of
+        # this object); a caller that changes any of them makes a new
+        # closure.  Within it, a temperature array met before (same dtype,
+        # shape and bytes) returns the values computed then; the stored
+        # arrays are private and every return is a fresh copy.  Only
+        # finite temperatures with finite results are kept (at most
+        # NET_COOLING_MEMO_ENTRIES, oldest dropped first); an exception
+        # keeps nothing.  D.evaluated, D.hits and D.misses expose the memo
+        # to tests.
+        evaluated = {}
+
         def D(T):
+            key = array_identity(T)
+            if key in evaluated:
+                D.hits += 1
+                tot, dtot = evaluated[key]
+                return tot.copy(), dtot.copy()
             tot = np.zeros_like(T)
             dtot = np.zeros_like(T)
+            planck = {}
             for sp in self.emitters:
                 x_over_m = d['mix'][sp]/d['m']
-                binem = (self.bin_emission(d, sp, T)
+                binem = (self.bin_emission(d, sp, T, planck=planck)
                          if transfer == 'cooling_to_space' else None)
                 for b in range(len(BANDS[sp])):
                     how = self.band_treatment(sp, b, treatment)
@@ -1431,20 +1485,32 @@ class ColumnResponse(object):
                                                   transfer, binem)
                     tot += x_over_m*c
                     dtot += x_over_m*dc
+            D.misses += 1
+            if (np.all(np.isfinite(T)) and np.all(np.isfinite(tot))
+                    and np.all(np.isfinite(dtot))):
+                if len(evaluated) >= NET_COOLING_MEMO_ENTRIES:
+                    del evaluated[next(iter(evaluated))]
+                evaluated[key] = (tot.copy(), dtot.copy())
             return tot, dtot
+        D.evaluated = evaluated
+        D.hits = 0
+        D.misses = 0
         return D
 
     # ---- transfer through the column ------------------------------------ #
-    def bin_emission(self, d, sp, T, h=0.01):
+    def bin_emission(self, d, sp, T, h=0.01, planck=None):
         """LTE emission of every bin of species sp, 4 pi sigma_bar Bbar
         [erg s^-1 per molecule], and its T derivative (central difference
-        over +-h K), at the nodes (bins, n)."""
+        over +-h K), at the nodes (bins, n).  planck: a dict through which
+        the species of one evaluation share their Planck band integrals
+        (planck_bin_integral_shared); None evaluates them here."""
         tab = self.em.tables[sp]
         lp = np.log10(d['p_bar'])
 
         def e_of(TT):
             return (4.0*np.pi*tab.sigma_bar(TT, lp)
-                    * planck_bin_integral(tab.nu_lo, tab.nu_hi, TT))
+                    * planck_bin_integral_shared(tab.nu_lo, tab.nu_hi, TT,
+                                                 planck))
         T = np.asarray(T, float)
         return e_of(T), (e_of(T + h) - e_of(T - h))/(2.0*h)
 
@@ -1496,6 +1562,7 @@ class ColumnResponse(object):
         lp = np.log10(d['p_bar'])
         pdyn = d['p_bar']*BAR
         ds = np.diff(d['s'])
+        planck = {}
         for sp in self.emitters:
             tab = self.em.tables[sp]
             kg0 = tab.k_g(d['T0'], lp)                         # (bins, n, g)
@@ -1525,7 +1592,7 @@ class ColumnResponse(object):
                             0.5 + np.sum(wk*u, axis=-1)/np.where(sw > 0.0,
                                                                   sw, 1.0),
                             1.0)
-            e0, _ = self.bin_emission(d, sp, d['T0'])
+            e0, _ = self.bin_emission(d, sp, d['T0'], planck=planck)
             out[sp] = dict(beta=beta, tau_face=face, band=tab.band_of_bins(),
                            e_bin0=e0, u=u)
         d['escape'] = out
@@ -1557,14 +1624,16 @@ class ColumnResponse(object):
         blk = slice(k0, M + 1)
         jobs = []
         total = 0.0
+        planck = {}
         for sp in self.emitters:
             tab = self.em.tables[sp]
             esc = esc_all[sp]
-            binem = self.bin_emission(d, sp, T)
+            binem = self.bin_emission(d, sp, T, planck=planck)
             kg = tab.k_g(T, lp)
             kg0 = tab.k_g(d['T0'], lp)
-            Bt = planck_bin_integral(tab.nu_lo, tab.nu_hi, T)
-            B0 = planck_bin_integral(tab.nu_lo, tab.nu_hi, d['T0'])
+            Bt = planck_bin_integral_shared(tab.nu_lo, tab.nu_hi, T, planck)
+            B0 = planck_bin_integral_shared(tab.nu_lo, tab.nu_hi, d['T0'],
+                                            planck)
             xm = d['mix'][sp]/d['m']
             eps = np.ones((len(BANDS[sp]), M + 1))
             on = np.zeros(len(BANDS[sp]), bool)
@@ -1584,42 +1653,25 @@ class ColumnResponse(object):
                 tot_b = float(np.sum(np.abs(dphi[blk])))
                 total += tot_b
                 jobs.append((sp, ib, eps[b], dphi, tot_b))
+        # One job of the exchange sum for every g-point of every selected
+        # bin, in the order species, bin, g-point; each job returns its
+        # contribution and H receives them in that order whatever the
+        # number of threads.
+        g_jobs = []
         for sp, ib, eps_abs, dphi, tot_b in jobs:
             if tot_b <= bin_share_min*total or tot_b == 0.0:
                 continue
             face = esc_all[sp]['tau_face'][ib]                  # (n+1, g)
             for ig in range(face.shape[1]):
-                ph = face[k0:, ig]                              # faces k0..M+1
-                dl = ph[:-1] - ph[1:]                           # layers k0..M
-                if np.all(dl <= 0.0):
-                    continue
-                ex = dphi[k0:, ig]
-                # A layer thinner than EXCHANGE_POINT_TAU emits as a sheet
-                # at its mid depth (fluxes (1/2) E_2): the slab form divides
-                # E_3 differences by dtau and loses them to round-off there.
-                slab = dl >= EXCHANGE_POINT_TAU
-                v = np.where(slab, ex/(2.0*np.where(slab, dl, 1.0)), 0.0)
-                K = v.size
-                w = np.zeros(K + 1)
-                w[1:] += v
-                w[:-1] -= v
-                E = expn(3, np.abs(ph[:, None] - ph[None, :]))
-                P = E.T @ w
-                tm = 0.5*(ph[:-1] + ph[1:])
-                sheet = (~slab) & (ex != 0.0)
-                if sheet.any():
-                    dd = ph[:, None] - tm[None, sheet]          # (faces, sheets)
-                    sgn = np.where(dd < 0.0, 1.0, -1.0)         # +1 above
-                    P += np.sum(sgn*0.5*ex[sheet][None, :]
-                                * expn(2, np.abs(dd)), axis=1)
-                absorbed = P[:-1] - P[1:] + ex
-                # upward photons of layer i crossing the matching level
-                top = ph[-1]
-                cross = np.where(slab, (expn(3, ph[1:] - top)
-                                        - expn(3, ph[:-1] - top))
-                                 / (2.0*np.where(slab, dl, 1.0)),
-                                 0.5*expn(2, tm - top))
-                H[k0:] += eps_abs[k0:]*(absorbed - ex*(0.5 - cross))
+                g_jobs.append((face[k0:, ig], dphi[k0:, ig], eps_abs[k0:]))
+        # closing() ends the BLAS limit and joins the pool when the loop
+        # is left, also by an exception.
+        from contextlib import closing
+        with closing(exchange_heating_contributions(
+                g_jobs, exchange_thread_count())) as contributions:
+            for contribution in contributions:
+                if contribution is not None:
+                    H[k0:] += contribution
         return H, dict(k0=k0, bins_total=len(jobs))
 
     def face_coefficient_function(self, d):
@@ -1933,9 +1985,10 @@ class ColumnResponse(object):
         geom = d['geom']
         rows = []
         total = 0.0
+        planck = {}
         for sp in self.emitters:
             x_over_m = d['mix'][sp]/d['m']
-            binem = (self.bin_emission(d, sp, T)
+            binem = (self.bin_emission(d, sp, T, planck=planck)
                      if transfer == 'cooling_to_space' else None)
             for b, band in enumerate(BANDS[sp]):
                 how = self.band_treatment(sp, b, treatment)
@@ -1980,6 +2033,7 @@ class ColumnResponse(object):
         # the LTE excess of its bins only distributes it over the bins
         solved = {(r_[0], r_[1]): (r_[2], r_[3]) for r_ in res['band_shares']}
         esc = self.escape_factors(d)
+        planck = {}
         for sp in self.emitters:
             tab = self.em.tables[sp]
             kg = tab.k_g(T, lp)                       # (bins, n, g)
@@ -1991,8 +2045,9 @@ class ColumnResponse(object):
             band = tab.band_of_bins()
             sb = tab.sigma_bar(T, lp)
             sb0 = tab.sigma_bar(d['T0'], lp)
-            Bt = planck_bin_integral(tab.nu_lo, tab.nu_hi, T)
-            B0 = planck_bin_integral(tab.nu_lo, tab.nu_hi, d['T0'])
+            Bt = planck_bin_integral_shared(tab.nu_lo, tab.nu_hi, T, planck)
+            B0 = planck_bin_integral_shared(tab.nu_lo, tab.nu_hi, d['T0'],
+                                            planck)
             ex = (4*np.pi*(sb*Bt - sb0*B0)*(d['mix'][sp]/d['m'])[None, :]
                   * (geom.area*geom.w)[None, :])
             ex[:, 0] = 0.0
@@ -2042,6 +2097,123 @@ class ColumnResponse(object):
                      % (100*(1 - THIN_ESCAPE_MIN), 100*SHARE_THAT_MATTERS,
                         '; '.join(failures))) if failures else '')
         return out
+
+
+def g_point_exchange_heating(ph, ex, eps_abs):
+    """Contribution of one g-point of one bin to the exchange heating of
+    ColumnResponse.exchange_heating, nodes k0..M, in the units of A w D.
+
+    ph: optical depths of the faces k0..M+1, from the deepest of them up to
+    the matching level (measured from the top of the profile, so ph falls
+    upward); ex: emission excess of the layers k0..M (emitter efficiency
+    included); eps_abs: absorber efficiency eps_beta of the layers.  Returns
+    eps_abs*(absorbed - ex*(1/2 - cross)), or None where no layer has a
+    positive optical thickness (every ph[:-1] - ph[1:] <= 0).  Exact
+    plane-parallel slab exchange: a slab of thickness dl emits
+    v = ex/(2 dl) per unit E3 difference at its two faces, so the face weights w are w_0 = -v_0, w_j = v_{j-1} - v_j,
+    w_K = v_{K-1}, and the flux function at face i is
+    P_i = sum_j E3(|ph_j - ph_i|) w_j, summed over the faces with w_j != 0
+    only (a zero weight contributes exactly zero; the inputs are checked to
+    be finite first so that no NaN or infinity is dropped with it).  Layers
+    thinner than EXCHANGE_POINT_TAU emit as sheets at their mid depth with
+    fluxes (1/2) E2.  Reads its inputs only; every array it writes is its
+    own, so independent g-points can be evaluated concurrently."""
+    from scipy.special import expn
+    if not (np.all(np.isfinite(ph)) and np.all(np.isfinite(ex))):
+        raise RuntimeError('the exchange heating received a non-finite '
+                           'optical depth or emission excess')
+    dl = ph[:-1] - ph[1:]                           # layers k0..M
+    if np.all(dl <= 0.0):
+        return None
+    # A layer thinner than EXCHANGE_POINT_TAU emits as a sheet at its mid
+    # depth (fluxes (1/2) E_2): the slab form divides E_3 differences by
+    # dtau and loses them to round-off there.
+    slab = dl >= EXCHANGE_POINT_TAU
+    v = np.where(slab, ex/(2.0*np.where(slab, dl, 1.0)), 0.0)
+    K = v.size
+    w = np.zeros(K + 1)
+    w[1:] += v
+    w[:-1] -= v
+    J = np.flatnonzero(w != 0.0)
+    if J.size:
+        P = expn(3, np.abs(ph[J, None] - ph[None, :])).T @ w[J]
+    else:
+        P = np.zeros(K + 1)
+    tm = 0.5*(ph[:-1] + ph[1:])
+    sheet = (~slab) & (ex != 0.0)
+    if sheet.any():
+        dd = ph[:, None] - tm[None, sheet]          # (faces, sheets)
+        sgn = np.where(dd < 0.0, 1.0, -1.0)         # +1 above
+        P += np.sum(sgn*0.5*ex[sheet][None, :]
+                    * expn(2, np.abs(dd)), axis=1)
+    absorbed = P[:-1] - P[1:] + ex
+    # upward photons of layer i crossing the matching level
+    top = ph[-1]
+    cross = np.where(slab, (expn(3, ph[1:] - top)
+                            - expn(3, ph[:-1] - top))
+                     / (2.0*np.where(slab, dl, 1.0)),
+                     0.5*expn(2, tm - top))
+    return eps_abs*(absorbed - ex*(0.5 - cross))
+
+
+def exchange_thread_count():
+    """Threads of the exchange sum: OMP_NUM_THREADS, the thread budget the
+    adapter already gives Photochem (photochem_parallel.py), one by default."""
+    value = os.environ.get('OMP_NUM_THREADS', '1')
+    try:
+        count = int(value)
+    except ValueError as exc:
+        raise ValueError('OMP_NUM_THREADS must be one positive integer') \
+            from exc
+    if count < 1 or str(count) != value.strip():
+        raise ValueError('OMP_NUM_THREADS must be one positive integer')
+    return count
+
+
+def exchange_heating_contributions(g_jobs, threads):
+    """Yield g_point_exchange_heating(*job) for the jobs in their order.
+
+    threads = 1 evaluates them one after the other.  Otherwise a pool of
+    threads evaluates them (the E_n and array work runs outside the Python
+    lock) with at most 2*threads jobs submitted ahead of the one being
+    consumed, so that the memory held is that of about 2*threads jobs, and
+    results are yielded in job order.  BLAS is limited to one thread for the
+    whole evaluation, once, in the calling thread (library thread limits
+    are process-wide).  An exception of any job propagates after the
+    remaining jobs are cancelled and the pool is joined."""
+    from threadpoolctl import threadpool_info, threadpool_limits
+    with threadpool_limits(limits=1, user_api='blas'):
+        if any(row['num_threads'] != 1 for row in threadpool_info()
+               if row['user_api'] == 'blas'):
+            raise RuntimeError('the BLAS libraries did not accept one '
+                               'thread for the exchange sum')
+        if threads == 1:
+            for job in g_jobs:
+                yield g_point_exchange_heating(*job)
+            return
+        import collections
+        from concurrent.futures import ThreadPoolExecutor
+        ahead = 2*threads
+        pending = collections.deque()
+        with ThreadPoolExecutor(max_workers=threads) as pool:
+            try:
+                it = iter(g_jobs)
+                for job in it:
+                    pending.append(pool.submit(g_point_exchange_heating,
+                                               *job))
+                    if len(pending) >= ahead:
+                        break
+                while pending:
+                    result = pending.popleft().result()
+                    for job in it:
+                        pending.append(pool.submit(g_point_exchange_heating,
+                                                   *job))
+                        break
+                    yield result
+            except BaseException:
+                for f in pending:
+                    f.cancel()
+                raise
 
 
 class ColumnTransferRefusal(RuntimeError):

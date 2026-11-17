@@ -58,12 +58,12 @@ set restricted to an atom list, the climate grid cut so the photochemical
 grid can sit above it, elemental abundances mapped BY NAME, and the robust
 stepper in blocks.
 
-Environment: run this under a Python that has Photochem 0.9.0 built from
-the source in `photochem/` -- upstream with the elemental-closure
-corrections of `README_photochem.md` section 4, which says what to download
-and how to build it.  Photochem 0.8.4 is a different code with a different
-elemental closure; every profile this writes records which one made it in
-its `# source_version` header line.
+Environment: run this under a Python that has Photochem v0.9.3 built from
+the source in `photochem/` -- upstream with the EXHALE corrections of
+`README_photochem.md` section 4, which says what to download and how to
+build it -- and its data photochem_clima_data v0.3.4.  Every profile this
+writes records the Photochem version that made it in its
+`# source_version` header line.
 
 Example (HD 209458 b, the P1 configuration):
 
@@ -996,7 +996,7 @@ def photochemical_steady_state(args, wdir, flux_file, mech, thermo,
                 sch.refuse('the temperature truncation leaves fewer than ten '
                            'levels')
         # The photochemical grid must sit above the climate grid:
-        # 3*TOA_pressure_avg < P_climate_top (trap 1).  Set the top AND cut
+        # 3*target_pressure < P_climate_top (trap 1).  Set the top AND cut
         # the grid, never one alone -- the stated TOA is kept and the climate
         # column is cut back to it, which is what makes the requirement hold
         # however shallow the supplied T(p) happened to reach.
@@ -1015,7 +1015,10 @@ def photochemical_steady_state(args, wdir, flux_file, mech, thermo,
                 mech, flux_file, mp, rp, solar_zenith_angle=args.zenith,
                 thermo_file=thermo, data_dir=data_dir)
             pc.gdat.verbose = False
-            pc.gdat.TOA_pressure_avg = toa_try
+            # The model-top pressure the gas-giant initialization places the
+            # top at and the robust stepper holds it within a factor
+            # pressure_factor (3, set by EvoAtmosphereGasGiant) of.
+            pc.var.toa_pressure_maintenance.target_pressure = toa_try
             # Where the photochemical model bottom sits, in units of the
             # pressure of the deepest quench level.  The gas-giant helper's
             # own 5 assumes a hot deep atmosphere in which the chemistry
@@ -1043,7 +1046,8 @@ def photochemical_steady_state(args, wdir, flux_file, mech, thermo,
             print('  photochem refused the column (%s); truncating' % exc)
             continue
         except Exception as exc:
-            if 'BOA in photochemical model' not in str(exc):
+            if ('does not extend deeply enough for the requested '
+                    'photochemical lower boundary') not in str(exc):
                 raise
             sch.refuse(
                 'the photochemical model asks for a bottom %.1fx deeper in '
@@ -1105,7 +1109,8 @@ def photochemical_steady_state(args, wdir, flux_file, mech, thermo,
 
 # THE STEP BUDGET.  `--blocks` B is B blocks of 100 robust steps, and that is
 # the budget every steady-state pass runs under: Photochem's own cap
-# `gdat.max_total_step` (gasgiants.py, 100000 by default) is set to 100 B, so
+# `var.nsteps_before_giveup` (100000 as EvoAtmosphereGasGiant sets it) is
+# set to 100 B, so
 # the stepper gives up on the stated budget and not on a cap the command
 # line does not show.
 #
@@ -1138,7 +1143,7 @@ def robust_steps_to_steady_state(pc, blocks, report=None):
     """(give_up, reached_steady_state) of at most `blocks` blocks of 100
     robust steps from the state pc holds, Photochem's step cap set to the
     same budget.  `report(n, give_up, reached)` is called after each block."""
-    pc.gdat.max_total_step = 100*blocks
+    pc.var.nsteps_before_giveup = 100*blocks
     pc.initialize_robust_stepper(pc.wrk.usol)
     give_up = reached = False
     for n in range(blocks):
@@ -1165,7 +1170,7 @@ def steady_state_with_stall_retry(pc, blocks, label, report=None):
           ' t = %.3e s (reached_steady_state = %s, gave_up = %s, %d steps'
           ' against a budget of %d); integrating once more from the stalled'
           ' state' % (STALL_RETRY_RTOL, label, float(pc.wrk.tn), reached,
-                      give_up, int(pc.gdat.total_step_counter), 100*blocks),
+                      give_up, int(pc.wrk.nsteps_total), 100*blocks),
           flush=True)
     rtol_stated = pc.var.rtol
     pc.var.rtol = STALL_RETRY_RTOL
@@ -1178,7 +1183,7 @@ def steady_state_with_stall_retry(pc, blocks, label, report=None):
           ' t = %.3e s' % (STALL_RETRY_RTOL, label,
                            'STEADY' if reached and not give_up
                            else 'stalled again',
-                           int(pc.gdat.total_step_counter), float(pc.wrk.tn)),
+                           int(pc.wrk.nsteps_total), float(pc.wrk.tn)),
           flush=True)
     return give_up, reached
 
@@ -1212,17 +1217,32 @@ def steady_state_with_top_face_at_match(pc, p_face_dyn, blocks,
     level p_face_dyn [dyn/cm^2].
 
     Photochem lays its levels out uniformly in ALTITUDE between a pinned
-    bottom and `top_atmos` (`vertical_grid`, `photochem/src/photochem_eqns.f90`),
+    bottom and `top_atmos` (`vertical_grid`, `photochem/src/photochem/photochem_eqns.f90`),
     so the altitude of the top face fixes the pressure of every level, and
     the converged composition moves the pressure at a fixed altitude through
     the hydrostatic integration.  The map is therefore iterated: measure the
     face pressure of the converged solution (`top_face_pressure`), move the
     face by H ln(p_face/p_match), re-converge, until the face is at the
     match to `tol` in ln p.  Where two successive moves have opposite signs
-    the step is halved (the map's slope is then near -1).  The gas-giant
-    stepper's own re-pinning (to its centre pressure every
-    `freq_update_TOA` steps) is suspended for these passes, so it cannot move
-    the face away again.
+    the step is halved (the map's slope is then near -1).
+
+    Photochem's TOA-pressure maintenance is disabled for these passes and
+    its previous state restored on every exit (success, refusal or
+    exception), so this iteration is the only thing that places the top:
+    with `toa_pressure_maintenance.enabled` false, initialize_robust_stepper
+    skips its band check and relocation
+    (photochem/src/photochem/photochem_evoatmosphere_integrate.f90:1010,
+    1023-1036), toa_pressure_state returns WithinTol (:1271), so neither the
+    extreme nor the post-convergence resynchronization is triggered by the
+    top (:1210-1235), and resync_and_restart, reached at the scheduled
+    restarts, updates the grid only when maintenance is enabled
+    (:1392-1404).  Inside the passes the grid therefore stays fixed between
+    the moves made here; the band maintenance would otherwise relocate the
+    top to its target whenever the top-centre gas pressure (`wrk.pressure`,
+    not the hydrostatic pressure this iteration measures, :1273) left a
+    factor `pressure_factor` about the target at a convergence check.  The
+    target itself is set to the top-centre hydrostatic pressure after each
+    move and kept on exit, for the solves that follow with maintenance on.
 
     Each re-convergence is one steady-state pass under the step budget and
     the single stall retry of `steady_state_with_stall_retry`; `solve` names
@@ -1233,17 +1253,20 @@ def steady_state_with_top_face_at_match(pc, p_face_dyn, blocks,
     """
     from photochem import PhotoException
 
-    gd = pc.gdat
-    freq_saved = gd.freq_update_TOA
-    gd.freq_update_TOA = 10**12
+    maintenance = pc.var.toa_pressure_maintenance
+    maintenance_enabled = bool(maintenance.enabled)
+    maintenance.enabled = False
     moves = []
     try:
         for attempt in range(1, passes + 1):
             p_face, H = top_face_pressure(pc)
             off = float(np.log(p_face/p_face_dyn))
             print('  top face pass %d: face %.6e dyn/cm2 (%+.3e in ln p from'
-                  ' the match), top centre %.6e dyn/cm2'
-                  % (attempt, p_face, off, float(pc.wrk.pressure_hydro[-1])),
+                  ' the match), top centre %.6e dyn/cm2 (gas pressure'
+                  ' %.6e), TOA target %.6e dyn/cm2, maintenance off'
+                  % (attempt, p_face, off, float(pc.wrk.pressure_hydro[-1]),
+                     float(pc.wrk.pressure[-1]),
+                     float(maintenance.target_pressure)),
                   flush=True)
             if abs(off) <= tol:
                 return p_face, attempt
@@ -1257,7 +1280,7 @@ def steady_state_with_top_face_at_match(pc, p_face_dyn, blocks,
             except PhotoException as exc:
                 sch.refuse('the top face could not be moved to the matching '
                            'level: %s' % exc)
-            gd.TOA_pressure_avg = float(pc.wrk.pressure_hydro[-1])
+            maintenance.target_pressure = float(pc.wrk.pressure_hydro[-1])
             give_up, reached = steady_state_with_stall_retry(
                 pc, blocks, 'top face %d after %s' % (attempt, solve))
             if give_up or not reached:
@@ -1274,7 +1297,7 @@ def steady_state_with_top_face_at_match(pc, p_face_dyn, blocks,
                    ' tolerance of %.1e' % (passes,
                                            np.log(p_face/p_face_dyn), tol))
     finally:
-        gd.freq_update_TOA = freq_saved
+        maintenance.enabled = maintenance_enabled
 
 
 def chemistry_temperature_profile(args, column, res=None):
@@ -1307,15 +1330,24 @@ def set_chemistry_temperature(pc, profile):
     persistent T(p), K_zz(p) (`set_press_temp_edd_profile`), re-mapped onto
     every grid it takes afterwards.  Above the profile's top (the matching
     level) Photochem holds the top value, but no cell centre lies there:
-    the top face is the match."""
+    the top face is the match.
+
+    The profile is mapped continuously (mode 1: at every right-hand-side
+    evaluation, so T and K_zz stay functions of pressure as the composition
+    moves the hydrostatic pressure), and the robust stepper keeps its
+    TOA-pressure target: the call would otherwise reset it to Photochem's
+    default 0.1 dyn/cm^2."""
     P, T, K = profile
     try:
         pc.destroy_stepper()
     except Exception:
         pass
+    target = float(pc.var.toa_pressure_maintenance.target_pressure)
     pc.set_press_temp_edd_profile(np.ascontiguousarray(P),
                                   np.ascontiguousarray(T),
-                                  np.ascontiguousarray(K))
+                                  np.ascontiguousarray(K),
+                                  mode=1, maintain_toa_pressure=True,
+                                  target_pressure=target)
 
 
 def species_element_counts(pc):
@@ -1398,6 +1430,22 @@ CLIMATE_P_TOP_DYN = 1.0e-2
 D0_H2_ERG = 36118.11*6.62607015e-27*2.99792458e10
 
 
+def production_rates_on_layers(production, nz, nprocesses):
+    """Photochem's `ProductionLoss.production` [cm^-3 s^-1] as an (nz,
+    nprocesses) array: one row for each layer, one column for each entry of
+    `production_rx`, the layout the v0.9.3 interface declares
+    (bindings/photochem/cython/ProductionLoss.pyx: "shape (nz,
+    nproduction)").  The shape is checked against that declaration rather
+    than inferred, so a square array (nz == nprocesses) is read in the
+    declared orientation; any other shape is a refusal."""
+    prod = np.asarray(production, dtype=float)
+    if prod.ndim != 2 or prod.shape != (int(nz), int(nprocesses)):
+        sch.refuse('Photochem returned a production array of shape %s; the '
+                   'interface declares (nz, nproduction) = (%d, %d)'
+                   % (prod.shape, int(nz), int(nprocesses)))
+    return prod
+
+
 def recombination_heating_of_inflowing_atoms(pc, args):
     """The heat the atomic hydrogen the wind mixes down through the matching
     surface releases in the column, as a `chemical_heating` of
@@ -1440,10 +1488,9 @@ def recombination_heating_of_inflowing_atoms(pc, args):
     if not idx:
         sch.refuse('the mechanism has no H + H -> H2 reaction to place the '
                    'recombination heat of the inflowing atoms with')
-    prod = np.asarray(pl.production, dtype=float)
-    if prod.shape[0] != len(names):
-        prod = prod.T
-    rate = np.sum(prod[idx, :], axis=0)                 # cm^-3 s^-1
+    prod = production_rates_on_layers(pl.production, int(pc.var.nz),
+                                      len(names))
+    rate = np.sum(prod[:, idx], axis=1)                 # cm^-3 s^-1
     z = np.asarray(pc.var.z, dtype=float)
     dz = np.gradient(z)
     p_dyn = np.asarray(pc.wrk.pressure_hydro, dtype=float)
