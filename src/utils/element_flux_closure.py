@@ -267,9 +267,9 @@ def read_configuration(path):
     merged = dict(CONFIG_DEFAULTS)
     merged.update({k: v for k, v in cfg.items()
                    if not k.endswith('comment')})
-    # Whether the interpreter was named here or defaulted is worth saying in
-    # the narrative: it is the one thing that told the 0.8.4 and the 0.9.0
-    # chemistry apart when both environments existed.
+    # Whether the interpreter was named here or defaulted is said in the
+    # narrative: the interpreter decides which installed Photochem (and so
+    # which chemistry) the adapter runs.
     merged['python_named_by_config'] = 'python' in cfg
     if merged['wind_route']=='march' and 'omp_num_threads' not in cfg:
         merged['omp_num_threads']=12

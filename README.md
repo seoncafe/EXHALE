@@ -252,4 +252,4 @@ and [`docs/stationary_vs_marching_lhs1140b.pdf`](docs/stationary_vs_marching_lhs
 
 Kwang-Il Seon (KASI / UST)
 
-Last updated: 2026-11-16 13:33 KST
+Last updated: 2026-11-20 21:52 KST

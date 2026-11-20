@@ -58,12 +58,12 @@ set restricted to an atom list, the climate grid cut so the photochemical
 grid can sit above it, elemental abundances mapped BY NAME, and the robust
 stepper in blocks.
 
-Environment: run this under a Python that has Photochem 0.9.0 built from
-the source in `photochem/` -- upstream with the elemental-closure
-corrections of `README_photochem.md` section 4, which says what to download
-and how to build it.  Photochem 0.8.4 is a different code with a different
-elemental closure; every profile this writes records which one made it in
-its `# source_version` header line.
+Environment: run this under a Python that has Photochem v0.9.3 built from
+the source in `photochem/` -- upstream with the EXHALE corrections of
+`README_photochem.md` section 4, which says what to download and how to
+build it -- and its data photochem_clima_data v0.3.4.  Every profile this
+writes records the Photochem version that made it in its
+`# source_version` header line.
 
 Example (HD 209458 b, the P1 configuration):
 
@@ -808,8 +808,11 @@ def hydrogen_carrier_split(pc, counts):
 CARRIER_SHARE_TOL = 0.01
 # Re-impositions of the measured split allowed before the adapter refuses.
 CARRIER_ROUNDS = 8
-# The carrier decision of the most recent imposition (set by
-# impose_elemental_escape_flux).
+# The most recent imposition (set by impose_elemental_escape_flux): the
+# carrier decision ('split', 'H_atomic_share_used'), the stated mass fluxes
+# and atomic share it was made with ('phi_H_gs', 'phi_He_gs', 'phi_H2_gs',
+# 'f_atomic'), and 'r_top', the top-face radius the flux densities were
+# computed with (None when no flux was imposed).
 LAST_IMPOSITION = {}
 # The atomic share a carrier round imposes (key 'H'): the share of the
 # CONVERGED top.  None measures it on the composition the imposition sees;
@@ -819,7 +822,7 @@ CARRIER_SHARE_STATED = {'H': None}
 
 
 def impose_elemental_escape_flux(pc, counts, phi_H_gs, phi_He_gs,
-                                 phi_H2_gs=None):
+                                 phi_H2_gs=None, atomic_share=None):
     """Impose the elemental escape fluxes as a flux upper boundary condition.
 
     Phi_El [g/s, outward positive] is the mass of El nuclei leaving the top
@@ -865,6 +868,17 @@ def impose_elemental_escape_flux(pc, counts, phi_H_gs, phi_He_gs,
 
     A zero flux sets no boundary condition at all, so the closed-top
     solution is reproduced bit for bit.
+
+    THE AREA IS THAT OF THE TOP FACE AS IT STANDS NOW.  The stated fluxes
+    are mass loss rates [g/s] through the face, and the flux densities are
+    those rates over 4 pi r_top^2 of the current grid.  Any later change of
+    the grid moves r_top, and the same densities then carry a different
+    mass flux; steady_state_with_top_face_at_match therefore re-imposes the
+    condition (impose_escape_flux_at_current_top) whenever r_top differs
+    from LAST_IMPOSITION['r_top'], and accepts a state only when the two
+    are equal.  `atomic_share` is the atomic-H share of the column-split
+    branch to use instead of measuring it, so that a re-imposition keeps the
+    split it re-imposes.
     """
     r_top = model_top_radius(pc)
     area = 4.0*np.pi*r_top*r_top
@@ -886,9 +900,13 @@ def impose_elemental_escape_flux(pc, counts, phi_H_gs, phi_He_gs,
     elif phi_H_gs != 0.0:
         LAST_IMPOSITION['split'] = 'column'
         phi_H = phi_H_gs/(sch.ATOMIC_WEIGHT['H']*sch.MAMU)/area
-        f_atomic = (hydrogen_carrier_split(pc, counts)
-                    if CARRIER_SHARE_STATED.get('H') is None
-                    else CARRIER_SHARE_STATED['H'])
+        if atomic_share is not None:
+            f_atomic = atomic_share
+        elif CARRIER_SHARE_STATED.get('H') is None:
+            f_atomic = hydrogen_carrier_split(pc, counts)
+        else:
+            f_atomic = CARRIER_SHARE_STATED['H']
+        LAST_IMPOSITION['f_atomic'] = f_atomic
         if f_atomic > CARRIER_SHARE_TOL:
             pc.set_upper_bc('H', bc_type='flux', flux=phi_H*f_atomic)
             pc.set_upper_bc('H2', bc_type='flux',
@@ -913,7 +931,60 @@ def impose_elemental_escape_flux(pc, counts, phi_H_gs, phi_He_gs,
         imposed['He'] = phi_He
         print('  imposed elemental He escape: %.6e g/s -> %.6e nuclei/cm^2/s'
               % (phi_He_gs, phi_He))
+    LAST_IMPOSITION.update(phi_H_gs=phi_H_gs, phi_He_gs=phi_He_gs,
+                           phi_H2_gs=phi_H2_gs,
+                           r_top=(r_top if imposed else None))
+    if phi_H2_gs is not None or phi_H_gs == 0.0:
+        LAST_IMPOSITION['f_atomic'] = None
     return imposed, r_top
+
+
+def impose_escape_flux_at_current_top(pc, counts):
+    """Re-impose the escape fluxes of the most recent imposition with the
+    top-face radius of the current grid, the same stated mass fluxes and the
+    same hydrogen split (impose_elemental_escape_flux)."""
+    return impose_elemental_escape_flux(
+        pc, counts, LAST_IMPOSITION['phi_H_gs'], LAST_IMPOSITION['phi_He_gs'],
+        LAST_IMPOSITION['phi_H2_gs'],
+        atomic_share=LAST_IMPOSITION.get('f_atomic'))
+
+
+def require_flux_imposed_at_final_top(imposed, r_top):
+    """Refuse unless the escape flux was last imposed at the final top-face
+    radius r_top [cm].
+
+    The imposed numbers are flux densities: the stated mass fluxes over
+    4 pi r^2 of the face they were imposed at.  The accepted state carries
+    the stated mass fluxes only if that face is the final one, which
+    steady_state_with_top_face_at_match guarantees for every state it
+    accepts; this checks it on the state that is written.  No condition was
+    imposed when `imposed` is empty, and nothing is checked then."""
+    if not imposed:
+        return
+    r_bc = LAST_IMPOSITION.get('r_top')
+    if r_bc != r_top:
+        sch.refuse('the escape flux was last imposed at a top-face radius of'
+                   ' %r cm, but the final top face stands at %r cm, so the'
+                   ' state does not carry the stated mass fluxes'
+                   % (r_bc, r_top))
+
+
+def escape_flux_state(pc, counts):
+    """One log line: the top-face radius now, the radius the boundary
+    condition was imposed with, and the stated and carried H, He and H2
+    mass fluxes [g/s] of the current solution."""
+    measured, r_now = measured_elemental_escape_flux(pc, counts)
+    _, top = pc.gas_fluxes()
+    h2 = (float(top.get('H2', 0.0))*2.0*4.0*np.pi*r_now*r_now
+          * sch.ATOMIC_WEIGHT['H']*sch.MAMU)
+    r_bc = LAST_IMPOSITION.get('r_top')
+    return ('r_top %.9e cm, imposed at %s; H stated %.9e carried %.9e, He'
+            ' stated %.9e carried %.9e, H2 stated %s carried %.9e g/s'
+            % (r_now, 'none' if r_bc is None else '%.9e cm' % r_bc,
+               LAST_IMPOSITION.get('phi_H_gs', 0.0), measured['H'],
+               LAST_IMPOSITION.get('phi_He_gs', 0.0), measured['He'],
+               'none' if LAST_IMPOSITION.get('phi_H2_gs') is None
+               else '%.9e' % LAST_IMPOSITION['phi_H2_gs'], h2))
 
 
 def measured_elemental_escape_flux(pc, counts, elements=('H', 'He')):
@@ -996,7 +1067,7 @@ def photochemical_steady_state(args, wdir, flux_file, mech, thermo,
                 sch.refuse('the temperature truncation leaves fewer than ten '
                            'levels')
         # The photochemical grid must sit above the climate grid:
-        # 3*TOA_pressure_avg < P_climate_top (trap 1).  Set the top AND cut
+        # 3*target_pressure < P_climate_top (trap 1).  Set the top AND cut
         # the grid, never one alone -- the stated TOA is kept and the climate
         # column is cut back to it, which is what makes the requirement hold
         # however shallow the supplied T(p) happened to reach.
@@ -1015,7 +1086,10 @@ def photochemical_steady_state(args, wdir, flux_file, mech, thermo,
                 mech, flux_file, mp, rp, solar_zenith_angle=args.zenith,
                 thermo_file=thermo, data_dir=data_dir)
             pc.gdat.verbose = False
-            pc.gdat.TOA_pressure_avg = toa_try
+            # The model-top pressure the gas-giant initialization places the
+            # top at and the robust stepper holds it within a factor
+            # pressure_factor (3, set by EvoAtmosphereGasGiant) of.
+            pc.var.toa_pressure_maintenance.target_pressure = toa_try
             # Where the photochemical model bottom sits, in units of the
             # pressure of the deepest quench level.  The gas-giant helper's
             # own 5 assumes a hot deep atmosphere in which the chemistry
@@ -1043,7 +1117,8 @@ def photochemical_steady_state(args, wdir, flux_file, mech, thermo,
             print('  photochem refused the column (%s); truncating' % exc)
             continue
         except Exception as exc:
-            if 'BOA in photochemical model' not in str(exc):
+            if ('does not extend deeply enough for the requested '
+                    'photochemical lower boundary') not in str(exc):
                 raise
             sch.refuse(
                 'the photochemical model asks for a bottom %.1fx deeper in '
@@ -1105,7 +1180,8 @@ def photochemical_steady_state(args, wdir, flux_file, mech, thermo,
 
 # THE STEP BUDGET.  `--blocks` B is B blocks of 100 robust steps, and that is
 # the budget every steady-state pass runs under: Photochem's own cap
-# `gdat.max_total_step` (gasgiants.py, 100000 by default) is set to 100 B, so
+# `var.nsteps_before_giveup` (100000 as EvoAtmosphereGasGiant sets it) is
+# set to 100 B, so
 # the stepper gives up on the stated budget and not on a cap the command
 # line does not show.
 #
@@ -1138,7 +1214,7 @@ def robust_steps_to_steady_state(pc, blocks, report=None):
     """(give_up, reached_steady_state) of at most `blocks` blocks of 100
     robust steps from the state pc holds, Photochem's step cap set to the
     same budget.  `report(n, give_up, reached)` is called after each block."""
-    pc.gdat.max_total_step = 100*blocks
+    pc.var.nsteps_before_giveup = 100*blocks
     pc.initialize_robust_stepper(pc.wrk.usol)
     give_up = reached = False
     for n in range(blocks):
@@ -1165,7 +1241,7 @@ def steady_state_with_stall_retry(pc, blocks, label, report=None):
           ' t = %.3e s (reached_steady_state = %s, gave_up = %s, %d steps'
           ' against a budget of %d); integrating once more from the stalled'
           ' state' % (STALL_RETRY_RTOL, label, float(pc.wrk.tn), reached,
-                      give_up, int(pc.gdat.total_step_counter), 100*blocks),
+                      give_up, int(pc.wrk.nsteps_total), 100*blocks),
           flush=True)
     rtol_stated = pc.var.rtol
     pc.var.rtol = STALL_RETRY_RTOL
@@ -1178,7 +1254,7 @@ def steady_state_with_stall_retry(pc, blocks, label, report=None):
           ' t = %.3e s' % (STALL_RETRY_RTOL, label,
                            'STEADY' if reached and not give_up
                            else 'stalled again',
-                           int(pc.gdat.total_step_counter), float(pc.wrk.tn)),
+                           int(pc.wrk.nsteps_total), float(pc.wrk.tn)),
           flush=True)
     return give_up, reached
 
@@ -1212,52 +1288,94 @@ def steady_state_with_top_face_at_match(pc, p_face_dyn, blocks,
     level p_face_dyn [dyn/cm^2].
 
     Photochem lays its levels out uniformly in ALTITUDE between a pinned
-    bottom and `top_atmos` (`vertical_grid`, `photochem/src/photochem_eqns.f90`),
+    bottom and `top_atmos` (`vertical_grid`, `photochem/src/photochem/photochem_eqns.f90`),
     so the altitude of the top face fixes the pressure of every level, and
     the converged composition moves the pressure at a fixed altitude through
     the hydrostatic integration.  The map is therefore iterated: measure the
     face pressure of the converged solution (`top_face_pressure`), move the
     face by H ln(p_face/p_match), re-converge, until the face is at the
     match to `tol` in ln p.  Where two successive moves have opposite signs
-    the step is halved (the map's slope is then near -1).  The gas-giant
-    stepper's own re-pinning (to its centre pressure every
-    `freq_update_TOA` steps) is suspended for these passes, so it cannot move
-    the face away again.
+    the step is halved (the map's slope is then near -1).
+
+    Photochem's TOA-pressure maintenance is disabled for these passes and
+    its previous state restored on every exit (success, refusal or
+    exception), so this iteration is the only thing that places the top:
+    with `toa_pressure_maintenance.enabled` false, initialize_robust_stepper
+    skips its band check and relocation
+    (photochem/src/photochem/photochem_evoatmosphere_integrate.f90:1010,
+    1023-1036), toa_pressure_state returns WithinTol (:1271), so neither the
+    extreme nor the post-convergence resynchronization is triggered by the
+    top (:1210-1235), and resync_and_restart, reached at the scheduled
+    restarts, updates the grid only when maintenance is enabled
+    (:1392-1404).  Inside the passes the grid therefore stays fixed between
+    the moves made here; the band maintenance would otherwise relocate the
+    top to its target whenever the top-centre gas pressure (`wrk.pressure`,
+    not the hydrostatic pressure this iteration measures, :1273) left a
+    factor `pressure_factor` about the target at a convergence check.  The
+    target itself is set to the top-centre hydrostatic pressure after each
+    move and kept on exit, for the solves that follow with maintenance on.
 
     Each re-convergence is one steady-state pass under the step budget and
     the single stall retry of `steady_state_with_stall_retry`; `solve` names
     the solve the passes follow, for the record of a retry.
+
+    THE ESCAPE FLUX FOLLOWS THE FACE.  The flux densities of the escape
+    boundary condition are the stated mass fluxes over the area of the face
+    they were imposed at (impose_elemental_escape_flux).  The face moves
+    here, and it can also have moved before these passes, in the solve
+    that ran with the TOA-pressure maintenance on.  Every pass therefore
+    compares the current top radius with the radius of the last
+    imposition, re-imposes the condition at the current radius where they
+    differ, and re-converges; a state is accepted only with the face at the
+    match AND the condition imposed at the radius it stands at, so that the
+    mass flux it carries is the stated one to the convergence of the
+    chemistry.
 
     FAILURE IS A REFUSAL: a column whose top will not settle at the match is
     not the column the matching surface needs.
     """
     from photochem import PhotoException
 
-    gd = pc.gdat
-    freq_saved = gd.freq_update_TOA
-    gd.freq_update_TOA = 10**12
+    # Everything that can raise before the passes runs before the
+    # maintenance is disabled, so the finally below is the one place that
+    # restores it.
+    counts = species_element_counts(pc)
+    maintenance = pc.var.toa_pressure_maintenance
+    maintenance_enabled = bool(maintenance.enabled)
     moves = []
+    maintenance.enabled = False
     try:
         for attempt in range(1, passes + 1):
             p_face, H = top_face_pressure(pc)
             off = float(np.log(p_face/p_face_dyn))
+            r_bc = LAST_IMPOSITION.get('r_top')
+            print('  escape flux at pass %d: %s'
+                  % (attempt, escape_flux_state(pc, counts)), flush=True)
             print('  top face pass %d: face %.6e dyn/cm2 (%+.3e in ln p from'
-                  ' the match), top centre %.6e dyn/cm2'
-                  % (attempt, p_face, off, float(pc.wrk.pressure_hydro[-1])),
+                  ' the match), top centre %.6e dyn/cm2 (gas pressure'
+                  ' %.6e), TOA target %.6e dyn/cm2, maintenance off'
+                  % (attempt, p_face, off, float(pc.wrk.pressure_hydro[-1]),
+                     float(pc.wrk.pressure[-1]),
+                     float(maintenance.target_pressure)),
                   flush=True)
-            if abs(off) <= tol:
+            at_face = abs(off) <= tol
+            if at_face and (r_bc is None or r_bc == model_top_radius(pc)):
                 return p_face, attempt
-            step = H*off
-            if len(moves) >= 1 and moves[-1]*step < 0.0:
-                step *= 0.5
-            moves.append(step)
-            try:
-                pc.update_vertical_grid(
-                    TOA_alt=float(pc.var.top_atmos) + step)
-            except PhotoException as exc:
-                sch.refuse('the top face could not be moved to the matching '
-                           'level: %s' % exc)
-            gd.TOA_pressure_avg = float(pc.wrk.pressure_hydro[-1])
+            if not at_face:
+                step = H*off
+                if len(moves) >= 1 and moves[-1]*step < 0.0:
+                    step *= 0.5
+                moves.append(step)
+                try:
+                    pc.update_vertical_grid(
+                        TOA_alt=float(pc.var.top_atmos) + step)
+                except PhotoException as exc:
+                    sch.refuse('the top face could not be moved to the '
+                               'matching level: %s' % exc)
+                maintenance.target_pressure = float(
+                    pc.wrk.pressure_hydro[-1])
+            if r_bc is not None and r_bc != model_top_radius(pc):
+                impose_escape_flux_at_current_top(pc, counts)
             give_up, reached = steady_state_with_stall_retry(
                 pc, blocks, 'top face %d after %s' % (attempt, solve))
             if give_up or not reached:
@@ -1274,7 +1392,7 @@ def steady_state_with_top_face_at_match(pc, p_face_dyn, blocks,
                    ' tolerance of %.1e' % (passes,
                                            np.log(p_face/p_face_dyn), tol))
     finally:
-        gd.freq_update_TOA = freq_saved
+        maintenance.enabled = maintenance_enabled
 
 
 def chemistry_temperature_profile(args, column, res=None):
@@ -1307,15 +1425,24 @@ def set_chemistry_temperature(pc, profile):
     persistent T(p), K_zz(p) (`set_press_temp_edd_profile`), re-mapped onto
     every grid it takes afterwards.  Above the profile's top (the matching
     level) Photochem holds the top value, but no cell centre lies there:
-    the top face is the match."""
+    the top face is the match.
+
+    The profile is mapped continuously (mode 1: at every right-hand-side
+    evaluation, so T and K_zz stay functions of pressure as the composition
+    moves the hydrostatic pressure), and the robust stepper keeps its
+    TOA-pressure target: the call would otherwise reset it to Photochem's
+    default 0.1 dyn/cm^2."""
     P, T, K = profile
     try:
         pc.destroy_stepper()
     except Exception:
         pass
+    target = float(pc.var.toa_pressure_maintenance.target_pressure)
     pc.set_press_temp_edd_profile(np.ascontiguousarray(P),
                                   np.ascontiguousarray(T),
-                                  np.ascontiguousarray(K))
+                                  np.ascontiguousarray(K),
+                                  mode=1, maintain_toa_pressure=True,
+                                  target_pressure=target)
 
 
 def species_element_counts(pc):
@@ -1398,6 +1525,22 @@ CLIMATE_P_TOP_DYN = 1.0e-2
 D0_H2_ERG = 36118.11*6.62607015e-27*2.99792458e10
 
 
+def production_rates_on_layers(production, nz, nprocesses):
+    """Photochem's `ProductionLoss.production` [cm^-3 s^-1] as an (nz,
+    nprocesses) array: one row for each layer, one column for each entry of
+    `production_rx`, the layout the v0.9.3 interface declares
+    (bindings/photochem/cython/ProductionLoss.pyx: "shape (nz,
+    nproduction)").  The shape is checked against that declaration rather
+    than inferred, so a square array (nz == nprocesses) is read in the
+    declared orientation; any other shape is a refusal."""
+    prod = np.asarray(production, dtype=float)
+    if prod.ndim != 2 or prod.shape != (int(nz), int(nprocesses)):
+        sch.refuse('Photochem returned a production array of shape %s; the '
+                   'interface declares (nz, nproduction) = (%d, %d)'
+                   % (prod.shape, int(nz), int(nprocesses)))
+    return prod
+
+
 def recombination_heating_of_inflowing_atoms(pc, args):
     """The heat the atomic hydrogen the wind mixes down through the matching
     surface releases in the column, as a `chemical_heating` of
@@ -1440,10 +1583,9 @@ def recombination_heating_of_inflowing_atoms(pc, args):
     if not idx:
         sch.refuse('the mechanism has no H + H -> H2 reaction to place the '
                    'recombination heat of the inflowing atoms with')
-    prod = np.asarray(pl.production, dtype=float)
-    if prod.shape[0] != len(names):
-        prod = prod.T
-    rate = np.sum(prod[idx, :], axis=0)                 # cm^-3 s^-1
+    prod = production_rates_on_layers(pl.production, int(pc.var.nz),
+                                      len(names))
+    rate = np.sum(prod[:, idx], axis=1)                 # cm^-3 s^-1
     z = np.asarray(pc.var.z, dtype=float)
     dz = np.gradient(z)
     p_dyn = np.asarray(pc.wrk.pressure_hydro, dtype=float)
@@ -1506,6 +1648,20 @@ def conducted_heat_column_state(pc, args, counts, emission, T_reference,
                for sp, v in mix.items()}
         p_dyn = np.exp(x_new)
         p_bar = p_dyn/sch.BAR
+    # The uppermost chemistry value is at a cell center. Continue its
+    # composition to the physical matching face and evaluate the reference
+    # temperature there before integrating dr/dln(p).
+    p_face_dyn = args.p_match*sch.BAR
+    if p_face_dyn < np.min(p_dyn):
+        top = int(np.argmin(p_dyn))
+        p_dyn = np.append(p_dyn, p_face_dyn)
+        mu = np.append(mu, mu[top])
+        mix = {sp: np.append(values, values[top]) for sp, values in mix.items()}
+        order = np.argsort(p_dyn)[::-1]
+        p_dyn, mu = p_dyn[order], mu[order]
+        mix = {sp: values[order] for sp, values in mix.items()}
+        p_bar = p_dyn/sch.BAR
+        p_bar[-1] = args.p_match
     T0 = T_reference(p_dyn)
     r_cm = sch.hydrostatic_radius(p_bar, T0, mu, args.mp, args.r_ref,
                                   args.p_ref)*sch.RJ
@@ -2287,16 +2443,7 @@ def main():
             flux_note += ('; the measured carrier split was re-imposed in %d'
                           ' round(s), atomic share of the boundary condition'
                           ' %.4e' % (carrier_rounds, used))
-    if imposed and abs(r_top/r_top_imposed - 1.0) > 5.0e-3:
-        # The imposed number is a flux DENSITY; the grid the solver settles
-        # on need not be the grid it started from, so the mass flux the
-        # boundary condition represents moves with the top radius.  Say so
-        # rather than let the driver read the difference as a residual.
-        flux_note += ('; the model top moved from %.6e to %.6e cm while '
-                      'solving, so the imposed mass flux moved with its '
-                      'area' % (r_top_imposed, r_top))
-        print('  NOTE: model top moved %.6e -> %.6e cm'
-              % (r_top_imposed, r_top))
+    require_flux_imposed_at_final_top(imposed, r_top)
     nparticles = int(pc.dat.np)
     particles = set(list(pc.dat.species_names)[:nparticles])
 
