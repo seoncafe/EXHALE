@@ -1553,6 +1553,20 @@ def conducted_heat_column_state(pc, args, counts, emission, T_reference,
                for sp, v in mix.items()}
         p_dyn = np.exp(x_new)
         p_bar = p_dyn/sch.BAR
+    # The uppermost chemistry value is at a cell center. Continue its
+    # composition to the physical matching face and evaluate the reference
+    # temperature there before integrating dr/dln(p).
+    p_face_dyn = args.p_match*sch.BAR
+    if p_face_dyn < np.min(p_dyn):
+        top = int(np.argmin(p_dyn))
+        p_dyn = np.append(p_dyn, p_face_dyn)
+        mu = np.append(mu, mu[top])
+        mix = {sp: np.append(values, values[top]) for sp, values in mix.items()}
+        order = np.argsort(p_dyn)[::-1]
+        p_dyn, mu = p_dyn[order], mu[order]
+        mix = {sp: values[order] for sp, values in mix.items()}
+        p_bar = p_dyn/sch.BAR
+        p_bar[-1] = args.p_match
     T0 = T_reference(p_dyn)
     r_cm = sch.hydrostatic_radius(p_bar, T0, mu, args.mp, args.r_ref,
                                   args.p_ref)*sch.RJ

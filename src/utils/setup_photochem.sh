@@ -1,7 +1,8 @@
 #!/bin/bash
 # setup_photochem.sh -- put a Photochem source tree into the state EXHALE's
 # lower-atmosphere profile handoff runs on: upstream v0.9.3 plus the changes
-# of src/utils/photochem_exhale.patch (four files).
+# of src/utils/photochem_exhale.patch (nine files changed, one test file
+# added).
 #
 # Photochem is a third-party code.  At v0.9.3 the Clima and Equilibrate
 # sources are part of the Photochem tree (src/clima/, src/equilibrate/), so
@@ -15,6 +16,23 @@
 #     flag `converged` of ec_UPDATE_ABUNDS_SHORT and ec_UPDATE_ABUNDS_LONG is
 #     set .FALSE. on entry, so a failed test never returns a stale .TRUE.
 #     from an optimized build.
+#   - Equilibrate, what is reported as converged (src/equilibrate/
+#     equilibrate_cea.f90): a solve is converged only if the iteration met
+#     its convergence tests and (G1) no condensate stage was ended by the
+#     rule that counts a stage still holding a negative condensate after 30
+#     iterations as converged, (G2) the LU factorization met no exactly zero
+#     pivot, and (G3) in the final state no absent condensate whose data
+#     cover the temperature passes the solver's own inclusion test (or has a
+#     non-finite affinity), no included condensed amount is negative and
+#     every amount is finite.  The iteration itself is unchanged.
+#   - Equilibrate, the returned state (src/equilibrate/equilibrate.f90): a
+#     condensed amount carried over from the previous solution by
+#     use_prev_guess and not re-included is returned as zero, and the total
+#     quantities are normalized over gas plus included condensates; the gas
+#     quantities are those of the iteration, unchanged.
+#   - The Equilibrate bindings (bindings/equilibrate/): read-only
+#     ChemEquiAnalysis.nonconvergence_reason (why the last solve returned
+#     False) and smallest_scaled_pivot (a diagnostic value).
 #   - Clima (src/clima/clima_adiabat.f90): make_profile_bg_gas brackets the
 #     background partial pressure on [1e-12, 1] x P_surf in log pressure,
 #     skipping invalid states, and bisects (the sign test is nested so no
@@ -25,11 +43,19 @@
 #   - photochem/extensions/gasgiants.py: EvoAtmosphereGasGiant and
 #     GasGiantData take equilibrium_mass_tol (default 1e-12, validated), and
 #     composition_at_metallicity checks the elemental closure of every
-#     condensate-free level and raises if no attempt closes.
+#     level, with or without a condensed phase, on the returned total
+#     inventory (gas plus condensed phases) against the level's request, and
+#     raises if no attempt closes.
 #   - tests/photochem/test_python.py: tests of the tolerance argument, the
 #     trace-element closure, the closure in condensing and non-condensing
 #     columns, and successive Equilibrate solves with name-property reads in
 #     between.
+#   - tests/equilibrate/: test_returned_state_guards.py (converged states
+#     verified independently, refusals with a reason, the returned state of
+#     previous-guess solves, the closure check of gasgiants);
+#     test_python.py accepts a refusal with a reason for its 18-element
+#     case; test_equilibrate.f90 checks that a non-finite affinity is
+#     refused.
 #
 # Requirements for building and running the result (measured with this
 # version on Linux, Python 3.11, NumPy 1.26):
@@ -169,6 +195,21 @@ needcount "$e" "mval_mass_good = MAXVAL(b_0)*self%mass_tol" 0 \
     "Equilibrate: no threshold scaled by the most abundant element"
 needcount "$e" "! converged is intent(out): undefined on entry whatever the caller" 2 \
     "Equilibrate: convergence flag set on entry of both abundance updates"
+need "$e" "self%stage_ended_by_negative_rule = .TRUE." \
+    "Equilibrate G1: a stage ended by the negative-condensate rule is recorded"
+need "$e" "self%zero_pivot_substituted = .true." \
+    "Equilibrate G2: an exactly zero LU pivot is recorded"
+need "$e" "call ec_VERIFY_RETURNED_STATE(self, n_spec, n, temp, solid_inclu, dgdnj)" \
+    "Equilibrate G3: the final state is tested"
+need "$e" "has a non-finite affinity dG/dn/RT" \
+    "Equilibrate G3: a non-finite affinity is refused"
+need "$e" "call ec_REPORT_CONVERGENCE(self)" \
+    "Equilibrate: converged only for a state that passed G1-G3"
+q=src/equilibrate/equilibrate.f90
+need "$q" "molfracs_species_found = self%molfracs_species" \
+    "Equilibrate: condensates outside the final included set returned as zero"
+need bindings/equilibrate/cython/_equilibrate.pyx "property nonconvergence_reason:" \
+    "Equilibrate binding: nonconvergence_reason"
 c=src/clima/clima_adiabat.f90
 need "$c" "Background-pressure bisection did not converge." \
     "Clima make_profile_bg_gas: bracketing scan and bisection"
@@ -189,8 +230,8 @@ need "$g" "self.gas.mass_tol = equilibrium_mass_tol" \
     "gasgiants: tolerance set on the equilibrium solver"
 need "$g" "closure_rtol = max(1.0e-8, 100.0*gas.mass_tol)" \
     "gasgiants: elemental closure checked after each solve"
-need "$g" "molfracs_atoms_condensate" \
-    "gasgiants: closure check skipped where a condensate is present"
+needcount "$g" "molfracs_atoms_condensate" 0 \
+    "gasgiants: closure checked also where a condensate is present"
 t=tests/photochem/test_python.py
 for name in test_gas_giant_equilibrium_mass_tolerance_validation \
             test_equilibrate_trace_element_closure \
@@ -199,6 +240,11 @@ for name in test_gas_giant_equilibrium_mass_tolerance_validation \
             test_equilibrate_successive_solves_independent_of_name_reads; do
     need "$t" "def $name(" "test present: $name"
 done
+need tests/equilibrate/test_returned_state_guards.py \
+    "def test_condensate_of_the_previous_level_is_not_returned(" \
+    "test present: tests/equilibrate/test_returned_state_guards.py"
+need tests/equilibrate/test_equilibrate.f90 "subroutine test_nonfinite_affinity_refused()" \
+    "test present: test_nonfinite_affinity_refused"
 [ $fail -eq 0 ] || die "the tree is not in the expected state (above)"
 
 say "$DEST is the source EXHALE runs on"

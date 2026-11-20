@@ -158,3 +158,50 @@ example at 12 threads on a 36-core Xeon host: 3 min 21 s of wall time and
 2.5 GB of peak resident memory, with three chemistry solves and three
 column energy balances. Other planets, grids and thread counts take
 different times.
+
+## 7. What the patch changes
+
+`src/utils/photochem_exhale.patch` changes nine files of the upstream tree
+and adds one test file.
+
+- **Equilibrate mass balance** (`src/equilibrate/equilibrate_cea.f90`): the
+  elemental mass-balance test of both update paths compares every requested
+  element with its own relative tolerance (`mass_tol` times its abundance);
+  the convergence flag of both abundance updates is set to false on entry.
+- **What Equilibrate reports as converged** (`equilibrate_cea.f90`): a solve
+  returns `True` only if the iteration met its convergence tests and
+  - no condensate stage was ended by the rule that counts a stage still
+    holding a negative condensed amount after 30 iterations as converged;
+  - the LU factorization of the Newton system met no exactly zero pivot;
+  - in the final state no absent condensate whose thermodynamic data cover
+    the temperature passes the solver's own inclusion test or has a
+    non-finite affinity, no included condensed amount is negative and every
+    amount is finite.
+
+  Otherwise it returns `False`, and `ChemEquiAnalysis.nonconvergence_reason`
+  says why (empty after a converged solve; reset by every solve).
+  `ChemEquiAnalysis.smallest_scaled_pivot` reports the smallest LU pivot
+  relative to the largest entry of its row, as a diagnostic value only. The
+  iteration itself is the upstream one, so these checks refuse states; they
+  do not make a non-converging case converge.
+- **The returned state** (`src/equilibrate/equilibrate.f90`): with
+  `use_prev_guess`, condensed amounts of the previous solution that the new
+  solve does not include are returned as zero, and the total mole and mass
+  fractions are normalized over the gas and the included condensates. The
+  gas quantities (`molfracs_species_gas`, `molfracs_atoms_gas`, `mubar`) are
+  those of the iteration.
+- **Gas giants** (`photochem/extensions/gasgiants.py`):
+  `EvoAtmosphereGasGiant` and `GasGiantData` take `equilibrium_mass_tol`
+  (default 1e-12); `composition_at_metallicity` checks at every level, with
+  or without a condensed phase, that the returned total elemental inventory
+  equals the level's request within `max(1e-8, 100*mass_tol)`, and raises if
+  no attempt closes.
+- **Clima** (`src/clima/clima_adiabat.f90`): `make_profile_bg_gas` brackets
+  and bisects the background partial pressure; `simple_solver` solves for
+  `log10(T_surf - T_trop)` with scaled residuals and rejects a returned point
+  whose normalized residual exceeds 1e-7.
+- **Bindings and tests**: the two attributes above in
+  `bindings/equilibrate/`; tests in `tests/photochem/test_python.py`,
+  `tests/equilibrate/test_returned_state_guards.py`,
+  `tests/equilibrate/test_python.py` and
+  `tests/equilibrate/test_equilibrate.f90`.

@@ -1311,14 +1311,27 @@ class ColumnResponse(object):
             return np.exp(np.interp(np.log(p_bar), x, np.log(np.maximum(y, 1e-300))))
         return np.interp(np.log(p_bar), x, y)
 
+    def radius_at_pressure(self, p_bar):
+        """Radius in cm on the closed pressure interval of the input profile."""
+        p = np.asarray(p_bar, dtype=float)
+        shallow, deep = self.p_prof[-1], self.p_prof[0]
+        covered = np.isfinite(p) & (p >= shallow) & (p <= deep)
+        if not np.all(covered):
+            raise ValueError('Thermal pressure outside the hydrostatic radius profile '
+                             '[%.17g, %.17g] bar: requested %s bar'
+                             % (shallow, deep, p[~covered].ravel()[:4]))
+        return self._profile_at(self.r_prof, p)
+
     def build_domain(self, depth_H):
-        """Nodes from p_match e^depth_H up to p_match, uniform in ln p."""
+        """Nodes from p_match e^depth_H to p_match, spaced by at most dlnp."""
         n = int(np.ceil(depth_H/self.dlnp))
-        s = -np.log(self.p_match*BAR) - np.linspace(n*self.dlnp, 0.0, n + 1)
-        p_bar = np.exp(-s)/BAR
+        p_bar = self.p_match*np.exp(np.linspace(depth_H, 0.0, n + 1))
+        if depth_H == np.log(self.p_prof[0]/self.p_match):
+            p_bar[0] = self.p_prof[0]
+        s = -np.log(p_bar*BAR)
         d = dict(s=s, p_bar=p_bar)
         d['T0'] = self._profile_at(self.T0_prof, p_bar)
-        d['r'] = self._profile_at(self.r_prof, p_bar)
+        d['r'] = self.radius_at_pressure(p_bar)
         d['m'] = self._profile_at(self.m_prof, p_bar)
         d['mix'] = {k: self._profile_at(v, p_bar, log=(k not in ('He', 'H2')))
                     for k, v in self.mix_prof.items()}
@@ -1533,7 +1546,7 @@ class ColumnResponse(object):
             return np.interp(lnp_m, x, arr[::-1])
         p = np.concatenate([[self.p_match], self.p_prof[above]])
         T0 = np.concatenate([[at_match(self.T0_prof)], self.T0_prof[above]])
-        r = np.concatenate([[at_match(self.r_prof)], self.r_prof[above]])
+        r = np.concatenate([[self.radius_at_pressure(self.p_match)], self.r_prof[above]])
         m = np.concatenate([[at_match(self.m_prof)], self.m_prof[above]])
         xs = np.concatenate([[np.exp(at_match(np.log(np.maximum(
             self.mix_prof[sp], 1e-300))))], self.mix_prof[sp][above]])
