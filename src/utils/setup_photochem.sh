@@ -1,32 +1,87 @@
 #!/bin/bash
 # setup_photochem.sh -- put a Photochem source tree into the state EXHALE's
-# lower-atmosphere profile handoff is run from: upstream v0.9.0 plus the five
-# file changes of src/utils/photochem_exhale.patch.
+# lower-atmosphere profile handoff runs on: upstream v0.9.3 plus the changes
+# of src/utils/photochem_exhale.patch (nine files changed, one test file
+# added).
 #
-# Photochem is a third-party code.  What EXHALE needs is not the release and
-# not the conda package: Equilibrate's elemental mass-balance test accepted
-# solves that left a trace element orders of magnitude out of balance, two of
-# Clima's root solves ran unconstrained, and one of those differentiated its
-# Jacobian at a step so small the difference was its own numerical noise.  The
-# patch corrects all of it, adds the elemental-closure check on the Photochem
-# side, and pins Clima v0.7.5.  Why each was needed and what it measured:
-#   md/photochem_solver_modification_investigation.md
-#   md/photochem_solver_modification_implementation.md
-# What each change is, what to download, what to install, and how to build:
-#   README_photochem.md
+# Photochem is a third-party code.  At v0.9.3 the Clima and Equilibrate
+# sources are part of the Photochem tree (src/clima/, src/equilibrate/), so
+# the patch edits them directly and no dependency patch files exist.  What
+# EXHALE needs beyond the release:
+#   - Equilibrate (src/equilibrate/equilibrate_cea.f90): the elemental
+#     mass-balance test of both CEA update paths compares every positive
+#     requested element with its own relative tolerance,
+#     abs(b_0(i_atom))*mass_tol, instead of one threshold scaled by the most
+#     abundant element with elements below 1e-6 exempt; and the intent(out)
+#     flag `converged` of ec_UPDATE_ABUNDS_SHORT and ec_UPDATE_ABUNDS_LONG is
+#     set .FALSE. on entry, so a failed test never returns a stale .TRUE.
+#     from an optimized build.
+#   - Equilibrate, what is reported as converged (src/equilibrate/
+#     equilibrate_cea.f90): a solve is converged only if the iteration met
+#     its convergence tests and (G1) no condensate stage was ended by the
+#     rule that counts a stage still holding a negative condensate after 30
+#     iterations as converged, (G2) the LU factorization met no exactly zero
+#     pivot, and (G3) in the final state no absent condensate whose data
+#     cover the temperature passes the solver's own inclusion test (or has a
+#     non-finite affinity), no included condensed amount is negative and
+#     every amount is finite.  The iteration itself is unchanged.
+#   - Equilibrate, the returned state (src/equilibrate/equilibrate.f90): a
+#     condensed amount carried over from the previous solution by
+#     use_prev_guess and not re-included is returned as zero, and the total
+#     quantities are normalized over gas plus included condensates; the gas
+#     quantities are those of the iteration, unchanged.
+#   - The Equilibrate bindings (bindings/equilibrate/): read-only
+#     ChemEquiAnalysis.nonconvergence_reason (why the last solve returned
+#     False) and smallest_scaled_pivot (a diagnostic value).
+#   - Clima (src/clima/clima_adiabat.f90): make_profile_bg_gas brackets the
+#     background partial pressure on [1e-12, 1] x P_surf in log pressure,
+#     skipping invalid states, and bisects (the sign test is nested so no
+#     undefined residual is read); simple_solver solves for
+#     log10(T_surf - T_trop) with MINPACK hybrd at epsfcn = 1e-8, divides the
+#     flux and skin-temperature rows by their scales, and rejects a returned
+#     point whose normalized residual exceeds 1e-7.
+#   - photochem/extensions/gasgiants.py: EvoAtmosphereGasGiant and
+#     GasGiantData take equilibrium_mass_tol (default 1e-12, validated), and
+#     composition_at_metallicity checks the elemental closure of every
+#     level, with or without a condensed phase, on the returned total
+#     inventory (gas plus condensed phases) against the level's request, and
+#     raises if no attempt closes.
+#   - tests/photochem/test_python.py: tests of the tolerance argument, the
+#     trace-element closure, the closure in condensing and non-condensing
+#     columns, and successive Equilibrate solves with name-property reads in
+#     between.
+#   - tests/equilibrate/: test_returned_state_guards.py (converged states
+#     verified independently, refusals with a reason, the returned state of
+#     previous-guess solves, the closure check of gasgiants);
+#     test_python.py accepts a refusal with a reason for its 18-element
+#     case; test_equilibrate.f90 checks that a non-finite affinity is
+#     refused.
 #
-# Usage:  src/utils/setup_photochem.sh              # act on EXHALE/photochem
-#         src/utils/setup_photochem.sh <dir>        # clone into / patch <dir>
-#         PHOTOCHEM_URL=<url> src/utils/setup_photochem.sh <dir>
+# Requirements for building and running the result (measured with this
+# version on Linux, Python 3.11, NumPy 1.26):
+#   - a Fortran compiler accepted by upstream (gfortran >= 14), fypp, ninja;
+#   - scikit-build-core (the build backend of pyproject.toml), used with
+#     `python -m pip wheel <tree> --no-build-isolation`;
+#   - CMake 3.x: CMake 4.x stops in the CVODE 5.7.0 subproject;
+#   - with NumPy 1.26, Cython 3.0 (3.0.12 tested): Cython 3.3 generates
+#     NumPy 2 C-API calls that NumPy 1.26 headers lack;
+#   - photochem_clima_data 0.3.4 importable at run time (`import photochem`
+#     imports it for DATA_DIR).  This version rejects mechanism files whose
+#     gas thermodynamic polynomials are discontinuous at a join, which the
+#     0.3.1 data are.  The upstream CMake build downloads
+#     photochem_clima_data_v0.3.4.tar.gz into the tree root and unpacks its
+#     data/ there for its own tests; that does not install the Python
+#     package, which is installed separately (e.g. from the same tag,
+#     https://github.com/Nicholaswogan/photochem_clima_data, v0.3.4).
+#
+# Usage:  src/utils/setup_photochem.sh [--url <url>] [<dir>]
+#           <dir>  default: <EXHALE>/photochem; cloned if absent
+#           --url  repository to clone from (default: upstream GitHub)
 #
 # Idempotent: on an already-patched tree it verifies and exits 0 without
-# touching a file.  It refuses, rather than half-applying, on a tree that is
-# neither upstream v0.9.0 nor already patched.
-#
-# This only produces the source.  Building and installing it is a separate
-# step; README_photochem.md sections 2 and 3 have it, including the NumPy
-# include directory and the Fortran compiler CMake has to be told about
-# explicitly.
+# touching a file.  It refuses, rather than half-applying, a tree that is
+# neither upstream v0.9.3 nor already patched.  It produces the source only;
+# it does not build.
 #
 # Photochem  https://github.com/Nicholaswogan/photochem
 #            Cite, as upstream asks, either Wogan et al. (2023),
@@ -36,14 +91,22 @@ set -e
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 EXROOT="$(cd "$HERE/../.." && pwd)"
-DEST="${1:-$EXROOT/photochem}"
 PATCHFILE="$HERE/photochem_exhale.patch"
-URL="${PHOTOCHEM_URL:-https://github.com/Nicholaswogan/photochem.git}"
+URL="https://github.com/Nicholaswogan/photochem.git"
+DEST=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --url) [ $# -ge 2 ] || { echo "--url needs a value" >&2; exit 2; }
+               URL="$2"; shift 2 ;;
+        -*)    echo "unknown option $1" >&2; exit 2 ;;
+        *)     [ -z "$DEST" ] || { echo "one destination only" >&2; exit 2; }
+               DEST="$1"; shift ;;
+    esac
+done
+DEST="${DEST:-$EXROOT/photochem}"
 
-# v0.9.0, which is where origin/main pointed when this was written.  origin/dev
-# is not a release and still carries the solver behavior the patch corrects.
-UPSTREAM_TAG="v0.9.0"
-UPSTREAM_COMMIT="e1e872528b61e8dd1db891b84869738e219b4f97"
+UPSTREAM_TAG="v0.9.3"
+UPSTREAM_COMMIT="ba3542cf63fc28f28dc9a0ad3a21d1dd718d9fa7"
 
 say() { echo "[setup_photochem] $*"; }
 die() { echo "[setup_photochem] ERROR: $*" >&2; exit 1; }
@@ -61,16 +124,16 @@ if [ ! -e "$DEST" ]; then
 fi
 [ -d "$DEST" ] || die "$DEST exists and is not a directory"
 [ -f "$DEST/photochem/extensions/gasgiants.py" ] \
-    || die "$DEST does not look like a Photochem source tree"
+    && [ -f "$DEST/src/equilibrate/equilibrate_cea.f90" ] \
+    && [ -f "$DEST/src/clima/clima_adiabat.f90" ] \
+    || die "$DEST does not look like a Photochem $UPSTREAM_TAG source tree"
 
 # --------------------------------------------------------------------------
 # 2. is it the commit the patch was cut against?
 # --------------------------------------------------------------------------
-# EXHALE/photochem is not tracked, and the copy standing there carries no .git
-# -- it is the patched state, kept diffable against upstream and nothing else --
-# so a missing history is reported and not treated as a failure.  Step 3 decides
-# either way.  It sits inside EXHALE's working tree, so the history has to be
-# one whose top level IS this directory; EXHALE's would otherwise answer for it.
+# The tree sits inside EXHALE's working tree, so its history counts only if
+# its own top level is this directory.  A tree without a history of its own
+# is decided from the files in step 3.
 toplevel="$(git -C "$DEST" rev-parse --show-toplevel 2>/dev/null || true)"
 if [ -n "$toplevel" ] && [ "$(cd "$toplevel" && pwd -P)" = "$(cd "$DEST" && pwd -P)" ]; then
     head_commit="$(git -C "$DEST" rev-parse HEAD)"
@@ -88,11 +151,9 @@ fi
 # 3. apply, or recognize that it is already applied
 # --------------------------------------------------------------------------
 cd "$DEST"
-# `git apply` resolves the patch's paths against the top of whatever repository
-# it finds, and EXHALE/photochem sits inside EXHALE's.  Stop the search
-# at the parent so the paths are resolved against $DEST, which is what they are
-# written relative to.  A tree with a history of its own is found first and is
-# unaffected.
+# `git apply` resolves the patch's paths against the top of the repository it
+# finds; stop the search at the parent so a tree without its own history is
+# not resolved against EXHALE's.
 export GIT_CEILING_DIRECTORIES="$(cd .. && pwd -P)"
 if git apply --reverse --check --whitespace=nowarn "$PATCHFILE" >/dev/null 2>&1; then
     say "already patched; nothing to do"
@@ -106,10 +167,8 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# 4. verify what the patch was for
+# 4. verify each correction in the file it lives in
 # --------------------------------------------------------------------------
-# Each of these is a change the handoff depends on, checked in the file it
-# lives in rather than inferred from the patch having exited 0.
 fail=0
 need() {   # need <file> <string> <what it is>
     if grep -qF -- "$2" "$1" 2>/dev/null; then
@@ -118,31 +177,76 @@ need() {   # need <file> <string> <what it is>
         echo "  MISSING $3   ($1)"; fail=1
     fi
 }
-needfile() {
-    if [ -f "$1" ]; then echo "  ok      $2"; else echo "  MISSING $2   ($1)"; fail=1; fi
+needcount() {   # needcount <file> <string> <count> <what it is>
+    local n
+    n=$(grep -cF -- "$2" "$1" 2>/dev/null || true)
+    if [ "${n:-0}" -eq "$3" ]; then
+        echo "  ok      $4"
+    else
+        echo "  MISSING $4   ($1: found ${n:-0}, expected $3)"; fail=1
+    fi
 }
 
 echo "[setup_photochem] verifying:"
+e=src/equilibrate/equilibrate_cea.f90
+needcount "$e" "mval_mass_good = abs(b_0(i_atom))*self%mass_tol" 2 \
+    "Equilibrate: element-relative mass-balance test in both update paths"
+needcount "$e" "mval_mass_good = MAXVAL(b_0)*self%mass_tol" 0 \
+    "Equilibrate: no threshold scaled by the most abundant element"
+needcount "$e" "! converged is intent(out): undefined on entry whatever the caller" 2 \
+    "Equilibrate: convergence flag set on entry of both abundance updates"
+need "$e" "self%stage_ended_by_negative_rule = .TRUE." \
+    "Equilibrate G1: a stage ended by the negative-condensate rule is recorded"
+need "$e" "self%zero_pivot_substituted = .true." \
+    "Equilibrate G2: an exactly zero LU pivot is recorded"
+need "$e" "call ec_VERIFY_RETURNED_STATE(self, n_spec, n, temp, solid_inclu, dgdnj)" \
+    "Equilibrate G3: the final state is tested"
+need "$e" "has a non-finite affinity dG/dn/RT" \
+    "Equilibrate G3: a non-finite affinity is refused"
+need "$e" "call ec_REPORT_CONVERGENCE(self)" \
+    "Equilibrate: converged only for a state that passed G1-G3"
+q=src/equilibrate/equilibrate.f90
+need "$q" "molfracs_species_found = self%molfracs_species" \
+    "Equilibrate: condensates outside the final included set returned as zero"
+need bindings/equilibrate/cython/_equilibrate.pyx "property nonconvergence_reason:" \
+    "Equilibrate binding: nonconvergence_reason"
+c=src/clima/clima_adiabat.f90
+need "$c" "Background-pressure bisection did not converge." \
+    "Clima make_profile_bg_gas: bracketing scan and bisection"
+need "$c" "      if (previous_valid) then" \
+    "Clima make_profile_bg_gas: nested bracket test"
+need "$c" "real(dp), parameter :: epsfcn = 1.0e-8_dp" \
+    "Clima simple_solver: hybrd at a set difference step"
+need "$c" "mv%x(1) = log10(T_guess_ - self%T_trop)" \
+    "Clima simple_solver: unknown is the contrast T_surf - T_trop"
+need "$c" "fvec_(1) = (ISR*rad_enhancement - OLR + self%surface_heat_flow)/flux_scale" \
+    "Clima simple_solver: scaled flux residual"
+need "$c" "Temperature solve returned residuals above the normalized tolerance." \
+    "Clima simple_solver: returned point checked"
 g=photochem/extensions/gasgiants.py
-need "$g" "equilibrium_mass_tol"         "gas-giant equilibrium tolerance is settable"
-need "$g" "closure_rtol"                 "elemental closure is checked after each solve"
-need "$g" "molfracs_atoms_condensate"    "the closure check is skipped where a condensate is present"
-need "$g" "molfracs_atoms_sun.copy()"    "the solar elemental vector is copied before scaling"
-c=src/dependencies/CMakeLists.txt
-need "$c" 'GIT_TAG "v0.7.5"'             "Clima pinned to v0.7.5"
-need "$c" "equilibrate-element-relative-mass-closure.patch"  "Equilibrate patch wired into CPM"
-need "$c" "clima-bounded-scaled-solvers.patch"               "Clima patch wired into CPM"
-needfile src/dependencies/patches/equilibrate-element-relative-mass-closure.patch \
-                                         "Equilibrate patch file present"
-needfile src/dependencies/patches/clima-bounded-scaled-solvers.patch \
-                                         "Clima patch file present"
-need src/dependencies/patches/clima-bounded-scaled-solvers.patch \
-     "real(dp), parameter :: epsfcn = 1.0e-8_dp" \
-                                         "Clima surface-temperature solve differences at a set step"
-need tests/test_python.py "test_gas_giant_equilibrium_mass_tolerance_validation" \
-                                         "tolerance-validation test present"
+need "$g" "equilibrium_mass_tol must be finite and positive" \
+    "gasgiants: equilibrium_mass_tol argument, validated"
+need "$g" "self.gas.mass_tol = equilibrium_mass_tol" \
+    "gasgiants: tolerance set on the equilibrium solver"
+need "$g" "closure_rtol = max(1.0e-8, 100.0*gas.mass_tol)" \
+    "gasgiants: elemental closure checked after each solve"
+needcount "$g" "molfracs_atoms_condensate" 0 \
+    "gasgiants: closure checked also where a condensate is present"
+t=tests/photochem/test_python.py
+for name in test_gas_giant_equilibrium_mass_tolerance_validation \
+            test_equilibrate_trace_element_closure \
+            test_gas_giant_composition_closure_regimes \
+            test_equilibrate_hot_high_pressure_single_solve_closes_elements \
+            test_equilibrate_successive_solves_independent_of_name_reads; do
+    need "$t" "def $name(" "test present: $name"
+done
+need tests/equilibrate/test_returned_state_guards.py \
+    "def test_condensate_of_the_previous_level_is_not_returned(" \
+    "test present: tests/equilibrate/test_returned_state_guards.py"
+need tests/equilibrate/test_equilibrate.f90 "subroutine test_nonfinite_affinity_refused()" \
+    "test present: test_nonfinite_affinity_refused"
 [ $fail -eq 0 ] || die "the tree is not in the expected state (above)"
 
 say "$DEST is the source EXHALE runs on"
-say "next: build and install it -- README_photochem.md sections 2 and 3."
+say "next: build and install it (requirements in the header of this script)."
 say "      This script does not build."

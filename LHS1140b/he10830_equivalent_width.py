@@ -173,11 +173,12 @@ def transit_file_equivalent_width(path):
 #      no shift; the instrument kernel is already inside the curve and
 #      Gaussians commute, so this is the same as broadening before it;
 #   3. depth, width and red/blue are read with the three-Gaussian extractor
-#      used on the data (he_line_metrics.fit_metrics, air frame); the width is
+#      used on the data (he_line_metrics.fit_metrics, vacuum frame); the width is
 #      the FWHM of the blended red pair;
 #   4. f is chosen so that this FWHM equals the measured 0.841 A
 #      (FWHM_OBS_A, the same extractor on the released spectrum), by brentq
-#      on f in [1, 60] km/s with xtol 1e-3;
+#      on f in [0, 60] km/s with xtol 1e-3; a Gaussian cannot narrow
+#      a model that is already wider than the observation;
 #   5. the equivalent width is model_equivalent_width of the broadened curve,
 #      i.e. interpolated onto the observation's vacuum samples in
 #      [EW_LO, EW_HI] and integrated with their trapezoid weights.
@@ -187,7 +188,7 @@ def transit_file_equivalent_width(path):
 # Reference only: the width audit (md/lhs1140b_width_measurement_audit.md)
 # put the like-for-like requirement at sigma = 9.33 km/s (FWHM 21.96 km/s);
 # the memo found f = 22.22 km/s (sigma 9.44) on the 2026-09 solutions.
-FWHM_OBS_A = 0.841                       # A, measured red-pair width
+FWHM_OBS_A = 0.841                       # vacuum A, measured red-pair width
 C_KMS = 2.99792458e5
 FWHM_PER_SIGMA = 2.35482
 NONTHERMAL_SIGMA_REFERENCE_KMS = 9.33    # width audit, for comparison only
@@ -215,10 +216,12 @@ def _fit_metrics():
 
 
 def broadened_line_metrics(lam, exc, fwhm_kms, frame='air', lam0=10830.0):
-    """Three-Gaussian metrics and window EW of the broadened excess."""
+    """Vacuum three-Gaussian metrics and window EW of the broadened excess."""
     e = broaden_excess(lam, exc, fwhm_kms, lam0)
-    d = _fit_metrics()(lam, e, frame=frame)
+    # The observed blended red-pair width is measured in vacuum. Fit in
+    # that same frame; an air width cannot be compared directly with it.
     lv = lam*AIR if frame == 'air' else lam
+    d = _fit_metrics()(lv, e, frame='vacuum')
     v = model_equivalent_width(lv, e)
     d['ew'] = np.nan if v is None else v
     return d
@@ -227,9 +230,19 @@ def broadened_line_metrics(lam, exc, fwhm_kms, frame='air', lam0=10830.0):
 def width_matching_fwhm_kms(lam, exc, frame='air', lam0=10830.0):
     """Added kernel FWHM [km/s] at which the line reaches the measured width."""
     from scipy.optimize import brentq
-    return brentq(lambda f: broadened_line_metrics(lam, exc, f, frame,
-                                                   lam0)['fwhm_A']
-                  - FWHM_OBS_A, 1.0, 60.0, xtol=1e-3)
+    def width_difference(f):
+        return (broadened_line_metrics(lam, exc, f, frame, lam0)['fwhm_A']
+                - FWHM_OBS_A)
+    initial = width_difference(0.0)
+    if initial > 0.0:
+        raise ValueError('unbroadened red-pair width exceeds the observed '
+                         'vacuum width; Gaussian convolution cannot narrow it')
+    if initial == 0.0:
+        return 0.0
+    if width_difference(60.0) < 0.0:
+        raise ValueError('the observed vacuum width requires a Gaussian '
+                         'kernel beyond the 60 km/s search limit')
+    return brentq(width_difference, 0.0, 60.0, xtol=1e-3)
 
 
 def transit_file_air_excess(path):

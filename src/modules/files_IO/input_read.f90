@@ -1949,7 +1949,7 @@
          ! particle count, and the chemistry owns the partition above it.
          ! They are not two owners of one quantity, but the reader has to be
          ! told that both are in play.
-         write(*,'(A,F8.5,A)') ' (input_read) the lower-atmosphere'//      &
+         write(*,'(A,ES13.6,A)') ' (input_read) the lower-atmosphere'//      &
             ' profile states q_H2 =', q_h2_base, ' at the matching level;'
          write(*,'(A)') '   it sets the base particle count there, and'//  &
             ' the oxygen chemistry computes the'
@@ -2181,9 +2181,9 @@
             write(*,*) '  source: chemical-equilibrium fit at'//            &
                        ' (p_base, T_base)'
          endif
-         write(*,'(A,F10.6)') '   requested q_H2 = ', q_h2_resolved
-         write(*,'(A,F10.6)') '   ceiling  q_H2  = ', q_h2_max
-         write(*,'(A,F10.6)') '   He/H           = ', HeH
+         write(*,'(A,ES13.6)') '   requested q_H2 = ', q_h2_resolved
+         write(*,'(A,ES13.6)') '   ceiling  q_H2  = ', q_h2_max
+         write(*,'(A,ES13.6)') '   He/H           = ', HeH
          write(*,*) '  The ceiling is 0.5/(0.5 + He/H): every H nucleus'//  &
                     ' bound into H2.'
          if (q_h2_base .gt. 0.0d0) then
@@ -2209,11 +2209,11 @@
    ! handoff (base.inp key q_H2_base) or the chemical-equilibrium fit.
    if (molecular_base) then
       if (q_h2_base .gt. 0.0d0) then
-         write(*,'(A,F6.3,A,F6.3)') ' (input_read) Molecular base: '//     &
+         write(*,'(A,ES13.6,A,F6.3)') ' (input_read) Molecular base: '//     &
             'q_H2(base, photochemical) =', h2_mixing_ratio_base(),         &
             ' -> ntot_bc =', ntot_bc
       else
-         write(*,'(A,F6.3,A,F6.3)') ' (input_read) Molecular base: '//     &
+         write(*,'(A,ES13.6,A,F6.3)') ' (input_read) Molecular base: '//     &
             'q_H2(base, chem.eq. fit)  =', h2_mixing_ratio_base(),         &
             ' -> ntot_bc =', ntot_bc
       endif
@@ -2245,7 +2245,7 @@
       write(*,*) '  to hold them and the base ghost carries one particle'//   &
                  ' per nucleus. The'
       write(*,*) '  isothermal base boundary is then not isothermal:'
-      write(*,'(A,F10.6)') '   base H2 mixing ratio q_H2 = ',                 &
+      write(*,'(A,ES13.6)') '   base H2 mixing ratio q_H2 = ',                 &
                            h2_mixing_ratio_base()
       write(*,'(A,F10.6)') '   H nuclei bound into H2  x2 = ',                &
                            base_h2_nuclei_fraction()
@@ -3255,7 +3255,7 @@
          call refuse_scalar_key('HeH_base', 'elemental reservoir')
          str = get_word(line,2);  read(str,*) HeH
          if (HeH .gt. 0.0d0) thereis_He = .true.
-         write(*,'(A,F8.5)') '   base.inp: He/H -> ', HeH
+         write(*,'(A,ES13.6)') '   base.inp: He/H -> ', HeH
       else if (lbl_match(line,'Kzz_base')) then
          call refuse_scalar_key('Kzz_base', 'boundary constraint')
          str = get_word(line,2);  read(str,*) he_kzz
@@ -3263,7 +3263,7 @@
       else if (lbl_match(line,'q_H2_base')) then
          call refuse_scalar_key('q_H2_base', 'EOS boundary')
          str = get_word(line,2);  read(str,*) q_h2_base
-         write(*,'(A,F8.5)') '   base.inp: q_H2(base) -> ', q_h2_base
+         write(*,'(A,ES13.6)') '   base.inp: q_H2(base) -> ', q_h2_base
       else if (lbl_match(line,'p_base')) then
          call refuse_scalar_key('p_base', 'EOS boundary')
          str = get_word(line,2);  read(str,*) p_base_bar
@@ -3297,7 +3297,7 @@
    ! Print only: an inconsistent handoff is the user's to judge, never a
    ! reason to refuse to run.
    if (q_h2_base .gt. 0.0d0) then
-      write(*,'(A,F8.5,A,F8.5)') '   base.inp: photochemical q_H2 =',      &
+      write(*,'(A,ES13.6,A,ES13.6)') '   base.inp: photochemical q_H2 =',      &
          q_h2_base, ' is used with He/H =', HeH
       write(*,*) '     (both must come from the same lower-atmosphere'//   &
                  ' solution)'
@@ -3404,14 +3404,14 @@
    call lap_value_at_match('q_H2', val, got)
    if (got) then
       q_h2_base = val
-      write(*,'(A,F8.5)') '   profile: q_H2(base) -> ', q_h2_base
+      write(*,'(A,ES13.6)') '   profile: q_H2(base) -> ', q_h2_base
    endif
    mass_per_Hnuc = 1.0d0
    call lap_element_ratio_at_match('He', val, got)
    if (got) then
       HeH = val
       if (HeH .gt. 0.0d0) thereis_He = .true.
-      write(*,'(A,F8.5)') '   profile: He/H -> ', HeH
+      write(*,'(A,ES13.6)') '   profile: He/H -> ', HeH
       mass_per_Hnuc = mass_per_Hnuc + HeH*m_He_over_m_H
    endif
    do ie = 1, n_melem
