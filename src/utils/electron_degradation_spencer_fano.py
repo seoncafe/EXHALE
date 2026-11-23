@@ -645,16 +645,21 @@ def _he_exc_channel(lev, W, s, gas, opt):
 
 def rotational_loss(gas, opt, grid):
     """Net H2 rotational energy loss per unit length (eV/cm), MCCC N -> N+-2
-    (v = 0) cross sections weighted by the rotational populations."""
+    (v = 0) cross sections weighted by the rotational populations.  The
+    transitions are summed in the order of (N, N_final), not in the order
+    the directory lists its files (that order would set the rounding of
+    the sum)."""
     d = os.path.join(DATA, 'MCCC_H2', 'MCCC-el-H2-X1Sg',
                      'rovibrational_excitation', 'vi=0')
     T = gas.T_rot if gas.T_rot else gas.T_e
     lev = {}
     files = {}
     for N in range(10):
+        final = []
         for fn in os.listdir(os.path.join(d, f'Ni={N}')):
             m = re.search(r'Nf=(\d+)\.X1Sg_vi=0_Ni=(\d+)', fn)
-            Nf = int(m.group(1))
+            final.append((int(m.group(1)), fn))
+        for Nf, fn in sorted(final):
             if abs(Nf - N) != 2:
                 continue
             p = os.path.join(d, f'Ni={N}', fn)
