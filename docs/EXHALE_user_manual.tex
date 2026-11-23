@@ -3873,9 +3873,8 @@ column), and iterates it with the chemistry
   chemistry and the climate column take the stellar energy the wind's input
   states, $\xi_wF$ per unit face area, $\xi_w$ the wind's
   \texttt{dayside\_dilution} (1, $1/2$ or $1/4$ by its \texttt{2D approximate
-  method}), given by \texttt{-{}-wind-dilution} or by the face file of
-  \texttt{-{}-wind-face-optical-depth} (a disagreement between the two is
-  refused, and so is \texttt{-{}-zenith}, which the convention sets);
+  method}), given by \texttt{-{}-wind-dilution} (\texttt{-{}-zenith} is
+  refused, since the convention sets it);
   \texttt{per\_model} keeps each code's own convention (Photochem $0.5F$ at
   \texttt{-{}-zenith}, the climate column $F/4$), as runs before 2026-10-10
   did. \texttt{element\_flux\_closure.py} adds \texttt{-{}-face-geometry wind
