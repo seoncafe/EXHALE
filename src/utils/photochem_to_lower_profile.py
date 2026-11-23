@@ -134,7 +134,7 @@ def read_tp_file(path, p_unit):
 
 def stellar_flux_at_planet(args):
     """(wavelength [nm], flux density [erg cm^-2 s^-1 nm^-1], dilution) of
-    the stellar spectrum at the planet, before any attenuation by the wind.
+    the stellar spectrum at the planet.
 
     A spectrum tabulated per nm in erg/cm^2/s/nm needs no numerical
     conversion (1 erg/cm^2/s/nm = 1 mW/m^2/nm, the unit Photochem and clima
@@ -165,14 +165,10 @@ def write_flux_table(path, wl, flux):
             fh.write('%.6e                  %.6e\n' % (w, y))
 
 
-def write_flux_file(args, path, transmission=None):
-    """Stellar flux at the planet, in mW/m^2/nm, on a wavelength grid in nm,
-    times `transmission` (the wind's, on the same samples) when one is
-    given.  Without a transmission Photochem and clima both read this one
-    file."""
+def write_flux_file(args, path):
+    """Stellar flux at the planet, in mW/m^2/nm, on a wavelength grid in nm;
+    Photochem and clima both read this one file."""
     wl, f, dilution = stellar_flux_at_planet(args)
-    if transmission is not None:
-        f = f*transmission
     write_flux_table(path, wl, f)
     return dilution
 
@@ -214,16 +210,6 @@ FACE_GEOMETRIES = ('per_model', 'wind')
 PHOTOCHEM_DIURNAL_FACTOR = 0.5          # photochem_types.f90:399
 CLIMATE_DIURNAL_FACTOR = 0.5            # clima_radtran.f90:51
 HEMISPHERE_INSOLATION_WEIGHTED_MU = 2.0/3.0
-WIND_FACE_TAU_FORMAT = 'EXHALE wind_face_optical_depth 1'
-# The face file's long-wavelength end: the wind exports its absorption below
-# 120.1 nm (the start of band B2 of oxygen_rates.f90, which closes the
-# Lyman-Werner band of lyman_werner.f90 at 1201 A); Lyman alpha is above it.
-WIND_FACE_TAU_LAMBDA_MAX_NM = 120.1
-# The H2 Lyman and Werner lines, the band the line list of
-# h2_shielding_lbl/lbl.py is built over [A].
-H2_LW_LINES_A = (911.75, 1201.0)
-H2_LW_LINE_GRID_POINTS = 400000         # frequency samples over that band
-H2_LW_LINE_KEEP_FRACTION = 1.0 - 1.0e-6
 
 
 def climate_quadrature(n):
@@ -239,10 +225,10 @@ def face_geometry(name, xi_wind=None, zenith_deg=48.0, n_climate_angles=4):
 
     Returns a dict: photochem_zenith_deg, photochem_diurnal_fac (None: leave
     Photochem's own), climate_zenith_u (None: clima's own quadrature),
-    climate_photon_scale (None: 1), and, for the transmission through the
-    wind and the X-ray deposit, the beams of each model: `*_mu` (direction
-    cosines) and `*_beam` (fraction of the beam, so that the energy per unit
-    horizontal area is sum(beam mu) F), with the totals `*_energy_factor`.
+    climate_photon_scale (None: 1), and the beams of each model: `*_mu`
+    (direction cosines) and `*_beam` (fraction of the beam, so that the
+    energy per unit horizontal area is sum(beam mu) F), with the totals
+    `*_energy_factor`.
     """
     mu_q, w_q = climate_quadrature(n_climate_angles)
     if name == 'per_model':
@@ -262,8 +248,7 @@ def face_geometry(name, xi_wind=None, zenith_deg=48.0, n_climate_angles=4):
         raise ValueError('face geometry must be one of %s' % (FACE_GEOMETRIES,))
     if xi_wind is None:
         sch.refuse('--face-geometry wind needs the wind\'s dayside dilution:'
-                   ' give --wind-face-optical-depth (its header states it) or'
-                   ' --wind-dilution')
+                   ' give --wind-dilution')
     xi = float(xi_wind)
     if abs(xi - 1.0) < 1e-9:
         # the substellar ray: Photochem at mu = 1 with no diurnal factor;
@@ -294,312 +279,7 @@ def face_geometry(name, xi_wind=None, zenith_deg=48.0, n_climate_angles=4):
                ' three conventions dayside_dilution() returns' % xi)
 
 
-def read_wind_face_optical_depth(path):
-    """The wind's radial optical depth at the matching face (section 3 of the
-    memo): bins lambda_lo..lambda_hi [nm] ascending and contiguous, the
-    continuum depth tau_cont of each, and from the header the dayside
-    dilution, the radial H2 layers (N_H2 [cm^-2], T [K]) whose Lyman and
-    Werner lines the reader evaluates at its own slant, and the
-    provenance."""
-    head, rows, layers = {}, [], []
-    with open(path) as fh:
-        first = fh.readline().strip()
-        if first != '# ' + WIND_FACE_TAU_FORMAT:
-            sch.refuse('%s is not a %s file (first line %r)'
-                       % (path, WIND_FACE_TAU_FORMAT, first))
-        for line in fh:
-            s = line.strip()
-            if not s:
-                continue
-            if s.startswith('#'):
-                t = s[1:].split()
-                if len(t) >= 2 and t[0] == 'lyman_werner_lines':
-                    kv = dict(zip(t[2::2], t[3::2]))
-                    layers.append((float(kv['N_H2_cm2']), float(kv['T_H2_K'])))
-                elif len(t) >= 2:
-                    head[t[0]] = ' '.join(t[1:])
-                continue
-            rows.append([float(v) for v in s.split()[:3]])
-    a = np.array(rows, dtype=float)
-    if a.ndim != 2 or a.shape[0] < 2 or a.shape[1] < 3:
-        sch.refuse('%s carries fewer than two bins' % path)
-    lo, hi, tau = a[:, 0], a[:, 1], a[:, 2]
-    if np.any(hi <= lo) or np.any(np.abs(lo[1:] - hi[:-1]) > 1e-6*hi[:-1]):
-        sch.refuse('%s: the bins are not ascending and contiguous' % path)
-    if not np.all(np.isfinite(tau)) or np.any(tau < 0.0):
-        sch.refuse('%s: a negative or non-finite optical depth' % path)
-    if hi[-1] > WIND_FACE_TAU_LAMBDA_MAX_NM*(1.0 + 1e-6):
-        sch.refuse('%s reaches %.4f nm, beyond the %.1f nm the face file'
-                   ' covers' % (path, hi[-1], WIND_FACE_TAU_LAMBDA_MAX_NM))
-    for k in ('dayside_dilution', 'face_radius_cm', 'path'):
-        if k not in head:
-            sch.refuse('%s: the header does not state %s' % (path, k))
-    if not head['path'].startswith('radial'):
-        sch.refuse('%s: path %r; the reader applies its own slant to a'
-                   ' radial depth only' % (path, head['path']))
-    return dict(lo=lo, hi=hi, tau=tau, layers=layers, header=head,
-                dilution=float(head['dayside_dilution']),
-                producer=head.get('producer', 'unknown'),
-                sha=sch.sha256_file(path), path=path)
-
-
-def h2_lyman_werner_line_depth(layers, nu_pts=H2_LW_LINE_GRID_POINTS,
-                               keep_frac=H2_LW_LINE_KEEP_FRACTION):
-    """(nu [Hz] ascending, radial optical depth of the H2 Lyman and Werner
-    lines) of the wind's H2 layers [(N_H2, T)], line by line: the Abgrall,
-    Roueff & Drira (2000) line list and level data as
-    h2_shielding_lbl/lbl.py reads them, LTE populations of the ground state
-    at each layer's T, Voigt lines of each layer's Doppler width.  The
-    lines carrying all but 1e-6 of sum(x f) are kept (MEASURED on the k05
-    column: band transmission 0.7800 with them, 0.7797 at 1e-7 and twice the
-    samples).  A layer's population at one T is the approximation; the
-    face file states the column split into its temperature layers."""
-    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(
-        __file__)), 'h2_shielding_lbl'))
-    import lbl
-    nu = np.linspace(lbl.CLIGHT/(H2_LW_LINES_A[1]*1e-8),
-                     lbl.CLIGHT/(H2_LW_LINES_A[0]*1e-8), int(nu_pts))
-    tau = np.zeros_like(nu)
-    for N, T in layers:
-        if N <= 0.0:
-            continue
-        ll = lbl.build_linelist(T, *H2_LW_LINES_A)
-        w0 = ll['xl']*ll['f']
-        order = np.argsort(w0)[::-1]
-        c = np.cumsum(w0[order])/w0.sum()
-        keep = order[:int(np.searchsorted(c, keep_frac) + 1)]
-        nu0, f, xl, Gam = (ll[k][keep] for k in ('nu0', 'f', 'xl', 'Gam'))
-        dnuD = nu0*np.sqrt(2.0*lbl.KB*T/lbl.M_H2)/lbl.CLIGHT
-        a = Gam/(4.0*np.pi*dnuD)
-        for i in range(nu0.size):
-            tau += N*lbl.PI_E2_MC*f[i]*xl[i]*lbl._profiles(
-                nu, nu0[i], dnuD[i], a[i], Gam[i], 300.0)
-    return nu, tau
-
-
-def sample_cells(wl):
-    """Edges [nm] of the cells that hold the spectrum's samples (the
-    midpoints between samples)."""
-    wl = np.asarray(wl, dtype=float)
-    return np.concatenate([[wl[0] - 0.5*(wl[1] - wl[0])],
-                           0.5*(wl[1:] + wl[:-1]),
-                           [wl[-1] + 0.5*(wl[-1] - wl[-2])]])
-
-
-def wind_face_transmission(wl, face, mu, beam, line_depth=None):
-    """Fraction of the stellar flux at each sample wl [nm] that crosses the
-    wind and reaches the column, for a model taking the beam at the
-    direction cosines `mu` with beam fractions `beam`, energy-weighted over
-    them: sum_i beam_i mu_i t_i / sum_i beam_i mu_i, with
-        t_i = exp(-tau_cont/mu_i) <exp(-tau_lines/mu_i)>_cell .
-    tau_cont is the depth of the face bin holding the sample; the line
-    transmission is averaged over the sample's cell for a flux density flat
-    in wavelength there (weight c/nu^2 on the frequency samples), the part
-    of the cell outside the line band transmitting 1.  Above the last face
-    bin the transmission is 1; a sample below the first bin is refused.
-    `line_depth` is (nu, tau) of h2_lyman_werner_line_depth, or None."""
-    wl = np.asarray(wl, dtype=float)
-    mu = np.atleast_1d(np.asarray(mu, dtype=float))
-    beam = np.atleast_1d(np.asarray(beam, dtype=float))
-    if np.any(mu <= 0.0) or np.any(beam < 0.0) or np.sum(beam*mu) <= 0.0:
-        raise ValueError('direction cosines must be positive and the beam'
-                         ' non-negative')
-    covered = wl < face['hi'][-1]
-    if np.any(wl[covered] < face['lo'][0]):
-        sch.refuse('the spectrum starts at %.4f nm, below the first bin of'
-                   ' the wind\'s face file (%.4f nm)'
-                   % (wl.min(), face['lo'][0]))
-    idx = np.clip(np.searchsorted(face['lo'], wl, side='right') - 1, 0,
-                  face['lo'].size - 1)
-    tau_c = np.where(covered, face['tau'][idx], 0.0)
-    edges = sample_cells(wl)
-    weights = beam*mu
-    out = np.zeros_like(wl)
-    if line_depth is not None:
-        nu, tl = line_depth
-        lam_nm = 2.99792458e17/nu
-        cell = np.searchsorted(edges, lam_nm, side='right') - 1
-        ok = (cell >= 0) & (cell < wl.size)
-        wq = 1.0/nu[ok]**2
-        dlam = np.abs(np.gradient(lam_nm))[ok]
-    for m, wt in zip(mu, weights):
-        t = np.exp(-np.minimum(tau_c/m, 700.0))
-        if line_depth is not None:
-            num = np.bincount(cell[ok], wq*np.exp(-np.minimum(tl[ok]/m, 700.0)),
-                              minlength=wl.size)
-            den = np.bincount(cell[ok], wq, minlength=wl.size)
-            # the covered share of each cell, from the samples' own widths
-            cov = np.minimum(np.bincount(cell[ok], dlam, minlength=wl.size)
-                             / np.diff(edges), 1.0)
-            tline = np.where(den > 0.0, num/np.where(den > 0.0, den, 1.0), 1.0)
-            t = t*(cov*tline + (1.0 - cov))
-        out += wt*t
-    return out/np.sum(weights)
-
-
-def band_power(wl, F, lo, hi):
-    """Integral of F [erg cm^-2 s^-1 nm^-1] over lo <= wl < hi, as the sum
-    over the samples' cells."""
-    edges = sample_cells(wl)
-    m = (wl >= lo) & (wl < hi)
-    return float(np.sum(F[m]*np.diff(edges)[m]))
-
-
-# THE TRANSMITTED X-RAYS AS A HEATING OF THE COLUMN.  The climate model's
-# bins start at 100 nm (clima, MEASURED: rad.sol.wavl[0] = 100.000 nm), so
-# what the wind transmits below it is absorbed in the column (He, H2 and the
-# trace molecules) and is in neither the climate nor the column energy
-# balance.  Its photoelectrons (E - I) share their energy among heat,
-# ionization and excitation; the heat share is the Spencer-Fano deposition
-# record of electron_degradation_spencer_fano.py at the column's own
-# composition (He, H2, H at the match; electron fraction
-# XRAY_COLUMN_ELECTRON_FRACTION), counted as: Coulomb, elastic recoil,
-# thermalized electrons and dissociation-fragment kinetic energy
-# (`f_heat` of that tool), plus the H2 rotational excitation and the H2
-# vibrational excitation, both collisionally relaxed at the column's
-# densities (MEASURED: He + H2 de-excite H2(v = 1) at 240 K and 1 microbar
-# at 1.6e-4 s^-1, Jozwiak et al. 2024 as h2_vibrational_relaxation.f90
-# tabulates them, against 5.6e-6 s^-1, the largest radiative rate of the
-# ladder: 0.97, rising with depth; rotational decay is slower still).
-# NOT INCLUDED: the energy that leaves as ionization (about half at 1 keV)
-# and as He and H2 electronic excitation; the part of it the ion chemistry
-# returns as heat (Glassgold, Galli & Padovani 2012, ApJ 756, 157, Table 5:
-# 9 eV per ion pair in H2 gas with He/H 0.1) is not computed for a helium
-# dominated column and is reported as the upper side of the range.
-XRAY_COLUMN_ELECTRON_FRACTION = 1.0e-8   # estimate: X-ray ion pairs against
-                                         # H3+ dissociative recombination
-XRAY_SF_ENERGY_STEP = 0.2                # eV (MEASURED: f_heat 0.0458 vs
-                                         # 0.0468 at 0.1 eV, 1.2 keV)
-# The photoionizing band of the column: photons above the H2 ionization
-# energy (I_H2 of electron_degradation_spencer_fano.py, 15.4254 eV, i.e.
-# below 80.38 nm); longward of it the column's absorption is photolysis,
-# whose energy is chemical and not a photoelectron's.
-
-
-def photoelectron_heat_share(x_He, x_H2, x_H, T_e, E_max,
-                             x_e=XRAY_COLUMN_ELECTRON_FRACTION,
-                             dE=XRAY_SF_ENERGY_STEP):
-    """eta(E0) [function of the primary electron energy E0, eV]: the share
-    of E0 that heats the column gas (see the block above), from one
-    Spencer-Fano solve up to E_max."""
-    import electron_degradation_spencer_fano as sf
-    ntot = 1.0e13                         # the shares do not depend on it
-    gas = sf.Gas(n_HI=x_H*ntot, n_HeI=x_He*ntot, n_H2=x_H2*ntot,
-                 n_e=x_e*ntot, T_e=float(T_e), T_rot=float(T_e))
-    sol = sf.solve(gas, sf.Options(dE=dE, E_max=float(E_max)))
-    keys = ('heat_coulomb', 'heat_recoil', 'heat_thermalized',
-            'heat_fragments', 'E_rot_H2', 'E_vib_H2')
-    Y = sum(sol.Y[:, sf.IDX[k]] for k in keys)
-    E = sol.E
-    share = np.where(E > 0.0, Y/np.where(E > 0.0, E, 1.0), 0.0)
-
-    def eta(E0):
-        return np.interp(E0, E[1:], share[1:])
-    eta.record = sol
-    return eta
-
-
-def photoabsorption_table(species, data_dir=None):
-    """(wavelength [nm], photoabsorption cross section [cm^2]) of Photochem's
-    own table for a species (photochem_clima_data xsections/<sp>.h5), the
-    cross sections the column attenuates with; None when it has none."""
-    import h5py
-    if data_dir is None:
-        import photochem_clima_data
-        data_dir = os.path.join(os.path.dirname(
-            photochem_clima_data.__file__), 'data')
-    path = os.path.join(data_dir, 'xsections', species + '.h5')
-    if not os.path.exists(path):
-        return None
-    with h5py.File(path, 'r') as h:
-        return (np.array(h['wavelengths'], dtype=float),
-                np.array(h['photoabsorption'], dtype=float))
-
-
-# Photoelectron energy E - I of an absorber [eV]: He and H2 from the
-# degradation tool's NIST values; every trace molecule is given I_H2, a
-# share of the absorbed power below 1e-3 at the X-ray energies that carry it.
-def _ionization_energy_eV(sp):
-    import electron_degradation_spencer_fano as sf
-    return {'He': sf.I_HE, 'H': sf.I_H}.get(sp, sf.I_H2)
-
-
-XRAY_COLUMN_ABSORBERS = ('He', 'H2', 'H', 'CH4', 'NH3', 'H2O', 'CO', 'CO2',
-                         'N2', 'HCN', 'C2H2')
-
-
-def xray_deposit_in_column(z, n_tot, mix, wl, F_top, mu, beam, eta,
-                           xs=None, data_dir=None):
-    """Energy the column absorbs from the transmitted photoionizing flux,
-    and the part of it that heats, on the chemistry's own levels.
-
-    z [cm] ascending cell centres (top cell last, its face the matching
-    face), n_tot [cm^-3], mix {species: mixing ratio}, F_top [erg cm^-2 s^-1
-    nm^-1] the flux at the face for a beam at normal incidence, `mu`/`beam`
-    the model's direction cosines and beam fractions.  Columns above a level
-    are from the face down (the cell-centre value held over the top half
-    cell).  Returns (q_abs, q_heat) [erg cm^-3 s^-1] and a record.
-    """
-    z = np.asarray(z, dtype=float)
-    n_tot = np.asarray(n_tot, dtype=float)
-    band = wl < 1.0e7*6.62607015e-27*2.99792458e10/(
-        _ionization_energy_eV('H2')*1.602176634e-12)
-    lam = wl[band]
-    dlam = np.diff(sample_cells(wl))[band]
-    F = F_top[band]
-    E = 1239.841984/lam
-    dz = np.diff(z)
-    absorbers = []
-    for sp in XRAY_COLUMN_ABSORBERS:
-        if sp not in mix:
-            continue
-        tab = (xs or {}).get(sp) if xs is not None else \
-            photoabsorption_table(sp, data_dir)
-        if tab is None:
-            continue
-        sig = np.interp(lam, tab[0], tab[1], left=0.0, right=0.0)
-        n = np.asarray(mix[sp], dtype=float)*n_tot
-        # column above each level: from the face (half the top cell) down
-        top_half = 0.5*(dz[-1] if dz.size else 0.0)
-        N = np.empty_like(n)
-        N[-1] = n[-1]*top_half
-        for j in range(n.size - 2, -1, -1):
-            N[j] = N[j + 1] + 0.5*(n[j] + n[j + 1])*dz[j]
-        E_pe = np.maximum(E - _ionization_energy_eV(sp), 0.0)
-        heat_frac = np.where(E > 0.0, E_pe/E, 0.0)*eta(E_pe)
-        absorbers.append((sp, sig, n, N, heat_frac))
-    if not absorbers:
-        sch.refuse('the column carries no photoionizing absorber with a'
-                   ' Photochem cross-section table')
-    tau = sum(a[1][None, :]*a[3][:, None] for a in absorbers)   # (nz, nlam)
-    q_abs = np.zeros(z.size)
-    q_heat = np.zeros(z.size)
-    by_sp = {}
-    for m, b in zip(np.atleast_1d(mu), np.atleast_1d(beam)):
-        att = np.exp(-np.minimum(tau/m, 700.0))
-        for sp, sig, n, N, hf in absorbers:
-            k = n[:, None]*sig[None, :]                       # cm^-1
-            dep = b*k*att*(F*dlam)[None, :]                   # erg cm^-3 s^-1
-            q_abs += dep.sum(axis=1)
-            q_heat += (dep*hf[None, :]).sum(axis=1)
-            by_sp[sp] = by_sp.get(sp, 0.0) + float(np.sum(
-                dep.sum(axis=1)*np.gradient(z)))
-    w = np.gradient(z)
-    incident = float(np.sum(np.atleast_1d(beam)*np.atleast_1d(mu))
-                     * np.sum(F*dlam))
-    rec = dict(incident=incident, absorbed=float(np.sum(q_abs*w)),
-               heat=float(np.sum(q_heat*w)), by_absorber=by_sp,
-               band_nm=(float(lam.min()), float(lam.max())))
-    rec['heat_share'] = rec['heat']/rec['absorbed'] if rec['absorbed'] > 0 \
-        else 0.0
-    return q_abs, q_heat, rec
-
-
-# What main() hands the column energy balance: the face file, the stellar
-# flux at the planet and the geometry (filled only when
-# --wind-face-optical-depth is given; empty, nothing changes), and the
-# geometry every run uses (face_geometry).
-FACE_RADIATION = {}
+# The face geometry every run uses (face_geometry), set by main().
 FACE_GEOMETRY = {}
 # The eddy heat transport of the reference column and of the column energy
 # balance (--eddy-heat-transport): 'kzz', the K_zz(p [bar]) the chemistry is
@@ -615,37 +295,10 @@ EDDY_HEAT = {}
 CLIMATE_ZENITH_ANGLES = 4
 
 
-def wind_face_attenuation_note(wl, F0, t_pc, t_cl, geometry, face):
-    """One sentence for the log and the profile notes: the power the wind's
-    face file removes from what each column model takes, by band, per unit
-    horizontal area of the model (its own energy factor)."""
-    bands = (('X-ray 0.9-10 nm', 0.0, 10.0), ('EUV 10-91.2 nm', 10.0, 91.2),
-             ('91.2-100 nm', 91.2, 100.0), ('100-120.1 nm', 100.0, 120.1))
-    parts = []
-    for name, lo, hi in bands:
-        e0 = band_power(wl, F0, lo, hi)
-        ep = band_power(wl, F0*t_pc, lo, hi)
-        ec = band_power(wl, F0*t_cl, lo, hi)
-        parts.append('%s %.4g -> Photochem %.4g, climate %.4g'
-                     % (name, e0, ep, ec))
-    return ('wind face file %s (producer %s, sha256 %s, xi_w %.3g, %d H2'
-            ' layers): stellar band powers at normal incidence [erg cm^-2'
-            ' s^-1] before and after the wind, %s; face geometry %s,'
-            ' horizontal energy factors Photochem %.4f, climate %.4f'
-            % (os.path.basename(face['path']),
-               face['producer'].split()[0].rstrip(':'),
-               face['sha'][:16], face['dilution'], len(face['layers']),
-               '; '.join(parts), geometry['name'],
-               geometry['photochem_energy_factor'],
-               geometry['climate_energy_factor']))
-
-
-def write_face_radiation_record(args, geometry, xi_wind, face, face_note,
-                                column_heat):
-    """`wind_face_radiation.txt` beside the profile: the face convention,
-    the wind's face file and what it removed, and the X-ray heating of the
-    column (its solution_id carries the face file's sha256 and the
-    geometry, so the record and the profile name one solution)."""
+def write_face_radiation_record(args, geometry, xi_wind):
+    """`wind_face_radiation.txt` beside the profile: the face convention by
+    which the column models take the stellar beam (its solution_id carries
+    the geometry, so the record and the profile name one solution)."""
     path = os.path.join(args.run_dir, 'wind_face_radiation.txt')
     g = geometry
     with open(path, 'w') as f:
@@ -664,87 +317,7 @@ def write_face_radiation_record(args, geometry, xi_wind, face, face_note,
                    'own (1)' if g['climate_photon_scale'] is None else
                    '%.6f' % g['climate_photon_scale'],
                    g['climate_energy_factor']))
-        if face is not None:
-            f.write('# wind_face_optical_depth %s sha256 %s producer %s\n'
-                    % (os.path.abspath(face['path']), face['sha'],
-                       face['producer']))
-            f.write('# %s\n' % face_note)
-        xr = (column_heat or {}).get('xray') or {}
-        if xr.get('applied'):
-            f.write('# xray_column_incident_flux_cgs %.10E\n' % xr['incident'])
-            f.write('# xray_column_absorbed_flux_cgs %.10E\n' % xr['absorbed'])
-            f.write('# xray_column_heat_flux_cgs %.10E\n' % xr['heat'])
-            f.write('# xray_heat_share %.6f (Spencer-Fano at 1 keV %.6f, x_e'
-                    ' %.1e, T_e %.2f K)\n' % (xr['heat_share'], xr['eta_1keV'],
-                                             xr['x_e'], xr['T_e']))
-            f.write('# xray_half_heat_above_bar %.6E\n' % xr['p_half_heat_bar'])
-            f.write('# xray_absorbed_by %s\n' % ' '.join(
-                '%s %.6E' % kv for kv in sorted(xr['by_absorber'].items())))
     print('wrote %s' % path)
-
-
-def xray_heating_of_column(pc, args):
-    """The transmitted X-ray heating as a `chemical_heating` of
-    conducted_heat_column_balance (per node, in the units of A w D: shell
-    area times column mass times the heating per unit mass), and its record;
-    (None, record) without a face file or without a climate column."""
-    rec = dict(heat=0.0, absorbed=0.0, incident=0.0, applied=False)
-    if not FACE_RADIATION or FACE_RADIATION.get('climate') is None:
-        return None, rec
-    geo = FACE_RADIATION['geometry']
-    # the photochemical grid only, the levels pc.var.z describes
-    sol = pc.return_atmosphere(include_deep_atmosphere=False)
-    counts = species_element_counts(pc)
-    p_dyn = np.asarray(pc.wrk.pressure_hydro, dtype=float)
-    z = np.asarray(pc.var.z, dtype=float)
-    n_tot = np.asarray(pc.wrk.density, dtype=float)
-    mix = {sp: np.asarray(sol[sp], dtype=float) for sp in XRAY_COLUMN_ABSORBERS
-           if sp in sol and sp in counts}
-    top = {sp: float(v[-1]) for sp, v in mix.items()}
-    T_top = float(np.asarray(sol['temperature'], dtype=float)[-1])
-    wl, F0, face = FACE_RADIATION['wl'], FACE_RADIATION['F0'], \
-        FACE_RADIATION['face']
-    E_max = 1239.841984/wl.min() + 1.0
-    eta = FACE_RADIATION.get('eta')
-    if eta is None:
-        eta = photoelectron_heat_share(top.get('He', 0.0), top.get('H2', 0.0),
-                                       top.get('H', 0.0), T_top, E_max)
-        FACE_RADIATION['eta'] = eta
-    # each of the climate model's beams crosses the wind at its own slant
-    # (the continuum only: the photoionizing band holds no H2 line)
-    q_abs = q_heat = 0.0
-    r = None
-    for m, b in zip(geo['climate_mu'], geo['climate_beam']):
-        F_m = F0*wind_face_transmission(wl, face, [m], [1.0])
-        qa, qh, rm = xray_deposit_in_column(z, n_tot, mix, wl, F_m, [m], [b],
-                                            eta, data_dir=args.data_dir)
-        q_abs = q_abs + qa
-        q_heat = q_heat + qh
-        if r is None:
-            r = rm
-        else:
-            for k in ('incident', 'absorbed', 'heat'):
-                r[k] += rm[k]
-            for k, v in rm['by_absorber'].items():
-                r['by_absorber'][k] = r['by_absorber'].get(k, 0.0) + v
-    r['heat_share'] = r['heat']/r['absorbed'] if r['absorbed'] > 0 else 0.0
-    rho = n_tot*np.asarray(pc.wrk.mubar, dtype=float)*sch.MAMU
-    per_mass = q_heat/rho
-    lnp_asc = np.log(p_dyn)[::-1]
-    pm_asc = per_mass[::-1]
-    cum = np.cumsum((q_heat*np.gradient(z))[::-1])
-    p_half = float(np.interp(0.5*cum[-1], cum, p_dyn[::-1]))/sch.BAR
-    r.update(applied=True, p_half_heat_bar=p_half,
-             eta_1keV=float(eta(1000.0)), T_e=T_top,
-             x_e=XRAY_COLUMN_ELECTRON_FRACTION)
-
-    def heating(d):
-        h = np.interp(np.log(d['p_bar']*sch.BAR), lnp_asc, pm_asc,
-                      left=0.0, right=pm_asc[-1])
-        H = d['geom'].area*d['geom'].w*h
-        H[0] = 0.0
-        return H
-    return heating, r
 
 
 def mechanism_files(args, wdir):
@@ -1314,9 +887,13 @@ def chemistry_temperature_profile(args, column, res=None):
         xd = np.log(res['domain']['p_bar']*sch.BAR)
         x = np.concatenate([x, xd[(xd > np.log(pm) + 1.0e-9) &
                                   (xd < lnP[0])]])
-    x = np.unique(np.concatenate([x, [np.log(pm)]]))[::-1]
+    x = np.unique(np.concatenate([x, [np.log(pm)]]))
+    x = x[np.concatenate([[True], np.diff(x) > 1.0e-9])][::-1]
     Tq = np.interp(x, lnP[::-1], np.asarray(T, dtype=float)[::-1])
     Pq = np.exp(x)
+    if np.any(np.diff(Pq) >= 0.0):
+        keep = np.concatenate([[True], np.diff(Pq) < 0.0])
+        x, Pq, Tq = x[keep], Pq[keep], Tq[keep]
     if res is not None:
         Tq = Tq + temperature_rise_at(res, Pq)
     Kq = sch.eddy_diffusion_coefficient(Pq/sch.BAR, args)
@@ -1577,13 +1154,6 @@ def conducted_heat_column_state(pc, args, counts, emission, T_reference,
                              reference_radiative_flux=EDDY_HEAT.get(
                                  'radiative_flux'))
     chem, chem_rec = recombination_heating_of_inflowing_atoms(pc, args)
-    xray, xray_rec = xray_heating_of_column(pc, args)
-    if xray is not None:
-        # both are heatings held at fixed pressure: their sum is the one
-        # `chemical_heating` the balance takes
-        recomb = chem
-        chem = (xray if recomb is None
-                else (lambda d: recomb(d) + xray(d)))
     if args.column_band_transfer == 'thin':
         res = col.solve(args.conducted_heat_flux,
                         treatment=args.column_energy_treatment,
@@ -1600,7 +1170,6 @@ def conducted_heat_column_state(pc, args, counts, emission, T_reference,
                         exchange_shift_max_K=args.column_exchange_shift_max,
                         chemical_heating=chem)
     res['recombination'] = chem_rec
-    res['xray'] = xray_rec
     return res
 
 
@@ -1725,13 +1294,6 @@ def column_heat_note(args, res):
     chem = (' plus %.4g erg/cm2/s recombination heat of the inflowing'
             ' atomic H' % rec['F_chem']) if rec.get('F_chem', 0.0) > 0.0 \
         else ''
-    xr = res.get('xray') or {}
-    if xr.get('applied'):
-        chem += (' plus %.4g erg/cm2/s heat of the %.4g erg/cm2/s of'
-                 ' photoionizing radiation the wind transmits (absorbed'
-                 ' %.4g, half the heat above %.3e bar)'
-                 % (xr['heat'], xr['incident'], xr['absorbed'],
-                    xr['p_half_heat_bar']))
     head = ('Column energy balance below p_match under the conducted heat'
             ' flux %.4g erg/cm2/s' % args.conducted_heat_flux) + chem
     if args.eddy_heat_transport == 'on':
@@ -1800,15 +1362,6 @@ def write_column_heat_record(args, res):
                     ' deposited with the shape of %s; column rate x D0 over'
                     ' it %.4f\n' % (rec['F_chem'], rec['phi_in'],
                                     rec['reaction'], rec['rate_ratio']))
-        xr = res.get('xray') or {}
-        if xr.get('applied'):
-            f.write('# photoionizing radiation the wind transmits (wind face'
-                    ' file): incident %.6E, absorbed %.6E, heat %.6E'
-                    ' erg/cm2/s (heat share %.4f; Spencer-Fano share at 1 keV'
-                    ' %.4f, x_e %.1e, T_e %.1f K); half the heat above %.4E'
-                    ' bar\n' % (xr['incident'], xr['absorbed'], xr['heat'],
-                                 xr['heat_share'], xr['eta_1keV'], xr['x_e'],
-                                 xr['T_e'], xr['p_half_heat_bar']))
         f.write('# eddy_heat_transport %s\n' % args.eddy_heat_transport)
         fl = res.get('face_fluxes_below_match')
         if fl is not None:
@@ -2020,19 +1573,7 @@ def main():
     ap.add_argument('--wind-dilution', type=float, default=None,
                     help='the wind\'s dayside dilution xi_w (1, 0.5 or'
                          ' 0.25; EXHALE_setup.out "Dayside dilution") for'
-                         ' --face-geometry wind without a face file; with'
-                         ' --wind-face-optical-depth the file states it')
-    ap.add_argument('--wind-face-optical-depth', default=None,
-                    help='the wind\'s radial optical depth at the matching'
-                         ' face below 120.1 nm (a file whose first line is'
-                         ' "# EXHALE wind_face_optical_depth 1"; format in'
-                         ' read_wind_face_optical_depth). Given, the'
-                         ' spectrum Photochem and the climate model take is'
-                         ' attenuated by it at each model\'s own slant, and'
-                         ' the X-rays it transmits below the climate model\'s'
-                         ' shortest wavelength heat the column energy balance'
-                         ' (with --climate and --conducted-heat-flux). Absent'
-                         ' (default), the spectrum is the star\'s')
+                         ' --face-geometry wind')
     ap.add_argument('--toa', type=float, default=None,
                     help='REFUSED: the model top is the matching level'
                          ' (its top face at --p-match). Kept only to say so')
@@ -2164,16 +1705,10 @@ def main():
     wdir = args.workdir or os.path.join(args.run_dir, 'photochem_work')
     os.makedirs(wdir, exist_ok=True)
     flux_file = os.path.join(wdir, 'flux_photochem.txt')
-    face = (read_wind_face_optical_depth(args.wind_face_optical_depth)
-            if args.wind_face_optical_depth else None)
     if args.face_geometry == 'wind' and args.zenith is not None:
         sch.refuse('--zenith with --face-geometry wind: the convention sets'
                    ' Photochem\'s zenith angle')
-    if face is not None and args.wind_dilution is not None and \
-            abs(args.wind_dilution - face['dilution']) > 1e-9:
-        sch.refuse('--wind-dilution %.6g differs from the face file\'s %.6g'
-                   % (args.wind_dilution, face['dilution']))
-    xi_wind = face['dilution'] if face is not None else args.wind_dilution
+    xi_wind = args.wind_dilution
     geometry = face_geometry(args.face_geometry, xi_wind,
                              48.0 if args.zenith is None else args.zenith,
                              CLIMATE_ZENITH_ANGLES)
@@ -2181,26 +1716,7 @@ def main():
     FACE_GEOMETRY.update(geometry)
     args.zenith = geometry['photochem_zenith_deg']
     climate_flux_file = flux_file
-    face_note = ''
-    if face is None:
-        dilution = write_flux_file(args, flux_file)
-    else:
-        wl, F0, dilution = stellar_flux_at_planet(args)
-        lines = (h2_lyman_werner_line_depth(face['layers'])
-                 if face['layers'] else None)
-        t_pc = wind_face_transmission(wl, face, geometry['photochem_mu'],
-                                      geometry['photochem_beam'], lines)
-        t_cl = wind_face_transmission(wl, face, geometry['climate_mu'],
-                                      geometry['climate_beam'], lines)
-        write_flux_table(flux_file, wl, F0*t_pc)
-        climate_flux_file = os.path.join(wdir, 'flux_climate.txt')
-        write_flux_table(climate_flux_file, wl, F0*t_cl)
-        FACE_RADIATION.clear()
-        FACE_RADIATION.update(face=face, geometry=geometry, wl=wl, F0=F0,
-                              climate=None)
-        face_note = wind_face_attenuation_note(wl, F0, t_pc, t_cl, geometry,
-                                               face)
-        print('  ' + face_note, flush=True)
+    dilution = write_flux_file(args, flux_file)
     mech, thermo, data_dir = mechanism_files(args, wdir)
     abundances = parse_abundances(args.abundances)
 
@@ -2248,8 +1764,6 @@ def main():
             EDDY_HEAT['radiative_flux'] = rcc.net_flux_function(
                 st['P_edges'], st['F_edges'])
             EDDY_HEAT['levels_dyn'] = np.asarray(st['P_dyn'], dtype=float)
-        if FACE_RADIATION:
-            FACE_RADIATION['climate'] = climate
         print('  ' + rcc.summary(climate))
         sys.stdout.flush()
         column = (climate['P_dyn'], climate['T'], None)
@@ -2441,12 +1955,10 @@ def main():
     if args.trial_flux_H2 is not None:
         fp.update(trial_flux_H2=args.trial_flux_H2)
     # Only off the defaults, so that a run without them keeps its
-    # solution_id: the face convention and the wind's face file name a
-    # different spectrum and a different column heating.
+    # solution_id: the face convention names a different stellar energy
+    # per unit area.
     if args.face_geometry != 'per_model':
         fp.update(face_geometry=args.face_geometry, wind_dilution=xi_wind)
-    if face is not None:
-        fp.update(wind_face_optical_depth_sha=face['sha'])
     if args.kzz_power is not None:
         # Only when it is in use: a fingerprint entry that is always present
         # would move the solution_id of every constant-K_zz run.
@@ -2496,13 +2008,12 @@ def main():
     notes += ' ' + truncation
     if column_heat is not None:
         notes += ' ' + column_heat_note(args, column_heat)
-    if face is not None or args.face_geometry != 'per_model':
+    if args.face_geometry != 'per_model':
         # The notes line is cut at the 1000 characters the EXHALE reader
         # holds (lower_profile_schema.write_profile), and the schema writes
-        # only the header keys it knows: the record of the face radiation
+        # only the header keys it knows: the record of the face geometry
         # goes to its own file beside the profile.
-        write_face_radiation_record(args, geometry, xi_wind, face, face_note,
-                                    column_heat)
+        write_face_radiation_record(args, geometry, xi_wind)
     p_face, _ = top_face_pressure(pc)
     notes += (' Model top: the top face at %.6e bar (%+.2e in ln p from the'
               ' matching level), the state at the match continued from the'
